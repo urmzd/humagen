@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -131,14 +132,18 @@ func TestASlackConnectorStartsNothingForAnyoneElse(t *testing.T) {
 	posted := len(fake.Messages())
 
 	for name, body := range map[string]string{
-		"a mention from someone unmapped":        event(here, "Ev10", `{"type":"app_mention","user":"U0STRANGER","text":"<@U08BOTID> go","ts":"1700000001.000100","channel":"C01"}`),
-		"a direct message from someone unmapped": event(here, "Ev11", `{"type":"message","channel_type":"im","user":"U0STRANGER","text":"hello","ts":"1700000001.000200","channel":"D09"}`),
-		"a thread reply from someone unmapped":   event(here, "Ev12", `{"type":"message","channel_type":"channel","user":"U0STRANGER","text":"and then?","ts":"1700000001.000300","thread_ts":"1700000000.000100","channel":"C01"}`),
-		"a file from someone unmapped":           event(here, "Ev13", `{"type":"message","subtype":"file_share","channel_type":"im","user":"U0STRANGER","text":"read","ts":"1700000001.000400","channel":"D09","files":[{"id":"F01"}]}`),
-		"a mapped user id from another team":     event(here, "Ev14", `{"type":"app_mention","user":"U0HUMAN1","user_team":"T09OTHER","text":"<@U08BOTID> go","ts":"1700000001.000500","channel":"C01"}`),
-		"a delivery that names no team":          event("", "Ev16", `{"type":"app_mention","user":"U0HUMAN1","text":"<@U08BOTID> go","ts":"1700000001.000700","channel":"C01"}`),
-		"an app's bot user":                      event(here, "Ev17", `{"type":"app_mention","user":"U08BOTID","text":"<@U08BOTID> go","ts":"1700000001.000800","channel":"C01"}`),
-		"a bot's post":                           event(here, "Ev18", `{"type":"message","channel_type":"im","bot_id":"B01","user":"U0HUMAN1","text":"hello","ts":"1700000001.000900","channel":"D01"}`),
+		"a mention from someone unmapped":                    event(here, "Ev10", `{"type":"app_mention","user":"U0STRANGER","text":"<@U08BOTID> go","ts":"1700000001.000100","channel":"C01"}`),
+		"a direct message from someone unmapped":             event(here, "Ev11", `{"type":"message","channel_type":"im","user":"U0STRANGER","text":"hello","ts":"1700000001.000200","channel":"D09"}`),
+		"a thread reply from someone unmapped":               event(here, "Ev12", `{"type":"message","channel_type":"channel","user":"U0STRANGER","text":"and then?","ts":"1700000001.000300","thread_ts":"1700000000.000100","channel":"C01"}`),
+		"a file from someone unmapped":                       event(here, "Ev13", `{"type":"message","subtype":"file_share","channel_type":"im","user":"U0STRANGER","text":"read","ts":"1700000001.000400","channel":"D09","files":[{"id":"F01"}]}`),
+		"a mention with a subtype from someone unmapped":     event(here, "Ev20", `{"type":"app_mention","subtype":"thread_broadcast","user":"U0STRANGER","text":"<@U08BOTID> go again","ts":"1700000002.000100","thread_ts":"1700000000.000100","channel":"C01"}`),
+		"a mention with a subtype from another team":         event(here, "Ev21", `{"type":"app_mention","subtype":"me_message","user":"U0HUMAN1","user_team":"T09OTHER","text":"<@U08BOTID> go again","ts":"1700000002.000200","thread_ts":"1700000000.000100","channel":"C01"}`),
+		"a thanks in the thread from someone unmapped":       event(here, "Ev22", `{"type":"app_mention","subtype":"thread_broadcast","user":"U0STRANGER","text":"thanks","ts":"1700000002.000300","thread_ts":"1700000000.000100","channel":"C01"}`),
+		"a plain thanks in the thread from someone unmapped": event(here, "Ev23", `{"type":"message","channel_type":"channel","user":"U0STRANGER","text":"thanks","ts":"1700000002.000400","thread_ts":"1700000000.000100","channel":"C01"}`),
+		"a mapped user id from another team":                 event(here, "Ev14", `{"type":"app_mention","user":"U0HUMAN1","user_team":"T09OTHER","text":"<@U08BOTID> go","ts":"1700000001.000500","channel":"C01"}`),
+		"a delivery that names no team":                      event("", "Ev16", `{"type":"app_mention","user":"U0HUMAN1","text":"<@U08BOTID> go","ts":"1700000001.000700","channel":"C01"}`),
+		"an app's bot user":                                  event(here, "Ev17", `{"type":"app_mention","user":"U08BOTID","text":"<@U08BOTID> go","ts":"1700000001.000800","channel":"C01"}`),
+		"a bot's post":                                       event(here, "Ev18", `{"type":"message","channel_type":"im","bot_id":"B01","user":"U0HUMAN1","text":"hello","ts":"1700000001.000900","channel":"D01"}`),
 	} {
 		if w := slackAt(ingress, "secret-docs-app", "/connectors/slack", body); w.Code != http.StatusOK || w.Body.Len() != 0 {
 			t.Errorf("%s answered %d %q, want an empty 200", name, w.Code, w.Body.String())
@@ -173,6 +178,28 @@ func TestASlackConnectorStartsNothingForAnyoneElse(t *testing.T) {
 	}
 	if n := len(fake.Messages()); n != posted {
 		t.Fatalf("%d messages were posted for people the client does not map", n-posted)
+	}
+	for _, m := range fake.Messages() {
+		if slices.Contains(m.Reactions, "heart") {
+			t.Fatalf("the app reacted for someone the client does not map: %+v", m)
+		}
+	}
+}
+
+// A client whose team maps nobody is listed, so a start can say it will
+// start no runs; one whose team another client maps people for is not.
+func TestSlackClientsWithoutPeopleAreListed(t *testing.T) {
+	f := &fakes{}
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"docs": nil}}, f.config())
+	create(t, p, tenant, mapsNobody(slackClient("alone", "A0ALONE", "T02ALONE", "docs")))
+	create(t, p, tenant, mapsNobody(slackClient("helped", "A0HELPED", team, "docs")))
+	create(t, p, tenant, slackClient("people", "A0PEOPLE", team, "docs"))
+	var ids []string
+	for _, c := range p.SlackClientsWithoutPeople() {
+		ids = append(ids, c.ID)
+	}
+	if len(ids) != 1 || ids[0] != "alone" {
+		t.Fatalf("clients without people = %v, want alone", ids)
 	}
 }
 

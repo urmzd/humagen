@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/flow/signature"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -178,8 +179,19 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 			}
 		}
 	}
+	// Until then a start says the Slack client will start no runs.
+	noted := legacy.NewNotes(nil)
+	noteSlackPeople(p, noted)
+	if all := noted.All(); len(all) != 1 || !strings.Contains(all[0], defaultSlackClient) || !strings.Contains(all[0], "starts no runs until people are mapped") {
+		t.Fatalf("notes at start = %q, want one about the Slack client's people", all)
+	}
 	if _, err := p.ApplySlackApp(ctx, "trial", "file", platform.SlackApp{Team: "T01ABCDEF", Machine: "svc-slack", People: map[string]string{"U01": "ana"}}); err != nil {
 		t.Fatal(err)
+	}
+	noted = legacy.NewNotes(nil)
+	noteSlackPeople(p, noted)
+	if all := noted.All(); len(all) != 0 {
+		t.Fatalf("notes at start with the team's people mapped = %q, want none", all)
 	}
 	wait("the clients are ingesting", ready)
 

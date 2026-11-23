@@ -307,7 +307,7 @@ func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
 	cfg := f.config()
 	cfg.Policy = operators(t, "ada", "olu")
 	said := &logs{}
-	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
+	cfg.Log = slog.New(slog.NewTextHandler(said, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	p := stage(t, c, cfg)
 	// In a bound channel the workspace default answers a mention that names
 	// no agent.

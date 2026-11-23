@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/signature"
@@ -37,12 +39,22 @@ type gate struct {
 	mu     sync.Mutex
 	asked  []string
 	raised []event.Envelope
+	// unasked is what was raised without its sender having been asked
+	// about and found to be the client's.
+	unasked []string
 }
 
-func newGate(t *testing.T) *gate {
+// reset forgets what was asked and raised so far.
+func (g *gate) reset() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.asked, g.raised = nil, nil
+}
+
+func newGate(t *testing.T, with ...func(*slack.Config)) *gate {
 	t.Helper()
 	g := &gate{t: t, fake: slack.NewFake()}
-	c, err := slack.New(slack.Config{
+	cfg := slack.Config{
 		API: g.fake, Verifier: signature.NewSlack(senderSecret), Team: senderTeam, Tenant: "acme",
 		Bots: map[string]string{"U08BOTID": "lead"}, Sessions: true, Interval: -1,
 		Commands:       []slack.Command{{Name: "run-tests", Description: "Run the test suite"}},
@@ -53,7 +65,11 @@ func newGate(t *testing.T) *gate {
 			g.asked = append(g.asked, team+"/"+user)
 			return team == senderTeam && user == "U0ANA"
 		},
-	})
+	}
+	for _, fn := range with {
+		fn(&cfg)
+	}
+	c, err := slack.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +81,11 @@ func newGate(t *testing.T) *gate {
 		_ = c.Ingest(ctx, func(_ context.Context, e event.Envelope) error {
 			g.mu.Lock()
 			defer g.mu.Unlock()
+			// Whatever is raised was asked about first, and is the
+			// client's to act for.
+			if who := wire.ActorOf(e).ID; !slices.Contains(g.asked, senderTeam+"/"+who) || who != "U0ANA" {
+				g.unasked = append(g.unasked, e.ID+" from "+who)
+			}
 			g.raised = append(g.raised, e)
 			return nil
 		})
@@ -226,8 +247,9 @@ func TestASlashCommandFromAnyOtherSenderIsAnsweredOnce(t *testing.T) {
 }
 
 // What asks for nothing is not a sender's to be asked about: a bot's post,
-// an edit, and a message in a channel the app only sits in go on to the
-// transport, which raises none of them.
+// an edit, a message in a channel the app only sits in and a reply in a
+// thread the client did not answer in go on to the transport, which raises
+// none of them. Nobody is looked up for an ordinary channel message.
 func TestDeliveriesThatAskForNothingRaiseNothing(t *testing.T) {
 	for name, c := range map[string]struct {
 		inner string
@@ -237,8 +259,8 @@ func TestDeliveriesThatAskForNothingRaiseNothing(t *testing.T) {
 		"a bot's mention":           {`{"type":"app_mention","bot_id":"B01","text":"<@U08BOTID> go","ts":"1700000091.000100","channel":"C02CHANNEL"}`, 0},
 		"a post with no user":       {`{"type":"message","channel_type":"im","text":"go","ts":"1700000091.000100","channel":"D01"}`, 0},
 		"an edit":                   {`{"type":"message","subtype":"message_changed","channel_type":"im","user":"U0ANA","ts":"1700000091.000100","channel":"D01"}`, 0},
-		"a plain channel message":   {`{"type":"message","channel_type":"channel","user":"U0ANA","text":"lunch?","ts":"1700000091.000100","channel":"C02CHANNEL"}`, 1},
-		"a reply in another thread": {`{"type":"message","channel_type":"channel","user":"U0ANA","text":"ok","ts":"1700000091.000100","thread_ts":"1600000000.000100","channel":"C02CHANNEL"}`, 1},
+		"a plain channel message":   {`{"type":"message","channel_type":"channel","user":"U0ANA","text":"lunch?","ts":"1700000091.000100","channel":"C02CHANNEL"}`, 0},
+		"a reply in another thread": {`{"type":"message","channel_type":"channel","user":"U0ANA","text":"ok","ts":"1700000091.000100","thread_ts":"1600000000.000100","channel":"C02CHANNEL"}`, 0},
 	} {
 		t.Run(name, func(t *testing.T) {
 			g := newGate(t)

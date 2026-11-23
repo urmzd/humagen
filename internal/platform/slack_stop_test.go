@@ -9,6 +9,7 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -295,4 +296,63 @@ func TestARaisedHandStopsARunForWhoeverAskedForIt(t *testing.T) {
 	s.carriesOn(t, "a reaction by someone no longer mapped who did not ask")
 	s.raise(t, "EvHand2", "U0HUMAN1")
 	s.stoppedBy(t, "U0HUMAN1")
+}
+
+// A run no client raised that answers in a Slack session is not the client's
+// to stop from there. A press, by someone the team maps to nobody or by a
+// mapped person, confirms nothing: the run carries on, nothing is posted and
+// the session's status stays.
+func TestAPressOnARunTheClientDidNotRaiseConfirmsNothing(t *testing.T) {
+	f := &fakes{}
+	c := &cast{
+		says:  map[string][][]saigetypes.Delta{"lead": nil},
+		talks: map[string]talk{"lead": {after: 0, text: "Partial answer so far"}},
+	}
+	p := stage(t, c, f.config())
+	create(t, p, tenant, slackClient("help-app", "A0HELP", team, "lead"))
+	s := &stoppable{p: p, c: c, fake: f.slackFor("token-help-app"), ingress: p.IngressHandler()}
+	run, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{
+		ID: "from-api", Tenant: tenant, Agent: "lead", Origin: "api", Text: "work",
+		Channel: "slack://" + team + "/C01?thread=" + stopThread, At: time.Now(),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.run = run
+	eventually(t, "the partial answer is on the surface and the session is working", func() bool {
+		st := s.fake.Statuses()
+		return said(s.fake, "Partial answer so far") && len(st) > 0 && st[len(st)-1].Status == slack.StatusProcessing
+	})
+	if got, _ := p.Runs.Get(tenant, run.ID); got.Client != "" {
+		t.Fatalf("the run was raised by client %q, want none", got.Client)
+	}
+	s.press(t, "EvStop1", "U0STRANGER")
+	s.carriesOn(t, "a press by someone unmapped")
+	s.press(t, "EvStop2", "U0HUMAN1")
+	s.carriesOn(t, "a press by a mapped person")
+}
+
+// In a session with no run known, a press by someone the team maps to
+// nobody changes nothing. A mapped person's settles the session's status.
+func TestAPressWithNoRunKnownSettlesTheStatusOnlyForAMappedPerson(t *testing.T) {
+	f := &fakes{}
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": nil}}, f.config())
+	create(t, p, tenant, slackClient("help-app", "A0HELP", team, "lead"))
+	fake, ingress := f.slackFor("token-help-app"), p.IngressHandler()
+	press := func(event, user string) {
+		t.Helper()
+		body := `{"type":"event_callback","api_app_id":"A0HELP","team_id":"` + team + `","event_id":"` + event + `","event":{"type":"agent_session_stopped",` +
+			`"user":"` + user + `","channel":"C09","thread_ts":"1700000000.000900","streaming_message_ts":[]}}`
+		if code := signedSlack(ingress, "secret-help-app", body); code != http.StatusOK {
+			t.Fatalf("%s's press answered %d", user, code)
+		}
+	}
+	press("EvStop1", "U0STRANGER")
+	if len(fake.Statuses()) != 0 || len(fake.Messages()) != 0 {
+		t.Fatalf("a press by someone unmapped set %+v and posted %+v", fake.Statuses(), fake.Messages())
+	}
+	press("EvStop2", "U0HUMAN1")
+	if st := fake.Statuses(); len(st) != 1 || st[0].Status != slack.StatusActive || len(fake.Messages()) != 0 {
+		t.Fatalf("a mapped person's press set %+v and posted %+v", st, fake.Messages())
+	}
 }

@@ -7,7 +7,9 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/saige/flow/event"
 )
 
@@ -19,7 +21,7 @@ func slackRule(t *testing.T) (*Platform, clients.Client) {
 	}
 	t.Cleanup(func() { _ = p.Close() })
 	c, err := p.Clients.Create("t", clients.Client{
-		ID: "app", Name: "App", Surface: clients.Slack, Identity: clients.Identity{Team: "T01"}, Enabled: true, Agents: []string{"a"},
+		ID: "app", Name: "App", Surface: clients.Slack, Identity: clients.Identity{AppID: "A01", Team: "T01"}, Enabled: true, Agents: []string{"a"},
 		Slack: &clients.SlackOptions{Machine: "svc-app", People: map[string]string{"U0ANA": "ana"}},
 	}, clients.DefaultCaps(), time.Now())
 	if err != nil {
@@ -77,9 +79,57 @@ func TestARaisedSlackEventIsHeldToTheClientsTeam(t *testing.T) {
 	if slackTeamOf(c, tag("slack://T02/C01?thread=1")) {
 		t.Error("an event from another team was the client's")
 	}
+	// The team the sender belongs to, where the connector wrote it, is the
+	// client's too.
+	own, other := tag("slack://T01/C01?thread=1"), tag("slack://T01/C01?thread=1")
+	wire.SetMeta(&own, wire.MetaSlackSenderTeam, "T01")
+	wire.SetMeta(&other, wire.MetaSlackSenderTeam, "T02")
+	if !slackTeamOf(c, own) || slackTeamOf(c, other) {
+		t.Error("the sender's own team was not held to the client's")
+	}
 	c.Identity.Team = ""
 	if slackTeamOf(c, tag("slack://T01/C01?thread=1")) {
 		t.Error("a client that names no team took an event")
+	}
+}
+
+// What a Slack client's connector raised for someone its team maps to
+// nobody, or for a sender of another team, goes no further and nothing is
+// kept about the channel it came from. For a person the team maps the
+// channel is noted as before.
+func TestARefusedSlackEventLeavesNothingAboutItsChannel(t *testing.T) {
+	p, c := slackRule(t)
+	if _, err := p.Projects.Create("t", projects.Project{Name: "Vault", Members: []projects.Entry{{Who: "ana", Role: projects.Owner}}}, projects.Writer{By: "ana", Govern: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SourceLinks.Put("t", sourcelinks.Rule{ID: "deals", Provider: "slack", Attribute: "channel", Pattern: "C01", Project: "Vault", Mode: sourcelinks.Suggest}); err != nil {
+		t.Fatal(err)
+	}
+	s, st := p.surfaces["slack"], &seat{client: c}
+	raise := func(id, user, senderTeam string) []event.Envelope {
+		tag := wire.NewEvent(wire.Raise{ID: id, Tenant: "t", Origin: "slack", Channel: "slack://T01/C01?thread=1", At: time.Now(),
+			Actor: event.Actor{ID: user}, Context: map[string]string{wire.MetaSlackChannel: "C01", wire.MetaSlackEvent: "app_mention"}})
+		if senderTeam != "" {
+			wire.SetMeta(&tag, wire.MetaSlackSenderTeam, senderTeam)
+		}
+		return s.stamp(t.Context(), st, tag)
+	}
+	noted := func() int {
+		rows, err := p.SourceSuggestions.List("t", "", "", 10, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rows)
+	}
+	if out := raise("e1", "U0EVE", "T01"); len(out) != 0 || noted() != 0 {
+		t.Fatalf("someone unmapped: %d events went on and %d notes were kept", len(out), noted())
+	}
+	if out := raise("e2", "U0ANA", "T02"); len(out) != 0 || noted() != 0 {
+		t.Fatalf("a mapped id of another team: %d events went on and %d notes were kept", len(out), noted())
+	}
+	raise("e3", "U0ANA", "T01")
+	if noted() == 0 {
+		t.Fatal("a mapped person's channel was not noted")
 	}
 }
 
@@ -123,7 +173,7 @@ func TestWhoMayStopARunFromSlack(t *testing.T) {
 		{"a bot's id on a run a bot raised", bot, "U0BOT", false},
 		{"an id that matches a run asked for elsewhere", api, "U0BEN", false},
 	} {
-		if got := p.slackMayStop(tc.run, tc.who); got != tc.want {
+		if got := p.slackMayStop(c.ID, tc.run, tc.who); got != tc.want {
 			t.Errorf("%s: may stop = %v, want %v", tc.name, got, tc.want)
 		}
 	}
@@ -133,6 +183,25 @@ func TestWhoMayStopARunFromSlack(t *testing.T) {
 	// the run is not asked to stop.
 	if err := p.stopFromSurface(t.Context(), "t", c.ID, "slack", "asked", "U0EVE"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("a stop by someone unmapped who did not ask: %v", err)
+	}
+	// Who pressed is decided before whose run it is: a run another client
+	// raised, or none raised, is refused to someone unmapped and is nothing
+	// to stop for a mapped person. Neither is reported as stopped.
+	if err := p.stopFromSurface(t.Context(), "t", "other-app", "slack", "asked", "U0EVE"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("someone unmapped, through a client that did not raise the run: %v", err)
+	}
+	if err := p.stopFromSurface(t.Context(), "t", "other-app", "slack", "asked", "U0BEN"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("whoever asked, through a client that did not raise the run: %v", err)
+	}
+	other, err := p.Clients.Create("t", clients.Client{ID: "second", Name: "Second", Surface: clients.Slack, Identity: clients.Identity{AppID: "A02", Team: "T01"}, Enabled: true, Agents: []string{"a"}}, clients.DefaultCaps(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.stopFromSurface(t.Context(), "t", other.ID, "slack", "asked", "U0ANA"); !errors.Is(err, errNothingToStop) {
+		t.Fatalf("a mapped person, through a client that did not raise the run: %v", err)
+	}
+	if err := p.stopFromSurface(t.Context(), "t", c.ID, "slack", "no-such-run", "U0ANA"); !errors.Is(err, errNothingToStop) {
+		t.Fatalf("a run that does not exist: %v", err)
 	}
 	if err := p.feedbackFor(c).Stop(t.Context(), "t", "asked", event.Actor{ID: "U0EVE"}); err != nil {
 		t.Fatalf("a refused reaction answered %v, want nil", err)
@@ -146,7 +215,7 @@ func TestWhoMayStopARunFromSlack(t *testing.T) {
 	if _, err := p.Clients.Update("t", c, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if p.slackMayStop(asked, "U0ANA") || !p.slackMayStop(asked, "U0BEN") {
+	if p.slackMayStop(c.ID, asked, "U0ANA") || !p.slackMayStop(c.ID, asked, "U0BEN") {
 		t.Error("with the client disabled, a mapped person stopped the run or whoever asked could not")
 	}
 }
