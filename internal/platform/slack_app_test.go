@@ -192,7 +192,7 @@ func TestASlackAppsCredentialIsHeldToAskingForAPerson(t *testing.T) {
 	}
 	defer func() { _ = p.Close() }()
 	in := slackClient("webhook", "A01APP", "T01ACME", "lead")
-	in.Client.Slack.Machine = "svc-slack"
+	in.Slack.Machine = "svc-slack"
 	if _, err := p.CreateClient(t.Context(), tenant, "ada", in); err != nil {
 		t.Fatal(err)
 	}

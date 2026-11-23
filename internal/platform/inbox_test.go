@@ -646,7 +646,7 @@ func TestASlackAppsCredentialRetriesNoFailedTurnThroughTheInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := slackClient("app", "A01APP", "T01ACME", "broken")
-	app.Client.Slack.Machine = "svc-slack"
+	app.Slack.Machine = "svc-slack"
 	if _, err := p.CreateClient(ctx, tenant, "ada", app); err != nil {
 		t.Fatal(err)
 	}
