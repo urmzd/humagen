@@ -256,6 +256,23 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 			c, _ = inRepo(c, repoSet)
 		}
 	}
+	// On Slack who wrote is decided before anything is kept about where
+	// they wrote: someone the team maps to nobody, or who writes from
+	// another team, leaves nothing behind.
+	person := s.p.surfacePerson(c, tag)
+	if c.Surface == clients.Slack {
+		why := ""
+		switch {
+		case !slackTeamOf(c, tag):
+			why = "it is not from the client's Slack team"
+		case person == "":
+			why = "only people the client maps ask through Slack"
+		}
+		if why != "" {
+			s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "why", why)
+			return nil
+		}
+	}
 	resource, hasResource := clientResource(c, tag)
 	if hasResource {
 		if err := s.p.observeClientResource(c, resource); err != nil {
@@ -270,11 +287,6 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		}
 	}
 
-	person := s.p.surfacePerson(c, tag)
-	if c.Surface == clients.Slack && !slackTeamOf(c, tag) {
-		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "why", "it is not from the client's Slack team")
-		return nil
-	}
 	if err := s.p.mayRaise(c, person, project, bound); err != nil {
 		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "event", tag.ID, "why", err.Error())
 		return nil
@@ -382,12 +394,18 @@ func (p *Platform) mayRaise(c clients.Client, person, project string, bound bool
 }
 
 // slackTeamOf reports whether a tag a Slack client's connector raised is
-// from the client's own team. The connector checks the delivery's team when
-// the client names one; this holds every peer to it, an embedding program's
-// own included, and refuses a client that names no team.
+// from the client's own team: the delivery's team, and the team the sender
+// belongs to where the connector wrote it (wire.MetaSlackSenderTeam, a Slack
+// Connect user's own). The connector checks both when the client names a
+// team; this holds every peer to it, an embedding program's own included,
+// and refuses a client that names no team.
 func slackTeamOf(c clients.Client, tag event.Envelope) bool {
 	at, err := address.Parse(tag.Channel)
-	return err == nil && c.Identity.Team != "" && at.Workspace == c.Identity.Team
+	if err != nil || c.Identity.Team == "" || at.Workspace != c.Identity.Team {
+		return false
+	}
+	sender := wire.Meta(tag)[wire.MetaSlackSenderTeam]
+	return sender == "" || sender == c.Identity.Team
 }
 
 // byPolicy is a person known only by their subject, such as the one a

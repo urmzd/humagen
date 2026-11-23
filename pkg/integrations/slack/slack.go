@@ -59,7 +59,9 @@ type Config struct {
 	DeliveryScope string
 	// Sender is who the client acts for. A message, mention, slash command
 	// or interactive payload from anyone else is answered here and goes no
-	// further (refuse). Nil leaves the decision to the platform alone.
+	// further (refuse), and a stop in a session with no run known settles
+	// its status only for them. Nil leaves the decision to the platform
+	// alone.
 	Sender SenderFunc
 }
 type Connector struct {
@@ -89,6 +91,13 @@ func New(cfg Config) (*Connector, error) {
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Feedback, base.ObserveDelivery, base.ContinueThread, base.StatusReactions, base.ActionChannels = cfg.Feedback, cfg.ObserveDelivery, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionChannels
 	base.Prepare = func(ctx context.Context, tag *event.Envelope) error {
+		// The team the sender belongs to, as the delivery named it, for
+		// whoever decides again what the event may start. Nothing else
+		// writes this key.
+		wire.DeleteMeta(tag, wire.MetaSlackSenderTeam)
+		if who, ok := ctx.Value(senderKey{}).(sender); ok && who.team != "" {
+			wire.SetMeta(tag, wire.MetaSlackSenderTeam, who.team)
+		}
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
 			text := wire.TextOf(*tag)
 			// The agent named right after the app's own mention that opens
@@ -217,14 +226,19 @@ var openedBySelf = regexp.MustCompile(`^\s*<@([A-Z0-9]+)(?:\|[^<>]*)?>`)
 // the one place a word after it names an agent (prepare). The transport
 // reads and verifies the delivery as before.
 func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.Body == nil || (c.cfg.Agents == nil && c.cfg.Sender == nil) {
+	if r.Method != http.MethodPost || r.Body == nil {
 		c.Connector.ServeHTTP(w, r)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxOpenedBody+1))
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
-	if err == nil && len(body) <= maxOpenedBody && c.refuse(w, r, body) {
-		return
+	if err == nil && len(body) <= maxOpenedBody {
+		if who, ok := c.asks(r, body); ok {
+			if c.refuse(w, who) {
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), senderKey{}, who))
+		}
 	}
 	if err == nil && len(body) <= maxOpenedBody && c.cfg.Agents != nil && openedByApp(body) {
 		r = r.WithContext(context.WithValue(r.Context(), openedKey{}, true))

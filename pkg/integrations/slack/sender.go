@@ -35,12 +35,19 @@ type sender struct {
 }
 
 // requestSender reads who a verified delivery asks as: a slash command's
-// user and team, an interactive payload's user and their team, or a message
-// or mention's user and the team they belong to (a Slack Connect user's own
-// team, else the delivery's). ok is false for a delivery that asks for
-// nothing: reactions, stops, bot posts, edits and the rest go on to the
-// transport as before.
-func requestSender(path string, body []byte) (sender, bool) {
+// user and team, an interactive payload's user and their team, or the user
+// of a message or mention the transport would raise and the team they belong
+// to (a Slack Connect user's own team, else the delivery's). ok is false for
+// a delivery that asks for nothing: reactions, stops, bot posts, edits, a
+// plain message in a channel and a reply in a thread the client did not
+// answer in go on to the transport, which raises none of them.
+//
+// Which messages ask follows the transport's own reading (eventFrom): every
+// app_mention, whatever its subtype, and a message that is a direct message
+// or a reply in a thread the client answered in, with no subtype or a shared
+// file's. A test holds the two together: nothing is raised that was not
+// asked about here first.
+func (c *Connector) requestSender(path string, body []byte) (sender, bool) {
 	switch {
 	case strings.HasSuffix(path, transport.CommandsPath):
 		form, err := url.ParseQuery(string(body))
@@ -71,22 +78,34 @@ func requestSender(path string, body []byte) (sender, bool) {
 		Type  string `json:"type"`
 		Team  string `json:"team_id"`
 		Event struct {
-			Type     string `json:"type"`
-			Subtype  string `json:"subtype"`
-			User     string `json:"user"`
-			BotID    string `json:"bot_id"`
-			UserTeam string `json:"user_team"`
-			Team     string `json:"team"`
+			Type        string `json:"type"`
+			Subtype     string `json:"subtype"`
+			User        string `json:"user"`
+			BotID       string `json:"bot_id"`
+			UserTeam    string `json:"user_team"`
+			Team        string `json:"team"`
+			Channel     string `json:"channel"`
+			ChannelType string `json:"channel_type"`
+			ThreadTS    string `json:"thread_ts"`
 		} `json:"event"`
 	}
 	if json.Unmarshal(body, &env) != nil || env.Type != "event_callback" {
 		return sender{}, false
 	}
 	ev := env.Event
-	if ev.Type != "app_mention" && ev.Type != "message" {
+	if ev.BotID != "" || ev.User == "" {
 		return sender{}, false
 	}
-	if ev.BotID != "" || ev.User == "" || (ev.Subtype != "" && ev.Subtype != "file_share") {
+	switch ev.Type {
+	case "app_mention":
+	case "message":
+		if ev.Subtype != "" && ev.Subtype != "file_share" {
+			return sender{}, false
+		}
+		if ev.ChannelType != "im" && (ev.ThreadTS == "" || c.cfg.ContinueThread == nil || !c.cfg.ContinueThread(env.Team, ev.Channel, ev.ThreadTS)) {
+			return sender{}, false
+		}
+	default:
 		return sender{}, false
 	}
 	return sender{team: first(ev.UserTeam, ev.Team, env.Team), user: ev.User}, true
@@ -139,21 +158,31 @@ func (t *turnAway) allow(key string, now time.Time) bool {
 	return true
 }
 
+// senderKey carries a request's sender to Prepare, which writes their team
+// on what the transport raises.
+type senderKey struct{}
+
+// asks reads who a request asks as, once its signature verifies. ok is
+// false for a request that is not verified here, or asks for nothing.
+func (c *Connector) asks(r *http.Request, body []byte) (sender, bool) {
+	if c.cfg.Verifier == nil || c.cfg.Verifier.Verify(r.Header, body) != nil {
+		return sender{}, false
+	}
+	return c.requestSender(r.URL.Path, body)
+}
+
 // refuse answers a verified request from a sender the client does not map
 // and reports that it did. Nothing of the request is read further, no file
-// is fetched and nothing is raised. A slash command is told, once in a while,
-// that the sender's account is not connected; anything else is acknowledged
-// and dropped, so Slack does not deliver it again.
-func (c *Connector) refuse(w http.ResponseWriter, r *http.Request, body []byte) bool {
-	if c.cfg.Sender == nil || c.cfg.Verifier == nil || c.cfg.Verifier.Verify(r.Header, body) != nil {
-		return false
-	}
-	who, ok := requestSender(r.URL.Path, body)
-	if !ok || c.cfg.Sender(who.team, who.user) {
+// is fetched, nothing is posted or reacted to and nothing is raised. A slash
+// command is told, once in a while, that the sender's account is not
+// connected; anything else is acknowledged and dropped, so Slack does not
+// deliver it again.
+func (c *Connector) refuse(w http.ResponseWriter, who sender) bool {
+	if c.cfg.Sender == nil || c.cfg.Sender(who.team, who.user) {
 		return false
 	}
 	if c.cfg.Log != nil {
-		c.cfg.Log.Info("slack: refused a sender the client does not map", "team", who.team, "user", who.user, "command", who.command)
+		c.cfg.Log.Debug("slack: refused a sender the client does not map", "team", who.team, "user", who.user, "command", who.command)
 	}
 	now := time.Now()
 	if c.cfg.Clock != nil {

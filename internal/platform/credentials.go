@@ -500,3 +500,41 @@ func (p *Platform) DisconnectTool(_ context.Context, who auth.Principal, provide
 	p.log.Info("platform: credential removed", "tenant", who.Tenant, "subject", who.Subject, "provider", provider)
 	return nil
 }
+
+// SlackClientsWithoutPeople lists the Slack clients seated on the webhook
+// connector whose team no enabled Slack client of their workspace maps
+// anyone in, oldest first. Such a client starts no run: a Slack connector
+// starts one only for a person its team maps.
+func (p *Platform) SlackClientsWithoutPeople() []clients.Client {
+	s := p.surfaces[string(clients.Slack)]
+	if s == nil {
+		return nil
+	}
+	var out []clients.Client
+	for _, st := range s.all() {
+		c, enabled := p.currentInstallation(st.client)
+		if !enabled || p.slackTeamMapsSomeone(c) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// slackTeamMapsSomeone reports whether an enabled Slack client of c's
+// workspace, serving c's team, maps at least one person.
+func (p *Platform) slackTeamMapsSomeone(c clients.Client) bool {
+	if c.Identity.Team == "" {
+		return false
+	}
+	all, err := p.Clients.List(c.Tenant)
+	if err != nil {
+		return false
+	}
+	for _, other := range all {
+		if other.Surface == clients.Slack && other.Enabled && other.Identity.Team == c.Identity.Team && other.Slack != nil && len(other.Slack.People) > 0 {
+			return true
+		}
+	}
+	return false
+}
