@@ -32,6 +32,15 @@ export type ItemActions = (item: TurnItem) => ReactNode;
 export const ItemActionsContext = createContext<ItemActions | null>(null);
 
 /**
+ * A host's own controls for a row of actions, by the row's block id (such as
+ * `failure:<turn>`), drawn after the row's buttons. A failed answer's alert
+ * adds its Mark Done to the failure's row this way, so the failure is one place.
+ */
+export type ActionsExtra = (blockId: string) => ReactNode;
+
+export const ActionsExtraContext = createContext<ActionsExtra | null>(null);
+
+/**
  * How a host stops one item a turn draws while it runs: the agent itself, a
  * call to another agent, a step, or background work a step started. `what`
  * names it for the button. A stopped item is drawn calmly, never as a failure.
