@@ -28,7 +28,8 @@ const otherTenant = "globex-co"
 
 // adoptRoom is slackRoom on a store the test reads, with Field and the
 // projects under it open to its members alone, ana and vic, so ben reads
-// nothing there, and globex-helper an agent that lives in Globex.
+// nothing there, globex-helper an agent that lives in Globex, and every
+// other agent living in the workspace.
 func adoptRoom(t *testing.T, st state.Store) (*platform.Platform, auth.Principal) {
 	t.Helper()
 	p, machine := slackRoomOn(t, startWith(t, platform.Config{Backends: platform.Backends{State: st}}), nil)
@@ -50,6 +51,16 @@ func adoptRoom(t *testing.T, st state.Store) (*platform.Platform, auth.Principal
 	}
 	if err := p.SetAgentHome(t.Context(), tenant, "globex-helper", "Globex", ada); err != nil {
 		t.Fatal(err)
+	}
+	// Every other agent lives in the workspace, as a workspace's do once
+	// it starts (EnsureBuiltins).
+	if err := p.EnsureAgentHomes(t.Context(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	for agent, want := range map[string]string{"helper": projects.Root, "lead": projects.Root, "globex-helper": "Globex"} {
+		if home, homed := p.ProjectTree(tenant).Home(agent); !homed || home != want {
+			t.Fatalf("%s lives in %q (%v); want %q", agent, home, homed, want)
+		}
 	}
 	return p, machine
 }
@@ -1311,5 +1322,271 @@ func TestBackfillRemovesAnUnfinishedAdoptionOfAnArchivedConversation(t *testing.
 	}
 	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || len(again.Lines) != 0 {
 		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// A conversation that changes while the apply adopts it, and whose
+// session's record a run is bound to meanwhile, is left with that record
+// kept, and the apply goes on to the next conversation. The next run
+// decides it as the agent the record names.
+func TestBackfillGoesOnWhenTheRecordOfAChangedConversationBindsARun(t *testing.T) {
+	ctx := t.Context()
+	st := &hooked{Store: state.NewMemory()}
+	p, _ := adoptRoom(t, st)
+	th := conversation(t, p, tenant, threads.Thread{ID: threadID(960), Project: "Field", Visibility: threads.Shared, Default: "helper"})
+	later := conversation(t, p, tenant, threads.Thread{ID: threadID(961), Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	const bound = "r0123456789abcdef0123456789abcdef"
+	// Once its session's record is written, and before the conversation is
+	// marked a session, a run is bound to the record and someone names lead.
+	var mu sync.Mutex
+	written, done := false, false
+	st.mu.Lock()
+	st.before = func(namespace string, ops []state.Op) {
+		mu.Lock()
+		if namespace == "agent-sessions" && slices.ContainsFunc(ops, func(o state.Op) bool { return o.Key == "s:"+th.ID && o.Value != nil }) {
+			written = true
+		}
+		fire := namespace == "threads" && written && !done
+		done = done || fire
+		mu.Unlock()
+		if !fire {
+			return
+		}
+		if err := p.Sessions.BindRun(ctx, tenant, th.ID, bound); err != nil {
+			t.Errorf("bind during the apply: %v", err)
+		}
+		cur, err := p.Threads.Get(tenant, th.ID)
+		if err == nil {
+			_, err = p.Threads.Update(tenant, th.ID, cur.Version, t0Adopt, func(next *threads.Thread) error { next.Default = "lead"; return nil })
+		}
+		if err != nil {
+			t.Errorf("the change during the apply: %v", err)
+		}
+	}
+	st.mu.Unlock()
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !done {
+		t.Fatal("nothing changed during the apply")
+	}
+	var line platform.BackfillLine
+	for _, l := range applied.Lines {
+		if l.Subject == th.ID {
+			line = l
+		}
+	}
+	if line.Kind != platform.BackfillThreadLeft || !strings.Contains(line.Detail, "changed while it was read") || !strings.Contains(line.Detail, "binds a run") || applied.Counts[platform.BackfillThreadAdopted] != 1 {
+		t.Fatalf("the changed conversation: %q (%s); counts %v", line.Kind, line.Detail, applied.Counts)
+	}
+	if got, err := p.Threads.Get(tenant, th.ID); err != nil || got.Session != nil || got.Default != "lead" {
+		t.Fatalf("the changed conversation is %+v, %v", got.Session, err)
+	}
+	if ids, err := p.Sessions.Runs(ctx, tenant, th.ID, 1); err != nil || !slices.Equal(ids, []string{bound}) {
+		t.Fatalf("the record that binds a run: %v, %v", ids, err)
+	}
+	if got, err := p.Threads.Get(tenant, later.ID); err != nil || got.Session == nil {
+		t.Fatalf("the conversation after it was not adopted: %+v, %v", got.Session, err)
+	}
+	// The next run decides it as the record's agent: it names another now.
+	again, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil || again.Changes() != 0 {
+		t.Fatalf("the next apply did %v, %v", again.Counts, err)
+	}
+	for _, l := range again.Lines {
+		if l.Subject == th.ID && (l.Kind != platform.BackfillThreadLeft || !strings.Contains(l.Detail, "another agent than helper")) {
+			t.Fatalf("the next apply: %q (%s)", l.Kind, l.Detail)
+		}
+	}
+}
+
+// The newer of two conversations of one Slack thread, one per app of the
+// team, holds an adoption an apply that stopped left unfinished. A later
+// run reads that adoption through the key's alias and leaves the older
+// conversation, so one place stays one session.
+func TestBackfillLeavesAConversationWhoseKeyAnUnfinishedAdoptionHolds(t *testing.T) {
+	ctx := t.Context()
+	st := state.NewMemory()
+	p, _ := adoptRoom(t, st)
+	secondApp(t, p)
+	const ts = "1700000000.000980"
+	older := conversation(t, p, tenant, threads.Thread{ID: threadID(980), Project: "Initech", Visibility: threads.Shared, Default: "helper", Surface: &threads.Surface{Client: "app", Channel: "C09KEY", TS: ts}})
+	newer := conversation(t, p, tenant, threads.Thread{ID: threadID(981), Project: "Initech", Visibility: threads.Shared, Default: "helper", Surface: &threads.Surface{Client: "app2", Channel: "C09KEY", TS: ts}})
+	if _, err := p.Sessions.(adopter).Adopt(ctx, tenant, newer.ID, session.Open{Parent: "slack://T0TEAM/C09KEY/" + ts, Agent: "helper", Channel: wire.Channel(tenant)}); err != nil {
+		t.Fatal(err)
+	}
+	was := stored(t, st)
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(was, stored(t, st)) {
+		t.Fatal("a dry run wrote to the store")
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !reflect.DeepEqual(applied.Lines, dry.Lines) || applied.Counts[platform.BackfillSlackThreadAdopted] != 1 || applied.Counts[platform.BackfillSlackThreadLeft] != 1 {
+		t.Fatalf("the apply did %v, the dry run %v", applied.Counts, dry.Counts)
+	}
+	for _, l := range applied.Lines {
+		if l.Subject == older.ID && (l.Kind != platform.BackfillSlackThreadLeft || !strings.Contains(l.Detail, newer.ID+" holds its place")) {
+			t.Fatalf("the older conversation: %s (%s)", l.Kind, l.Detail)
+		}
+	}
+	if got, err := p.Threads.Get(tenant, older.ID); err != nil || got.Session != nil {
+		t.Fatalf("the older conversation is %+v, %v", got.Session, err)
+	}
+	if got, err := p.Threads.Get(tenant, newer.ID); err != nil || got.Session == nil {
+		t.Fatalf("the newer conversation is %+v, %v", got.Session, err)
+	}
+	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || again.Changes() != 0 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// Of the session's records an apply that stopped wrote for conversations
+// archived since, the next apply removes only this workspace's, and keeps
+// one that binds a run, reporting it, and goes on to adopt the rest.
+func TestBackfillRemovesOnlyTheUnusedRecordsOfItsOwnArchivedConversations(t *testing.T) {
+	ctx := t.Context()
+	st := state.NewMemory()
+	p, _ := adoptRoom(t, st)
+	id := threadID(985)
+	mine := conversation(t, p, tenant, threads.Thread{ID: id, Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	theirs := conversation(t, p, otherTenant, threads.Thread{ID: id, Visibility: threads.Shared, Default: "lead"})
+	used := conversation(t, p, tenant, threads.Thread{ID: threadID(986), Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	live := conversation(t, p, tenant, threads.Thread{ID: threadID(987), Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	for _, c := range []struct {
+		tenant string
+		th     threads.Thread
+	}{{tenant, mine}, {otherTenant, theirs}, {tenant, used}} {
+		if _, err := p.Sessions.(adopter).Adopt(ctx, c.tenant, c.th.ID, session.Open{Parent: "console://" + c.th.ID, Agent: "lead", Channel: wire.Channel(c.tenant)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Threads.SetArchive(c.tenant, c.th.ID, &threads.Archive{By: "ana", At: t0Adopt, DeleteAfter: t0Adopt.Add(threads.DeletionDelay)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const bound = "r0123456789abcdef0123456789abcdef"
+	if err := p.Sessions.BindRun(ctx, tenant, used.ID, bound); err != nil {
+		t.Fatal(err)
+	}
+	before := stored(t, st)
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, stored(t, st)) {
+		t.Fatal("a dry run wrote to the store")
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !reflect.DeepEqual(applied.Lines, dry.Lines) || applied.Counts[platform.BackfillAdoptionRemoved] != 1 || applied.Counts[platform.BackfillThreadAdopted] != 1 {
+		t.Fatalf("the apply did %v, the dry run %v", applied.Counts, dry.Counts)
+	}
+	for _, l := range applied.Lines {
+		if l.Subject == used.ID && (l.Kind != platform.BackfillThreadLeft || !strings.Contains(l.Detail, "binds runs, so it is kept")) {
+			t.Fatalf("the archived conversation whose record binds a run: %s (%s)", l.Kind, l.Detail)
+		}
+	}
+	if !reflect.DeepEqual(byTenant(before, otherTenant), byTenant(stored(t, st), otherTenant)) {
+		t.Fatal("the apply changed another workspace's records")
+	}
+	if _, err := p.Sessions.Get(ctx, otherTenant, id); err != nil {
+		t.Fatalf("another workspace's record is gone: %v", err)
+	}
+	if _, err := p.Sessions.Get(ctx, tenant, id); err == nil {
+		t.Fatal("the unused record is kept")
+	}
+	if ids, err := p.Sessions.Runs(ctx, tenant, used.ID, 1); err != nil || !slices.Equal(ids, []string{bound}) {
+		t.Fatalf("the record that binds a run: %v, %v", ids, err)
+	}
+	if got, err := p.Threads.Get(tenant, live.ID); err != nil || got.Session == nil {
+		t.Fatalf("the conversation that is not archived is %+v, %v", got.Session, err)
+	}
+	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || again.Changes() != 0 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// A Slack conversation becomes the session of an agent only where the
+// client's machine reads that agent as itself: one that lives in the
+// workspace, which everyone reads, or in a project open to everyone or to
+// the machine, and not one that lives in a project open to its members
+// alone. Who reads the conversation is the same after the apply each way.
+func TestBackfillAdoptsASlackThreadWhereItsMachineReadsTheAgent(t *testing.T) {
+	members := []projects.Entry{{Who: "ada", Role: projects.Owner}, {Who: "ana", Role: projects.Member}, {Who: "vic", Role: projects.Member}}
+	for _, c := range []struct {
+		name    string
+		agent   string
+		members []projects.Entry // Commons's, where commons-helper lives
+		because string           // why it is left, "" for one adopted
+	}{
+		{name: "an agent of the workspace", agent: "helper", members: members},
+		{name: "an agent of a project open to everyone", agent: "commons-helper", members: append([]projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}}, members...)},
+		{name: "an agent of a project open to the machine", agent: "commons-helper", members: append([]projects.Entry{{Who: "svc-slack", Role: projects.Viewer}}, members...)},
+		{name: "an agent of a project open to its members", agent: "commons-helper", members: members, because: "commons-helper lives in \"Commons\", which the machine of app does not read"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := t.Context()
+			p, machine := adoptRoom(t, state.NewMemory())
+			if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Commons"}); err != nil {
+				t.Fatal(err)
+			}
+			pr, _ := p.Projects.Tree(tenant).Get("Commons")
+			if _, err := p.Projects.Update(tenant, "Commons", pr.Version, ada, time.Now(), func(pr *projects.Project) error {
+				pr.Members = c.members
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "commons-helper", Model: "offline", Provider: "offline", SystemPrompt: "You help in Commons."}, "test"); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.SetAgentHome(ctx, tenant, "commons-helper", "Commons", ada); err != nil {
+				t.Fatal(err)
+			}
+			project := "Commons"
+			if c.agent == "helper" {
+				project = "Initech"
+			}
+			th := conversation(t, p, tenant, threads.Thread{ID: threadID(940), Project: project, Visibility: threads.Shared, Default: c.agent, Surface: &threads.Surface{Client: "app", Channel: "C09HOME", TS: "1700000000.000940"}})
+			who := readers(machine)
+			was := reads(p, who, []string{th.ID})
+			if !was[readerName(machine)+" thread "+th.ID] || !was["acme/ana thread "+th.ID] {
+				t.Fatalf("the machine or ana does not read the Slack conversation: %v", was)
+			}
+			applied, err := p.BackfillSessions(ctx, tenant, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var line platform.BackfillLine
+			for _, l := range applied.Lines {
+				if l.Subject == th.ID {
+					line = l
+				}
+			}
+			switch {
+			case c.because == "" && (line.Kind != platform.BackfillSlackThreadAdopted || !strings.Contains(line.Detail, "owned by "+c.agent)):
+				t.Fatalf("the conversation is %q (%s); want adopted", line.Kind, line.Detail)
+			case c.because != "" && (line.Kind != platform.BackfillSlackThreadLeft || !strings.Contains(line.Detail, c.because)):
+				t.Fatalf("the conversation is %q (%s); want left", line.Kind, line.Detail)
+			}
+			now := reads(p, who, []string{th.ID})
+			if !reflect.DeepEqual(now, was) {
+				t.Errorf("read before the backfill %v, after %v", was, now)
+			}
+			for _, w := range who {
+				read := w.Tenant == tenant && was[readerName(w)+" thread "+th.ID]
+				if got := p.SeesSession(w, th.ID); got != (read && c.because == "") {
+					t.Errorf("%s reads it as a session: %v; read it as a conversation before: %v", readerName(w), got, read)
+				}
+			}
+		})
 	}
 }

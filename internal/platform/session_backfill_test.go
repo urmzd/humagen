@@ -35,18 +35,7 @@ func pastGitHubRun(t *testing.T, p *platform.Platform, id, agent, at, login stri
 // over the defaults (its client, gh).
 func pastGitHubRunWith(t *testing.T, p *platform.Platform, id, agent, at, login string, number int, when time.Time, private bool, meta map[string]string) runs.Run {
 	t.Helper()
-	context := map[string]string{runs.MetaClient: "gh", "github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook", "github_sender": login}
-	maps.Copy(context, meta)
-	tag := wire.NewEvent(wire.Raise{ID: id, Agent: agent, Tenant: tenant, Origin: "github", Text: "@" + agent + " what changed?", Channel: at, Actor: event.Actor{ID: login}, At: when, Context: context})
-	tag.Source, tag.Type = at, event.TypeGitHubIssueCommentCreated
-	tag.Data = event.GitHubIssueCommentCreated{
-		Request:   event.Request{Text: "@" + agent + " what changed?", Actor: event.Actor{ID: login}, Mentions: []string{agent}, Context: wire.ContextOf(tag)},
-		GitHubRef: event.GitHubRef{Owner: "acme", Repo: "handbook", Number: number, Pull: strings.Contains(at, "/pull/"), Title: "Fix the handbook", Sender: login},
-	}
-	runID := runtime.RunID(tenant, id)
-	if err := p.Runs.Record(runID, tag, 1); err != nil {
-		t.Fatal(err)
-	}
+	runID := recordGitHubRun(t, p, id, agent, at, login, number, when, meta)
 	if private {
 		if err := p.Runs.MarkPrivateContext(tenant, runID); err != nil {
 			t.Fatal(err)
@@ -60,6 +49,25 @@ func pastGitHubRunWith(t *testing.T, p *platform.Platform, id, agent, at, login 
 		t.Fatalf("the past run is %+v, %v", r, err)
 	}
 	return r
+}
+
+// recordGitHubRun records a GitHub run as pastGitHubRunWith does, and
+// leaves it as it is accepted, with no ending.
+func recordGitHubRun(t *testing.T, p *platform.Platform, id, agent, at, login string, number int, when time.Time, meta map[string]string) string {
+	t.Helper()
+	context := map[string]string{runs.MetaClient: "gh", "github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook", "github_sender": login}
+	maps.Copy(context, meta)
+	tag := wire.NewEvent(wire.Raise{ID: id, Agent: agent, Tenant: tenant, Origin: "github", Text: "@" + agent + " what changed?", Channel: at, Actor: event.Actor{ID: login}, At: when, Context: context})
+	tag.Source, tag.Type = at, event.TypeGitHubIssueCommentCreated
+	tag.Data = event.GitHubIssueCommentCreated{
+		Request:   event.Request{Text: "@" + agent + " what changed?", Actor: event.Actor{ID: login}, Mentions: []string{agent}, Context: wire.ContextOf(tag)},
+		GitHubRef: event.GitHubRef{Owner: "acme", Repo: "handbook", Number: number, Pull: strings.Contains(at, "/pull/"), Title: "Fix the handbook", Sender: login},
+	}
+	runID := runtime.RunID(tenant, id)
+	if err := p.Runs.Record(runID, tag, 1); err != nil {
+		t.Fatal(err)
+	}
+	return runID
 }
 
 // stored is every record the backfill could write, by namespace.
