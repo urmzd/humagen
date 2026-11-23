@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.195.6 (2026-11-23)
+
+### Bug Fixes
+
+- **web**: show a failure's last line only, and read the model provider from its own error form ([6335312](https://github.com/urmzd/humagen/commit/63353120e708688ea2ec1109f86d29e6918b71cc))
+- **web**: keep a failed run's actions and show its error only where no sentence explains it ([b3d28fa](https://github.com/urmzd/humagen/commit/b3d28fa7b76ad71cfe92472fff95ec78ae86fb05))
+- **slack**: name a failed run's agent by its display name ([3528996](https://github.com/urmzd/humagen/commit/35289962f82fae03a33e429c5b07929344d3fdec))
+- **web**: show failed runs as one plain sentence ([4efcc06](https://github.com/urmzd/humagen/commit/4efcc06b2b8148781fdc2df43ee9ad1016f11f2c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.5...v0.195.6)
+
+
 ## 0.195.5 (2026-11-23)
 
 ### Bug Fixes
