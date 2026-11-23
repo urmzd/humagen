@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/session"
@@ -353,7 +354,7 @@ func (p *Platform) reviewSessionAccess(ctx context.Context, tenant, reader, targ
 			if err != nil {
 				return ""
 			}
-			if !strings.HasPrefix(r.Key.Parent, "s_") {
+			if !threads.SessionParent(r.Key.Parent) {
 				return r.ID
 			}
 			id = r.Key.Parent

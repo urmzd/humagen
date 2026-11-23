@@ -736,7 +736,7 @@ func (p *Platform) sessionRoot(tenant string, th threads.Thread) (root, place st
 		if th.Session == nil {
 			return "", "", threads.ErrNotFound
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			return th.ID, th.Session.Parent, nil
 		}
 		if th, err = p.Threads.Get(tenant, th.Session.Parent); err != nil {

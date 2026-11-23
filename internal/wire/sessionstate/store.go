@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/saige/flow/session"
 )
 
@@ -49,6 +50,15 @@ func (s *Store) Get(ctx context.Context, tenant, id string) (session.Record, err
 	err = json.Unmarshal(row.Value, &r)
 	return r, err
 }
+
+// aliasKey is the row that sends a key's id to the session adopted under
+// another id (Adopt).
+func aliasKey(keyID string) string { return "k:" + keyID }
+
+// ErrAdopted reports a key, or an id, another session holds already, so it
+// cannot be adopted.
+var ErrAdopted = fmt.Errorf("%w: the session or its key is taken", session.ErrInvalid)
+
 func (s *Store) Open(ctx context.Context, tenant string, o session.Open) (session.Record, error) {
 	k := session.Key{Tenant: tenant, Parent: o.Parent, Agent: o.Agent, Label: o.Label}.Normalize()
 	if o.Fresh {
@@ -61,8 +71,19 @@ func (s *Store) Open(ctx context.Context, tenant string, o session.Open) (sessio
 	if err := k.Validate(); err != nil {
 		return session.Record{}, err
 	}
+	// A key whose conversation was adopted (Adopt) opens that session: one
+	// key is one session, whatever its id.
+	if row, err := s.state.Lookup(ctx, namespace, tenant, aliasKey(k.ID())); err == nil {
+		var id string
+		if err := json.Unmarshal(row.Value, &id); err != nil {
+			return session.Record{}, err
+		}
+		return s.Get(ctx, tenant, id)
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return session.Record{}, err
+	}
 	r := session.Record{ID: k.ID(), Key: k, Channel: o.Channel, CreatedAt: time.Now().UTC()}
-	if strings.HasPrefix(k.Parent, "s_") {
+	if threads.SessionParent(k.Parent) {
 		p, err := s.Get(ctx, tenant, k.Parent)
 		if err != nil {
 			return r, err
@@ -81,6 +102,61 @@ func (s *Store) Open(ctx context.Context, tenant string, o session.Open) (sessio
 	}
 	return r, err
 }
+
+// Adopt records a conversation from before sessions as a session under the
+// id it already has, so everything kept under that id (its messages, runs,
+// surface ids and links) is the session's. The record's key is o's, with
+// an alias from the key's own id to id, so opening that key (Open) finds
+// this session and never starts a second one. It is refused when id is a
+// key's id ("s_..."), a root session's (o.Parent names a place, not a
+// session), or held by a session of another key, and when another session
+// holds the key (ErrAdopted). Adopting id again under the same key returns
+// its record and writes nothing.
+func (s *Store) Adopt(ctx context.Context, tenant, id string, o session.Open) (session.Record, error) {
+	k := session.Key{Tenant: tenant, Parent: o.Parent, Agent: o.Agent}.Normalize()
+	if err := k.Validate(); err != nil {
+		return session.Record{}, err
+	}
+	switch {
+	case id == "" || strings.ContainsAny(id, ":/") || strings.HasPrefix(id, "s_"):
+		return session.Record{}, fmt.Errorf("%w: %q is not a conversation's id", session.ErrInvalid, id)
+	case o.Label != "" || o.Fresh || threads.SessionParent(k.Parent):
+		return session.Record{}, fmt.Errorf("%w: an adopted session is a root, at a place, with no label", session.ErrInvalid)
+	}
+	if held, err := s.Get(ctx, tenant, id); err == nil {
+		if held.Key != k {
+			return session.Record{}, fmt.Errorf("%w: %s is the session of another key", ErrAdopted, id)
+		}
+		return held, nil
+	} else if !errors.Is(err, session.ErrNotFound) {
+		return session.Record{}, err
+	}
+	if _, err := s.Get(ctx, tenant, k.ID()); err == nil {
+		return session.Record{}, fmt.Errorf("%w: session %s holds the key", ErrAdopted, k.ID())
+	} else if !errors.Is(err, session.ErrNotFound) {
+		return session.Record{}, err
+	}
+	r := session.Record{ID: id, Key: k, Channel: o.Channel, CreatedAt: time.Now().UTC()}
+	if r.Channel == "" {
+		r.Channel = "session://" + tenant + "/" + r.ID
+	}
+	err := s.state.Write(ctx, namespace,
+		put(tenant, "s:"+r.ID, r, state.Missing),
+		put(tenant, aliasKey(k.ID()), r.ID, state.Missing),
+		put(tenant, "p:"+hash(k.Parent)+":"+r.ID, r, state.Missing),
+		put(tenant, "a:"+hash(k.Agent)+":"+r.ID, r, state.Missing))
+	if errors.Is(err, state.ErrConflict) {
+		// Adopted by another process since it was read: the same key is
+		// that adoption, any other a refusal.
+		held, gerr := s.Get(ctx, tenant, id)
+		if gerr == nil && held.Key == k {
+			return held, nil
+		}
+		return session.Record{}, fmt.Errorf("%w: %s or its key was taken while it was adopted", ErrAdopted, id)
+	}
+	return r, err
+}
+
 func (s *Store) List(ctx context.Context, tenant string, f session.Filter) ([]session.Record, error) {
 	prefix := "s:"
 	if f.Parent != "" {

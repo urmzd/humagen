@@ -393,7 +393,7 @@ func settled[T any](v T) T {
 func newID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
-	return "th-" + hex.EncodeToString(b[:])
+	return IDPrefix + hex.EncodeToString(b[:])
 }
 
 // opening checks a new thread's record and fills in what the store sets: its
@@ -605,6 +605,52 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 		}
 		next.Version, next.UpdatedAt = next.Version+1, at
 		next.Default = legacy.Default(next.Default)
+		return next.validate()
+	})
+	if err != nil {
+		return Thread{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, nil
+}
+
+// Adopt makes a conversation from before sessions (a "th-" thread) the
+// session s names, under its own id, so its messages, runs, surface ids,
+// activity entry and links stay as they are: only the record's session
+// identity is set, and its version moves. Where it is filed, who reads it,
+// who takes part and when it was last active do not change. version must be
+// the current one (ErrVersion). A thread that is a session already, is
+// archived or read-only, or whose id is not a thread's is refused
+// (ErrInvalid); adopting one again as the same session changes nothing.
+func (s *Store) Adopt(tenantName, id string, version int, identity SessionIdentity, at time.Time) (Thread, error) {
+	if !strings.HasPrefix(id, IDPrefix) {
+		return Thread{}, fmt.Errorf("%w: only a %q conversation is adopted as a session", ErrInvalid, IDPrefix)
+	}
+	if strings.TrimSpace(identity.Agent) == "" || strings.TrimSpace(identity.Parent) == "" {
+		return Thread{}, fmt.Errorf("%w: a session names its agent and its parent", ErrInvalid)
+	}
+	if err := identity.Check(); err != nil {
+		return Thread{}, err
+	}
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		changed = false
+		switch {
+		case next.Session != nil && next.Session.same(identity):
+			return state.ErrUnchanged
+		case next.Session != nil:
+			return fmt.Errorf("%w: %s is a session already", ErrInvalid, id)
+		case next.Archive != nil || next.ReadOnly:
+			return fmt.Errorf("%w: an archived or read-only conversation is not adopted", ErrInvalid)
+		case next.Version != version:
+			return fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, next.Version, version)
+		}
+		adopted := identity
+		adopted.Repos = slices.Clone(identity.Repos)
+		next.Session = &adopted
+		next.Version, changed = next.Version+1, true
 		return next.validate()
 	})
 	if err != nil {

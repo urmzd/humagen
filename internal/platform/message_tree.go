@@ -131,7 +131,7 @@ func (p *Platform) ListRootMessages(ctx context.Context, who auth.Principal, lim
 	}
 	all := []RootMessage{}
 	for _, th := range records {
-		if strings.HasPrefix(th.Session.Parent, "s_") || !r.see(th.ID) {
+		if threads.SessionParent(th.Session.Parent) || !r.see(th.ID) {
 			continue
 		}
 		n := r.sessionNode(th, 0)
@@ -214,7 +214,7 @@ func (p *Platform) newTreeReader(who auth.Principal) (*treeReader, []threads.Thr
 	}
 	r := &treeReader{p: p, who: who, seer: p.Seer(who), kids: map[string][]threads.Thread{}, sees: map[string]bool{}, own: map[string][]runs.Run{}, runs: map[string][]runs.Run{}, latest: map[string]time.Time{}, left: maxTreeNodes}
 	for _, th := range records {
-		if strings.HasPrefix(th.Session.Parent, "s_") {
+		if threads.SessionParent(th.Session.Parent) {
 			r.kids[th.Session.Parent] = append(r.kids[th.Session.Parent], th)
 		}
 	}

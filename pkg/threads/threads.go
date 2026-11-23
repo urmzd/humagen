@@ -229,6 +229,25 @@ const (
 	MaxSessionRepo  = 200
 )
 
+// IDPrefix starts the id of every thread the store names ("th-" and 16
+// hex digits).
+const IDPrefix = "th-"
+
+// SessionParent reports whether a session's parent is another session, as
+// opposed to a place (console://..., slack://...): a session key's id
+// ("s_...") or a conversation adopted as a session under its own id
+// ("th-...", Store.Adopt). A "th-" parent that is no session reads as none
+// wherever it is looked up.
+func SessionParent(parent string) bool {
+	return strings.HasPrefix(parent, "s_") || strings.HasPrefix(parent, IDPrefix)
+}
+
+// Adopted reports whether a session is a conversation from before sessions
+// that was adopted as one, under the id it already had (Store.Adopt).
+func Adopted(t Thread) bool {
+	return t.Session != nil && strings.HasPrefix(t.ID, IDPrefix)
+}
+
 // Check refuses a stored choice that is out of bounds.
 func (s SessionIdentity) Check() error {
 	if len(s.Image) > MaxSessionImage || len(s.Repos) > MaxSessionRepos {

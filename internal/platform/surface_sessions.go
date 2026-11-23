@@ -272,7 +272,7 @@ func (p *Platform) SessionAudience(tenant, session string) (SessionAudience, boo
 		if err != nil || th.Session == nil {
 			return SessionAudience{}, false
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			break
 		}
 		id = th.Session.Parent
