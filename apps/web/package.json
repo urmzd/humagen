@@ -1,6 +1,6 @@
 {
   "name": "@humagen/console",
-  "version": "0.195.5",
+  "version": "0.197.0",
   "private": true,
   "type": "module",
   "scripts": {
