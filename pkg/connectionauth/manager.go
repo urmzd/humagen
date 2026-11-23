@@ -275,7 +275,10 @@ func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider str
 	// A consent begun again replaces the one before it, and that one's state
 	// index with it.
 	if old, err := m.records.Lookup(tenant, key); err == nil {
-		m.dropPending(batch, tenant, old)
+		var replaced pendingConsent
+		if m.open(tenant, key, old.Value, &replaced) == nil && replaced.Transaction.Binding != "" && replaced.State != "" {
+			batch.Delete(tenant, stateKey(replaced.State))
+		}
 	} else if !errors.Is(err, state.ErrNotFound) {
 		return Authorization{}, err
 	}
