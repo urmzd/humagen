@@ -140,7 +140,7 @@ func (p *Platform) reviewText(ctx context.Context, run runs.Run, text string, wh
 			}
 			return true
 		}
-		if p.RunPlace(run.Tenant, candidate).Project != destination || p.privateThread(run.Tenant, candidate.Thread) {
+		if p.RunPlace(run.Tenant, candidate).Project != destination || p.publishesPrivately(candidate) {
 			return false
 		}
 		if candidate.ID == run.ID {

@@ -4838,6 +4838,72 @@ export interface GitHubAutomation {
   note?: string;
 }
 
+/** When a pull request is reviewed automatically. Both false reviews nothing. */
+export interface GitHubRepoAutoReview {
+  /** Review a pull request when it opens or reopens ready for review, or leaves draft. */
+  opened: boolean;
+  /** Review the commits each push adds. */
+  pushes: boolean;
+}
+
+/** What the workspace set for one repository. A field left out follows the client. */
+export interface GitHubRepoSettings {
+  /** "owner/name". */
+  repository: string;
+  auto_review?: GitHubRepoAutoReview;
+  /** Answers a mention that names no agent, and reviews pull requests, in place of the client's default agent. */
+  agent?: string;
+  /** Given to every run on the repository, after the workspace's and the project's instructions. */
+  instructions?: string;
+  /** What the platform reads before a run here starts. */
+  reads?: ("pull_diff" | "linked_issues")[];
+  /** False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable. */
+  cross_surface_reads?: boolean;
+  updated_at: string;
+  updated_by?: string;
+}
+
+export interface GitHubRepository {
+  repository: string;
+  settings?: GitHubRepoSettings;
+  /** The settings' version; 0 while the repository follows its client. */
+  version: number;
+  /** The client's GitHub App installation covers it. */
+  installed: boolean;
+  auto_review: GitHubRepoAutoReview;
+  /** The agent that answers here, the repository's or the client's default. */
+  agent?: string;
+  /** Runs other than the repository's own, and the console, may read it, in the whole workspace: false when any GitHub client keeps it to its own runs. */
+  cross_surface_reads: boolean;
+  /** The names of the GitHub clients that keep the repository to its own runs, this one among them when it does. */
+  kept_by?: string[];
+}
+
+/** What a repository with no settings follows, from the client (and so from the environment for a client the environment configures). */
+export interface GitHubRepositoryDefaults {
+  auto_review: GitHubRepoAutoReview;
+  agent?: string;
+}
+
+export interface GitHubRepositories {
+  repositories: GitHubRepository[];
+  defaults: GitHubRepositoryDefaults;
+  /** The installation's list was read. Without it, only the repositories the client names or keeps settings for are shown. */
+  listed: boolean;
+  truncated?: boolean;
+}
+
+export interface GitHubRepositoryInput {
+  /** Absent or null follows the client. */
+  auto_review?: GitHubRepoAutoReview | null;
+  agent?: string;
+  instructions?: string;
+  reads?: ("pull_diff" | "linked_issues")[];
+  /** False keeps the repository to its own runs. Absent or true leaves it readable. */
+  cross_surface_reads?: boolean;
+  version: number;
+}
+
 export interface GitHubOptions {
   /** Signed webhook rules. Own bot events and commits are always ignored. Check runs require commit author evidence in the payload. */
   automations?: GitHubAutomation[];
@@ -4845,7 +4911,8 @@ export interface GitHubOptions {
   people?: Record<string, string>;
   /** Reviews a pull request when it opens or reopens ready for review,
 leaves draft, or gets a push, by the client's default agent.
-Left out, it is on. Labels start nothing.
+Left out, it is off. Labels start nothing. A repository's
+settings (`/api/clients/{id}/repositories`) override it there.
  */
   auto_review?: GitHubOptionsAutoReview;
   /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
@@ -4853,6 +4920,7 @@ Left out, it is on. Labels start nothing.
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
+  /** Optional. Exact owner/repo names a run from another surface may read through this client, besides the repositories its GitHub App installation covers. Empty means the installation's repositories alone. */
   read_repositories?: string[];
   /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md). */
   login?: string;

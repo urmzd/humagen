@@ -37,8 +37,17 @@ type Config struct {
 	Verifier           transport.Verifier
 	Owners             []string
 	ReadRepositories   []string
-	Bots               map[string]string
-	Agents             mention.Set
+	// MayRead grants a cross-source read of a repository ReadRepositories
+	// does not name, such as one the GitHub App installation covers. It
+	// grants reads only: the read tools may name the repository, and
+	// nothing else does. Nil grants nothing more.
+	MayRead func(ctx context.Context, owner, repo string) bool
+	// ReadRefused names a repository only its own runs may read: a
+	// cross-source read of it is refused, whatever MayRead or
+	// ReadRepositories grant. Nil refuses nothing.
+	ReadRefused func(ctx context.Context, owner, repo string) bool
+	Bots        map[string]string
+	Agents      mention.Set
 	// Login is the app's own login. A comment that mentions it and names
 	// no agent is raised naming none, and the host chooses who answers.
 	Login          string
@@ -156,6 +165,11 @@ func New(cfg Config) (*Connector, error) {
 
 func (c *Connector) Actions() []connector.Action {
 	actions := c.Connector.Actions()
+	for i, a := range actions {
+		if readActions[a.Name] {
+			actions[i].Invoke = c.grantedRead(a.Invoke)
+		}
+	}
 	if c.cfg.Mutations {
 		actions = append(actions, c.mutationAction(), c.runChecksAction())
 	}

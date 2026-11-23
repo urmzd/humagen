@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -92,8 +93,8 @@ func (c *sourceFiles) put(key, content string) {
 
 // GitHubSource reads lines of a file at a commit through a GitHub client of
 // the tenant, so the client's token never reaches the browser. A client may
-// read a repository its owners include or its read_repositories name; with no
-// such client the file is not found.
+// read a repository its owners include, its GitHub App installation covers,
+// or its read_repositories name; with no such client the file is not found.
 func (p *Platform) GitHubSource(ctx context.Context, tenant string, req SourceRequest) (SourceExcerpt, error) {
 	owner, repo, ok := strings.Cut(req.Repo, "/")
 	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
@@ -111,7 +112,7 @@ func (p *Platform) GitHubSource(ctx context.Context, tenant string, req SourceRe
 	if req.Context < 0 || req.Context > SourceMaxContext {
 		return SourceExcerpt{}, fmt.Errorf("%w: context is 0 to %d lines", ErrSourceInvalid, SourceMaxContext)
 	}
-	reader := p.sourceReader(tenant, owner, repo)
+	reader := p.sourceReader(ctx, tenant, owner, repo)
 	if reader == nil {
 		return SourceExcerpt{}, ErrSourceNotFound
 	}
@@ -148,10 +149,16 @@ func (p *Platform) GitHubSource(ctx context.Context, tenant string, req SourceRe
 }
 
 // sourceReader is the file reader of the tenant's first enabled GitHub client
-// that may read owner/repo, or nil.
-func (p *Platform) sourceReader(tenant, owner, repo string) sourceReader {
+// that may read owner/repo, or nil. The installation's token reaches only the
+// repositories it covers, so what it covers is what it may read.
+func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string) sourceReader {
 	s := p.surfaces["github"]
 	if s == nil {
+		return nil
+	}
+	// A repository the workspace keeps to its own runs is not shown here,
+	// through any client.
+	if !p.readableElsewhere(tenant, owner+"/"+repo) {
 		return nil
 	}
 	for _, st := range s.all() {
@@ -161,12 +168,10 @@ func (p *Platform) sourceReader(tenant, owner, repo string) sourceReader {
 		}
 		granted := c.Serves(owner)
 		if g := c.GitHub; !granted && g != nil {
-			for _, r := range g.ReadRepositories {
-				if strings.EqualFold(r, owner+"/"+repo) {
-					granted = true
-					break
-				}
-			}
+			granted = slices.ContainsFunc(g.ReadRepositories, func(r string) bool { return strings.EqualFold(r, owner+"/"+repo) })
+		}
+		if !granted {
+			granted = st.installed.Covers(ctx, owner, repo)
 		}
 		if granted {
 			return st.files

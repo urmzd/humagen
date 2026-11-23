@@ -282,7 +282,10 @@ func (c *Client) dropNotes() {
 // AutoReview is a GitHub connection's automatic review switch, with an
 // override per repository.
 type AutoReview struct {
-	// Enabled is the connection's switch. Left out, it is on.
+	// Enabled is the connection's switch. Left out, it is off: a mention
+	// starts work, and a pull request is reviewed on its own only where
+	// this switch, a repository override or the repository's settings in
+	// the console turn it on.
 	Enabled *bool `json:"enabled,omitempty"`
 	// Repositories turn it on or off for exact "owner/repo" names, whatever
 	// Enabled says.
@@ -290,17 +293,17 @@ type AutoReview struct {
 }
 
 // Reviews reports whether a pull request in repo is reviewed automatically:
-// the repository's override, else the connection's switch, else on.
+// the repository's override, else the connection's switch, else off.
 func (a *AutoReview) Reviews(repo string) bool {
 	if a == nil {
-		return true
+		return false
 	}
 	for name, on := range a.Repositories {
 		if strings.EqualFold(name, repo) {
 			return on
 		}
 	}
-	return a.Enabled == nil || *a.Enabled
+	return a.Enabled != nil && *a.Enabled
 }
 
 type GitHubOptions struct {
@@ -315,8 +318,9 @@ type GitHubOptions struct {
 	// people with write access to the repository and people it maps.
 	Askers []string `json:"askers,omitempty"`
 	// AutoReview reviews a pull request when it opens ready for review, leaves
-	// draft, or gets a push. Left out, it is on. Labels start
-	// nothing.
+	// draft, or gets a push. Left out, it is off. Labels start
+	// nothing. A repository's settings in the console (pkg/reposettings)
+	// override it there.
 	AutoReview *AutoReview `json:"auto_review,omitempty"`
 	Checks     bool        `json:"checks,omitempty"`
 	Guides     bool        `json:"guides,omitempty"`

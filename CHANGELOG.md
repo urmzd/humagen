@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.192.0 (2026-11-23)
+
+### Features
+
+- **migrate**: file past GitHub runs into their sessions ([0bc1fd0](https://github.com/urmzd/humagen/commit/0bc1fd0d4aacd558577abe9c2ab02733d61d3ec3))
+
+### Bug Fixes
+
+- **migrate**: print usage and name the unknown migration in the error (lint ST1005) ([4cba5d3](https://github.com/urmzd/humagen/commit/4cba5d3d9f0909045d62d9e9e79cd7bfa6a5f21a))
+- **sessionstate**: read again when a run is bound between BindRunsInOrder's reads ([a18d0f1](https://github.com/urmzd/humagen/commit/a18d0f10f43e6400981fff829e64bc58d077077e))
+- **migrate**: refuse an empty store, warn of unmapped clients, leave a second client's place, bind in time order ([e027198](https://github.com/urmzd/humagen/commit/e0271981641ba5f1621d369c3bcb5476a8f97b40))
+- **migrate**: show only the platform's errors, and log the dry run's lines in the test ([8a1ead4](https://github.com/urmzd/humagen/commit/8a1ead4030c03f6f7395a7bfd8a9c15218e8c863))
+
+### Misc
+
+- **migrate**: cover the sessions backfill, Refile and the command; document it ([d6a101e](https://github.com/urmzd/humagen/commit/d6a101e30733c95d63ff98533817d71fec7e307b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.191.0...v0.192.0)
+
+
+## 0.191.0 (2026-11-22)
+
+### Breaking
+
+- **github**: automatic review is off unless switched on ([a4e83b3](https://github.com/urmzd/humagen/commit/a4e83b365d1c0ef78896bb27b45337f4b5aa2272))
+
+### Features
+
+- **console**: a Repositories view for a GitHub app, and each repository's settings ([7507e03](https://github.com/urmzd/humagen/commit/7507e03d4c3ef99859ffdb3aea37ab76da1801dc))
+- **github**: repository settings drive review, agent, instructions, reads and cross-surface reads ([7fd9f3a](https://github.com/urmzd/humagen/commit/7fd9f3a83d9861a90609891068e48918ffe39542))
+- **github**: per-repository settings for GitHub clients (wip) ([6ea2619](https://github.com/urmzd/humagen/commit/6ea26197910f98e6b3ecc7d8c85e013ddf775a71))
+
+### Bug Fixes
+
+- **github**: quote repository settings descriptions in the API spec; lint ([87d553c](https://github.com/urmzd/humagen/commit/87d553c98313b4a5e67d868eeb56f684d48083d5))
+- **github**: show the workspace's cross-surface answer and who keeps it on every client; close a fence the read budget cuts ([ca89994](https://github.com/urmzd/humagen/commit/ca899945647616d4a916747206722f3a3bd4e645))
+- **console**: name the GitHub app in the path, one left edge for both pages, round row ends on a phone, even reads card ([1454f4f](https://github.com/urmzd/humagen/commit/1454f4f8ed708a9569a78d027fe8ecfe5a2041dc))
+- **github**: keep a repository to its own runs across every client; fence pre-run reads in a nonce block within 3 seconds; refuse an empty write over unread settings; cover only installed, named or kept repositories ([ae49fab](https://github.com/urmzd/humagen/commit/ae49fab7acdd55ec6c66fc39a5e5f91d77701192))
+- **console**: repository list fits a phone; empty state spacing ([fa1548c](https://github.com/urmzd/humagen/commit/fa1548c8495055f85be7816609a67df10ee43608))
+
+### Misc
+
+- **copy**: regenerate copy keys for the repositories view ([d87af1b](https://github.com/urmzd/humagen/commit/d87af1bcfd957e2c3cebdda4b302de511410c3da))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.190.0...v0.191.0)
+
+
+## 0.190.0 (2026-11-22)
+
+### Features
+
+- **github**: map GitHub logins to people from HUMAGEN_GITHUB_PEOPLE ([f36601b](https://github.com/urmzd/humagen/commit/f36601bbe17b7eb4de513ca8182050e523aafe8a))
+- **github**: file each pull request and issue as one session ([27e3ef2](https://github.com/urmzd/humagen/commit/27e3ef2207ad5eb1d1ef9ba0f571ab005dc29215))
+
+### Bug Fixes
+
+- **github**: judge GitHub sessions by the root run, keep memory as before, and keep clients apart ([50dc0e8](https://github.com/urmzd/humagen/commit/50dc0e80abe1c01ebf1fc4ec511ce9c66493cce2))
+- **console**: keep the GitHub link out of trace.ts and give Home's budget room for it ([ee3a7ae](https://github.com/urmzd/humagen/commit/ee3a7ae0e7878f1482bc5aab3003fc20d4977961))
+
+### Misc
+
+- **github**: grant the mapped askers runs:write and ask on an issue through the connector ([147d372](https://github.com/urmzd/humagen/commit/147d372c07cf441209426e5a78dc222d90d559b5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.189.0...v0.190.0)
+
+
+## 0.189.0 (2026-11-22)
+
+### Features
+
+- **github**: offer and read the repositories the app installation covers ([ca422e0](https://github.com/urmzd/humagen/commit/ca422e0a77df533dbf50f51aee0c539ebc649d62))
+
+### Bug Fixes
+
+- **github**: share one installation read outside the lock, keep each caller's deadline ([56a639a](https://github.com/urmzd/humagen/commit/56a639a25d5caa8fcc62db0a3d8807b257f7d685))
+
+### Misc
+
+- **github**: installed repositories, the picker and reads; docs and contract ([ed0031c](https://github.com/urmzd/humagen/commit/ed0031c9cb8f681e4cc0d129cbbcb04a1938dd28))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.1...v0.189.0)
+
+
 ## 0.188.1 (2026-11-22)
 
 ### Bug Fixes

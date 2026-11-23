@@ -223,3 +223,92 @@ func (s *Store) Runs(ctx context.Context, tenant, id string, limit int) ([]strin
 	slices.Reverse(out)
 	return out, nil
 }
+
+// maxOrdered bounds the bindings BindRunsInOrder reads and rewrites.
+const maxOrdered = 10000
+
+// BindRunsInOrder binds runs to a session, each placed before the first run
+// already bound that later says comes after it, so runs bound late, such
+// as past runs filed once, keep the order they were asked in and the
+// newest binding stays the newest run. A run already bound is left where it
+// is. The whole ordered index is written at the version its head was read
+// at, with the new markers, in one write.
+func (s *Store) BindRunsInOrder(ctx context.Context, tenant, id string, runs []string, later func(a, b string) bool) error {
+	for _, run := range runs {
+		if run == "" {
+			return session.ErrInvalid
+		}
+	}
+	if _, err := s.Get(ctx, tenant, id); err != nil {
+		return err
+	}
+	return state.Retry(func() error {
+		head := state.Missing
+		var position int64
+		if row, err := s.state.Lookup(ctx, namespace, tenant, "rh:"+id); err == nil {
+			if err := json.Unmarshal(row.Value, &position); err != nil {
+				return err
+			}
+			head = row.Version
+		} else if !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		var bound []string
+		after := ""
+		for len(bound) < maxOrdered {
+			rows, next, err := s.state.List(ctx, namespace, tenant, state.Query{Prefix: "rs:" + id + ":", After: after, Limit: state.MaxList})
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				var r string
+				if err := json.Unmarshal(row.Value, &r); err != nil {
+					return err
+				}
+				bound = append(bound, r)
+			}
+			if next == "" {
+				break
+			}
+			after = next
+		}
+		if position > maxOrdered {
+			return fmt.Errorf("%w: session %s holds %d bindings, more than the %d that can be reordered", session.ErrInvalid, id, position, maxOrdered)
+		}
+		if int64(len(bound)) != position {
+			// A binding was made between reading the head and the index:
+			// read both again.
+			return state.ErrConflict
+		}
+		order := slices.Clone(bound)
+		var added []string
+		for _, run := range runs {
+			if slices.Contains(order, run) {
+				continue
+			}
+			if _, err := s.state.Lookup(ctx, namespace, tenant, "r:"+id+":"+run); err == nil {
+				continue
+			} else if !errors.Is(err, state.ErrNotFound) {
+				return err
+			}
+			at := slices.IndexFunc(order, func(b string) bool { return slices.Contains(bound, b) && later(b, run) })
+			if at < 0 {
+				at = len(order)
+			}
+			order = slices.Insert(order, at, run)
+			added = append(added, run)
+		}
+		if len(added) == 0 {
+			return nil
+		}
+		ops := []state.Op{put(tenant, "rh:"+id, int64(len(order)), head)}
+		for _, run := range added {
+			ops = append(ops, put(tenant, "r:"+id+":"+run, run, state.Missing))
+		}
+		for i, run := range order {
+			raw, _ := json.Marshal(run)
+			ops = append(ops, state.Put(tenant, "rs:"+id+":"+state.Seq(int64(i+1)), raw))
+		}
+		return s.state.Write(ctx, namespace, ops...)
+	})
+}

@@ -738,6 +738,12 @@ func (h hidden) value(path, param string) (string, bool) {
 		return h.client, true
 	case "provider":
 		return h.provider, true
+	case "owner", "repo":
+		// A repository of the hidden client: the client is what is hidden,
+		// so any repository it names is.
+		if prefix("/api/clients/") {
+			return map[string]string{"owner": "acme", "repo": "site"}[param], true
+		}
 	case "part":
 		return "p1", true
 	case "question":

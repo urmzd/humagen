@@ -96,6 +96,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
@@ -438,6 +439,9 @@ type Platform struct {
 	AgentColors *agentcolors.Store
 	// AgentLooks keeps how each agent is drawn and the name people see.
 	AgentLooks *agentlooks.Store
+	// RepoSettings keeps what the workspace set for each repository a
+	// GitHub client covers (github_repo_settings.go).
+	RepoSettings *reposettings.Store
 	// Images keeps the sandbox images each workspace added.
 	Images *images.Store
 	// Scratchpads keeps each conversation's named scratchpads.
@@ -909,6 +913,20 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	// the run is admitted.
 	if edge.Parent == "" && scheduledOrigin(tag) {
 		tag = p.fileInScheduleSession(ctx, tag, project)
+	}
+	// A GitHub run is filed in its issue's or pull request's session.
+	if wire.Origin(tag) == runs.OriginGitHub {
+		if edge.Parent == "" {
+			tag = p.fileInGitHubSession(ctx, tag, project, client)
+			// Admission read no thread, so the session's own state is
+			// checked here, now that it is known.
+			if th, err := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); err == nil && th.ReadOnly {
+				p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+				return runs.Run{}, ErrForbidden
+			}
+		} else {
+			wire.DeleteMeta(&tag, runs.MetaThread)
+		}
 	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {

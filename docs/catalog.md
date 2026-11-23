@@ -35,6 +35,7 @@
 | [Read mixed evidence](guides/media-evidence.md) | Guide | What a native agent reads of attached PDFs, images and audio, and the transcription path left after #383 |
 | [Read a cloud document and approve an edit](guides/cloud-documents.md) | Guide | A native agent on the person's own Google Docs and Drive connections, and what revision history depends on |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
+| [Upgrading](guides/upgrading.md) | Guide | Steps an operator runs once after a release, such as filing past work into sessions |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
 | [Upgrading to saige v0.45.0](guides/upgrading-to-saige.md) | Guide | What changes for operators and Go programs now that orchagent is folded into saige |
 | [Names](guides/renaming.md) | Guide | The ecosystem's current names and the retired ones |

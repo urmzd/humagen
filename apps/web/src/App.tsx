@@ -48,6 +48,7 @@ import {
   CorpusPage,
   DirectoryPage,
   ForkProject,
+  GitHubRepositories,
   Health,
   Integrations,
   ItemPage,
@@ -1688,6 +1689,14 @@ function Console({
                       onOpen={(provider, scope) =>
                         go({ page: "connections", provider, scope }, { replace: true })
                       }
+                      onNavigate={go}
+                    />
+                  )}
+                  {route.page === "repositories" && (
+                    <GitHubRepositories
+                      client={route.client}
+                      repo={route.repo}
+                      canWrite={can("clients:write")}
                       onNavigate={go}
                     />
                   )}

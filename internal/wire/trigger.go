@@ -304,6 +304,35 @@ func SetGitHubHeadSHA(e *event.Envelope, sha string) {
 	}
 }
 
+// GitHubTitleOf is the title of the issue or pull request a GitHub event is
+// about, as the connector read it from the webhook. It is "" for any other
+// event.
+func GitHubTitleOf(e event.Envelope) string {
+	switch b := e.Data.(type) {
+	case event.GitHubIssueCommentCreated:
+		return b.Title
+	case event.GitHubReviewCommentCreated:
+		return b.Title
+	case event.GitHubReviewSubmitted:
+		return b.Title
+	case event.GitHubIssueOpened:
+		return b.Title
+	case event.GitHubIssueLabeled:
+		return b.Title
+	case event.GitHubPullOpened:
+		return b.Title
+	case event.GitHubPullReadyForReview:
+		return b.Title
+	case event.GitHubReviewRequested:
+		return b.Title
+	case event.GitHubPullSynchronize:
+		return b.Title
+	case event.GitHubPullLabeled:
+		return b.Title
+	}
+	return ""
+}
+
 // PrivateMetaPrefix starts a context key that is kept with the event and
 // never shown to a model.
 const PrivateMetaPrefix = "_"
