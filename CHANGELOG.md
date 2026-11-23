@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.195.3 (2026-11-23)
+
+### Bug Fixes
+
+- **ci**: push the release image when CI was skipped for a tested tree ([cd922b0](https://github.com/urmzd/humagen/commit/cd922b0c071cb8a9cf910dca202d4bfc0b66ff93))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.2...v0.195.3)
+
+
+## 0.195.2 (2026-11-23)
+
+### Bug Fixes
+
+- **core**: compare a call's identifying arguments, keeping paths case-sensitive ([28a5e51](https://github.com/urmzd/humagen/commit/28a5e51fa8000719f6d84f3d12ca4af809d81ff3))
+- **console**: recover a failure only by the same tool at the same target; read address as the transport does ([9d6c324](https://github.com/urmzd/humagen/commit/9d6c324a99f0c434b46ecda77f183e60b79bf7be))
+- **console**: say a recovered tool failure as retried; read repositories with github_read_context ([af8399d](https://github.com/urmzd/humagen/commit/af8399d766e8a537b326bbd418791ff86f142456))
+
+### Misc
+
+- **copy**: regenerate the product copy keys after merging main ([bb07b2e](https://github.com/urmzd/humagen/commit/bb07b2e057c6d33f8c960f3fa6950b18a85d6935))
+- **deps**: saige v0.50.0, repository reads and untrusted-data notice ([571deb4](https://github.com/urmzd/humagen/commit/571deb4c4c9dc8f84fc52b854d4b4769d464c58a))
+- **deps**: tidy go.sum after the saige pin ([6c8b92d](https://github.com/urmzd/humagen/commit/6c8b92d375131887356787fc66db4f136d1a25ef))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.1...v0.195.2)
+
+
 ## 0.195.1 (2026-11-23)
 
 ### Bug Fixes
