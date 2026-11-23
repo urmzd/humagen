@@ -258,13 +258,18 @@ also returns the head SHA, reviews, inline comments and changed-file patches.
 Follow `next_page` until absent. A missing patch is unavailable evidence.
 
 Its `address` takes an issue or pull request as `github://owner/repo/pull/12`,
-`github://owner/repo/issues/12` or the `https://github.com` URL of one. It
-also takes a repository as `owner/repo`, `github://owner/repo` or
-`https://github.com/owner/repo`, which returns one bounded page: the
+`github://owner/repo/issues/12`, `owner/repo#12` or the `https://github.com`
+URL of one. It also takes a repository as `owner/repo`, `github://owner/repo`
+or `https://github.com/owner/repo` (a trailing `.git` is dropped), which
+returns one bounded page: the
 description, the default branch, the first 4000 bytes of the README, and the
 10 most recently updated open pull requests and the 10 open issues, each with
 the address that reads it. A repository with a `number` reads that issue or
 pull request. A repository read passes the same grants as its issues below.
+Every read leads with a `notice` field marking the GitHub text in it as
+untrusted data. The grants read `address` in any letter case, as the tool
+does, and refuse a call that names it twice or passes an argument the tool
+does not declare.
 Reads default to the source repository. A run from Slack, Jira, or a link in
 another repository may also read any repository the client's GitHub App
 installation covers (see

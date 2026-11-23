@@ -233,3 +233,42 @@ func TestARepositoryReadsUnderTheSameGrantsAsItsIssues(t *testing.T) {
 		t.Fatalf("its own run could not read it: %v", err)
 	}
 }
+
+// The transport matches argument keys without regard to case and keeps the
+// last of several, so the grants read the address the same way: a key in
+// another case is the address, and two keys for it, or a key the action does
+// not declare, are refused before anything is read.
+func TestTheGrantsReadTheAddressTheWayTheTransportDecodesIt(t *testing.T) {
+	fake := github.NewFake()
+	for _, repo := range []string{"docs", "web"} {
+		if err := fake.SeedRepository("acme", repo, github.RepositoryContext{Description: repo + " repository", DefaultBranch: "main"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refused := func(_ context.Context, owner, repo string) bool {
+		return strings.EqualFold(owner+"/"+repo, "acme/docs")
+	}
+	everything := func(context.Context, string, string) bool { return true }
+	c, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, MayRead: everything, ReadRefused: refused})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := action(t, c, "github_read_context")
+	for _, tc := range []struct{ name, args, want string }{
+		{"another case", `{"Address":"acme/docs"}`, "not readable from other surfaces"},
+		{"two cases", `{"address":"acme/web","Address":"acme/docs"}`, "more than once"},
+		{"twice", `{"address":"acme/web","address":"acme/docs"}`, "more than once"},
+		{"undeclared", `{"address":"acme/web","repo":"acme/docs"}`, "takes no argument"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			summary, err := read("slack://T01/C01", tc.args)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("summary %q error %v, want %q", summary, err, tc.want)
+			}
+		})
+	}
+	// A key in another case still reads a repository the grants allow.
+	if summary, err := read("slack://T01/C01", `{"ADDRESS":"acme/web"}`); err != nil || !strings.Contains(summary, "web repository") {
+		t.Fatalf("an allowed read in another case: %q, %v", summary, err)
+	}
+}

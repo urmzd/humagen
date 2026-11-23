@@ -105,7 +105,18 @@ const read = (id: string, address: string, over: Partial<Task> = {}): Task => ({
 const refused = { status: "error" as const, output: "connector: undeliverable" };
 
 describe("a failed call a later call recovered", () => {
-  it("is recovered by a later success of the same tool, even at another address", () => {
+  it("is recovered by the same tool reading the same target again", () => {
+    const calls = [read("a", "acme/docs", refused), read("b", "github://acme/docs")];
+    expect([...recoveredCalls(calls)]).toEqual(["a"]);
+    const spelled = [
+      read("a", "https://github.com/acme/docs/pull/7", refused),
+      read("b", "github://acme/docs/pull/7"),
+    ];
+    expect([...recoveredCalls(spelled)]).toEqual(["a"]);
+  });
+
+  it("is recovered when the same tool narrows a refused repository to one of its items", () => {
+    // The production case: urmzd/humagen refused, then the pull request read.
     const calls = [
       read("a", "urmzd/humagen", refused),
       read("b", "github://urmzd/humagen/pull/541"),
@@ -113,35 +124,83 @@ describe("a failed call a later call recovered", () => {
     expect([...recoveredCalls(calls)]).toEqual(["a"]);
   });
 
-  it("is recovered by a later success at the same target through another tool", () => {
-    const fetch: Task = {
-      id: "b",
-      title: "Fetch",
-      tool: "web_fetch",
+  it("is recovered by the same write at the same target", () => {
+    const write = (id: string, path: string, over: Partial<Task> = {}): Task => ({
+      id,
+      title: "Write file",
+      tool: "write_file",
       status: "complete",
-      input: JSON.stringify({ url: "https://github.com/urmzd/humagen/pull/541" }),
-    };
-    const calls = [read("a", "https://github.com/urmzd/humagen/pull/541", refused), fetch];
-    expect([...recoveredCalls(calls)]).toEqual(["a"]);
+      input: JSON.stringify({ path, content: "x" }),
+      ...over,
+    });
+    expect([...recoveredCalls([write("a", "a.go", refused), write("b", "a.go")])]).toEqual(["a"]);
   });
 
-  it("stays failed when nothing later succeeded, or only an earlier call did", () => {
-    expect(recoveredCalls([read("a", "x/y", refused)]).size).toBe(0);
-    expect(recoveredCalls([read("a", "x/y"), read("b", "x/y", refused)]).size).toBe(0);
-    expect(recoveredCalls([read("a", "x/y", refused), read("b", "x/y", refused)]).size).toBe(0);
-    // A later call still running has not succeeded yet.
-    expect(
-      recoveredCalls([read("a", "x/y", refused), read("b", "x/y", { status: "in_progress" })]).size,
-    ).toBe(0);
+  describe("stays failed", () => {
+    const call = (id: string, tool: string, args: unknown, over: Partial<Task> = {}): Task => ({
+      id,
+      title: tool,
+      tool,
+      status: "complete",
+      input: JSON.stringify(args),
+      ...over,
+    });
+    it("when the same tool then read another repository", () => {
+      expect(recoveredCalls([read("a", "acme/secret", refused), read("b", "acme/docs")]).size).toBe(
+        0,
+      );
+      // Another repository's item does not narrow the refused one.
+      expect(
+        recoveredCalls([read("a", "acme/secret", refused), read("b", "acme/secret-other#1")]).size,
+      ).toBe(0);
+    });
+    it("when a failed write is followed by a read of the same file", () => {
+      const calls = [
+        call("a", "write_file", { path: "a.go" }, refused),
+        call("b", "read_file", { path: "a.go" }),
+      ];
+      expect(recoveredCalls(calls).size).toBe(0);
+    });
+    it("when a comment on one pull request failed and another succeeded", () => {
+      const calls = [
+        call("a", "github_comment", { address: "github://acme/docs/pull/1" }, refused),
+        call("b", "github_comment", { address: "github://acme/docs/pull/2" }),
+      ];
+      expect(recoveredCalls(calls).size).toBe(0);
+    });
+    it("when a failed merge is followed by a read of the same pull request", () => {
+      const calls = [
+        call("a", "github_merge", { address: "github://acme/docs/pull/1" }, refused),
+        read("b", "github://acme/docs/pull/1"),
+      ];
+      expect(recoveredCalls(calls).size).toBe(0);
+    });
+    it("when a write to one file failed and a write to another succeeded", () => {
+      const calls = [
+        call("a", "write_file", { path: "a.go" }, refused),
+        call("b", "write_file", { path: "b.go" }),
+      ];
+      expect(recoveredCalls(calls).size).toBe(0);
+    });
+    it("when nothing later succeeded, or only an earlier call did", () => {
+      expect(recoveredCalls([read("a", "x/y", refused)]).size).toBe(0);
+      expect(recoveredCalls([read("a", "x/y"), read("b", "x/y", refused)]).size).toBe(0);
+      expect(recoveredCalls([read("a", "x/y", refused), read("b", "x/y", refused)]).size).toBe(0);
+      expect(
+        recoveredCalls([read("a", "x/y", refused), read("b", "x/y", { status: "in_progress" })])
+          .size,
+      ).toBe(0);
+      // A later result that says the action failed is no recovery.
+      expect(
+        recoveredCalls([
+          read("a", "x/y", refused),
+          read("b", "x/y", { output: "action failed: not granted" }),
+        ]).size,
+      ).toBe(0);
+    });
   });
 
-  it("counts a result that says the action failed as a failure, and not as a recovery", () => {
-    const said = { output: "action failed: not granted" };
-    expect([...recoveredCalls([read("a", "x/y", said), read("b", "x/z")])]).toEqual(["a"]);
-    expect(recoveredCalls([read("a", "x/y", refused), read("b", "x/z", said)]).size).toBe(0);
-  });
-
-  it("needs the same command line for a command", () => {
+  it("needs the same command line and a zero exit for a command", () => {
     const broken = { status: "error" as const, output: "spawn failed" };
     expect(
       recoveredCalls([shell("a", "go test ./...", undefined, broken), shell("b", "ls", "exit 0\n")])
@@ -153,7 +212,6 @@ describe("a failed call a later call recovered", () => {
         shell("b", "go test ./...", "exit 0\n"),
       ]),
     ]).toEqual(["a"]);
-    // A rerun that exits non-zero did not recover it.
     expect(
       recoveredCalls([
         shell("a", "go test ./...", undefined, broken),

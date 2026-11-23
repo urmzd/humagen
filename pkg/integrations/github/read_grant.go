@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -42,7 +43,8 @@ type invokeFunc = func(context.Context, address.Address, json.RawMessage) (conne
 // raised on another repository, or on another surface, is refused whatever
 // grants it, and a run on one of the repository's own issues or pull
 // requests still reads it.
-func (c *Connector) grantedRead(name string, next invokeFunc) invokeFunc {
+func (c *Connector) grantedRead(action connector.Action) invokeFunc {
+	next := action.Invoke
 	if c.cfg.MayRead == nil && c.cfg.ReadRefused == nil {
 		return next
 	}
@@ -50,13 +52,17 @@ func (c *Connector) grantedRead(name string, next invokeFunc) invokeFunc {
 	for _, r := range c.cfg.ReadRepositories {
 		static[strings.ToLower(r)] = true
 	}
+	declared := declaredArguments(action.Schema)
 	return func(ctx context.Context, source address.Address, raw json.RawMessage) (connector.Result, error) {
-		var args map[string]json.RawMessage
+		args, key, err := readArguments(action.Name, raw, declared)
+		if err != nil {
+			return connector.Result{}, err
+		}
 		var reference string
-		if json.Unmarshal(raw, &args) != nil || json.Unmarshal(args["address"], &reference) != nil || reference == "" {
+		if key == "" || json.Unmarshal(args[key], &reference) != nil || reference == "" {
 			return next(ctx, source, raw)
 		}
-		target, ok := referenced(reference, repositoryReads[name])
+		target, ok := referenced(reference, repositoryReads[action.Name])
 		if !ok {
 			return next(ctx, source, raw)
 		}
@@ -70,13 +76,68 @@ func (c *Connector) grantedRead(name string, next invokeFunc) invokeFunc {
 		if static[strings.ToLower(owner+"/"+repo)] || c.cfg.MayRead == nil || !c.cfg.MayRead(ctx, owner, repo) {
 			return next(ctx, source, raw)
 		}
-		delete(args, "address")
+		delete(args, key)
 		rest, err := json.Marshal(args)
 		if err != nil {
 			return next(ctx, source, raw)
 		}
 		return next(ctx, target, rest)
 	}
+}
+
+// declaredArguments is the lower-cased names an action's schema declares.
+func declaredArguments(schema json.RawMessage) map[string]bool {
+	var s struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	_ = json.Unmarshal(schema, &s)
+	out := make(map[string]bool, len(s.Properties))
+	for name := range s.Properties {
+		out[strings.ToLower(name)] = true
+	}
+	return out
+}
+
+// readArguments reads a call's arguments the way the transport will decode
+// them, so the address checked here is the address read there. The
+// transport matches a key to a field without regard to case and keeps the
+// last of several that match, so a call is refused when two keys match one
+// argument ("address" and "Address", or "address" twice) or when a key
+// matches no declared argument. key is the address's key as written, or ""
+// when the call has none. Arguments that are not one JSON object are left
+// for the transport to refuse.
+func readArguments(name string, raw json.RawMessage, declared map[string]bool) (map[string]json.RawMessage, string, error) {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := d.Token(); err != nil || t != json.Delim('{') {
+		return nil, "", nil
+	}
+	args := map[string]json.RawMessage{}
+	seen := map[string]bool{}
+	key := ""
+	for d.More() {
+		t, err := d.Token()
+		if err != nil {
+			return nil, "", nil
+		}
+		k, _ := t.(string)
+		lower := strings.ToLower(k)
+		if !declared[lower] {
+			return nil, "", fmt.Errorf("github: %s takes no argument %q", name, k)
+		}
+		if seen[lower] {
+			return nil, "", fmt.Errorf("github: %s was given %q more than once", name, lower)
+		}
+		seen[lower] = true
+		var v json.RawMessage
+		if err := d.Decode(&v); err != nil {
+			return nil, "", nil
+		}
+		args[k] = v
+		if lower == "address" {
+			key = k
+		}
+	}
+	return args, key, nil
 }
 
 // referenced is the issue or pull request a reference names, with no

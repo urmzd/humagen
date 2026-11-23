@@ -70,12 +70,35 @@ export function failedCommands(tasks: readonly Task[]): (CommandResult & { id: s
 const toolName = (task: Pick<Task, "tool" | "title">) => task.tool || task.title;
 
 /**
- * The failed calls in a turn that a later call recovered, by id. A call that
- * failed is recovered when a later call in the same turn ended without
- * failing and either went to the same tool or was pointed at the same
- * target. A command needs the same command line: a different command
- * through the same shell is not a retry. A failure no later call recovered
- * stays a failure.
+ * A call's target in one spelling: a GitHub address as `owner/repo` or
+ * `owner/repo#12` whichever way it was written (`github://`, a github.com
+ * URL, `.git`), lower-cased, without a trailing slash.
+ */
+function sameTarget(task: Pick<Task, "input">): string | undefined {
+  const t = toolTarget(task);
+  if (!t) return undefined;
+  const gh =
+    /^(?:github:\/\/|https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:pull|issues)\/(\d+)|#(\d+))?\/?$/i.exec(
+      t.trim(),
+    );
+  if (gh) {
+    const n = gh[3] ?? gh[4];
+    return `${gh[1]}/${gh[2]}${n ? `#${n}` : ""}`.toLowerCase();
+  }
+  return t.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * The failed calls in a turn that a later call recovered, by id. A failed
+ * call is recovered only when a later call in the same turn, to the same
+ * tool, at the same target, ended without failing: the same read, write or
+ * command tried again and done. A command needs the same command line and a
+ * zero exit. A read of a repository is also recovered by a read of one of
+ * its issues or pull requests through the same tool (`owner/repo` refused,
+ * then `owner/repo#541` read): that narrows the same source. A write never
+ * is: only the same write at the same target recovers it. A different tool,
+ * another target, a call still running or one that also failed leaves the
+ * failure standing.
  *
  * Pass every call of the turn, in order, so a retry in a later run of steps
  * counts.
@@ -84,13 +107,20 @@ export function recoveredCalls(tasks: readonly Task[]): Set<string> {
   const out = new Set<string>();
   for (const [i, task] of tasks.entries()) {
     if (!toolFailed(task)) continue;
-    const command = toolKind(task) === "run" ? toolCommand(task) : undefined;
-    const target = toolTarget(task);
     const name = toolName(task);
+    const kind = toolKind(task);
+    const command = kind === "run" ? toolCommand(task) : undefined;
+    const target = command ?? sameTarget(task);
+    if (!name || !target) continue;
     const recovered = tasks.slice(i + 1).some((later) => {
-      if (later.status !== "complete" || callFailed(later)) return false;
+      if (later.status !== "complete" || callFailed(later) || toolName(later) !== name)
+        return false;
       if (command !== undefined) return toolCommand(later) === command;
-      return (!!name && toolName(later) === name) || (!!target && toolTarget(later) === target);
+      const there = sameTarget(later);
+      if (!there) return false;
+      if (there === target) return true;
+      // A repository read, narrowed to one of its items by the same tool.
+      return kind === "read" && !target.includes("#") && there.startsWith(`${target}#`);
     });
     if (recovered) out.add(task.id);
   }
