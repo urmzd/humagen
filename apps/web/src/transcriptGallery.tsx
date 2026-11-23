@@ -12,7 +12,7 @@ import { AgentTint, setAgentHues } from "./ui.tsx";
 
 /**
  * A conversation transcript, one scene at a time, drawn from fixtures alone:
- * `?scene=failed|connect|refs|tools|running|parallel|nested` and
+ * `?scene=failed|connect|refs|tools|running|retried|parallel|nested` and
  * `?theme=light|dark`. The last two are recorded responses with agents that
  * ran at the same time, each drawn as its own thread in the turn. Open
  * /transcript-gallery.html on the dev server. It calls nothing on the

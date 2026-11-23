@@ -214,6 +214,11 @@ func (s *Server) putAssignment(w http.ResponseWriter, r *http.Request, who auth.
 	ok(w, http.StatusOK, s.assignmentView(who, a))
 }
 func (s *Server) runAssignment(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	// An assignment's run names no person, so a Slack app's credential starts none.
+	if err := s.P.MayAskForNobody(who); err != nil {
+		s.problem(w, err)
+		return
+	}
 	run, err := s.P.RunAssignment(r.Context(), who, r.PathValue("id"))
 	if err != nil {
 		s.problem(w, err)

@@ -45,11 +45,12 @@ In Slack, open a direct message with the app, or invite it to a channel with
 
 ## Say who is who
 
-Out of the box the app answers everyone and acts for nobody: a run asked for
-in Slack is the app's, not yours. To make your Slack messages yours in
-Humagen (your runs, your Home tab, your answers to an agent's questions), map
-each Slack user id to the subject that person signs in to Humagen with, under
-`surfaces.slack` in `humagen.yaml`:
+Out of the box the app answers nobody: anyone who can message it (a new
+member, a guest, someone from another company in a shared channel) could
+otherwise start runs. Map each Slack user id who may ask to the subject that
+person signs in to Humagen with, under `surfaces.slack` in `humagen.yaml`.
+Their messages are then theirs in Humagen: their runs, their Home tab, their
+answers to an agent's questions.
 
 ```yaml
 people:
@@ -61,8 +62,9 @@ member ID**. A subject under `tailscale` sign-in is `tailscale:` followed by
 the person's Tailscale login. Under `tailscale` sign-in that is all: run
 `humagen start` again. Under any other
 sign-in also write `machine`, the subject the app's own credential signs in
-as, and give that credential `humagen:clients:read`. Anyone you do not map
-stays nobody. See [the spec](../reference/spec.md#whom-the-slack-app-acts-for).
+as, and give that credential `humagen:clients:read`. Anyone you do not map is
+told privately that their account is not connected, and nothing starts for
+them ([who can start a run](../reference/slack.md#who-can-start-a-run)). See [the spec](../reference/spec.md#whom-the-slack-app-acts-for).
 
 ## Options
 

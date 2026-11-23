@@ -997,17 +997,18 @@ file does not give.
 
 #### Whom the Slack app acts for
 
-By default the app acts for nobody: it answers, and every run it asks for is
-the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
+By default the app answers nobody: only a person its client maps starts
+anything ([who can start a run](slack.md#who-can-start-a-run)). `people` names who is who, a Slack user id (`U...` or `W...`)
 in `team` to the subject that person signs in to Humagen with. With it the
 server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
 and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
 person's message, runs, Home tab and answers to a run's questions are theirs.
-A Slack user the map does not name stays nobody.
+A Slack user the map does not name is told their account is not connected,
+and nothing starts for them.
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `people` | none: the app acts for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `people` | none: the app answers nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
 | `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
 
 The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
