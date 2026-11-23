@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connector"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // readActions are the transport's actions that only read and take an
@@ -20,6 +20,12 @@ var readActions = map[string]bool{
 	"github_workflow_status": true,
 }
 
+// repositoryReads are the read actions that also read a whole repository,
+// named as owner/repo. The grants below apply to it as to its issues.
+var repositoryReads = map[string]bool{
+	"github_read_context": true,
+}
+
 type invokeFunc = func(context.Context, address.Address, json.RawMessage) (connector.Result, error)
 
 // grantedRead lets a read action reach a repository Config.MayRead grants
@@ -27,6 +33,8 @@ type invokeFunc = func(context.Context, address.Address, json.RawMessage) (conne
 // run's repository and the repositories it was given; for any other, the
 // action is invoked on the named issue or pull request itself, with no
 // pinned head, which is what the transport does for a granted repository.
+// A repository read (github_read_context with owner/repo) is invoked on the
+// repository's own address the same way.
 // Everything else (the owners the client serves, the reference's form) is
 // still checked by the transport.
 //
@@ -34,7 +42,7 @@ type invokeFunc = func(context.Context, address.Address, json.RawMessage) (conne
 // raised on another repository, or on another surface, is refused whatever
 // grants it, and a run on one of the repository's own issues or pull
 // requests still reads it.
-func (c *Connector) grantedRead(next invokeFunc) invokeFunc {
+func (c *Connector) grantedRead(name string, next invokeFunc) invokeFunc {
 	if c.cfg.MayRead == nil && c.cfg.ReadRefused == nil {
 		return next
 	}
@@ -48,7 +56,7 @@ func (c *Connector) grantedRead(next invokeFunc) invokeFunc {
 		if json.Unmarshal(raw, &args) != nil || json.Unmarshal(args["address"], &reference) != nil || reference == "" {
 			return next(ctx, source, raw)
 		}
-		target, ok := referenced(reference)
+		target, ok := referenced(reference, repositoryReads[name])
 		if !ok {
 			return next(ctx, source, raw)
 		}
@@ -71,29 +79,24 @@ func (c *Connector) grantedRead(next invokeFunc) invokeFunc {
 	}
 }
 
-// referenced is the issue or pull request a github:// address or a
-// github.com URL names, with no parameters. It parses the forms the
-// transport takes; anything else is left to the transport to refuse.
-func referenced(reference string) (address.Address, bool) {
-	var target address.Address
-	if strings.HasPrefix(reference, "github://") {
-		a, err := address.Parse(reference)
-		if err != nil {
-			return address.Address{}, false
-		}
-		target = address.Address{Connector: a.Connector, Workspace: a.Workspace, Path: a.Path}
-	} else {
-		u, err := url.Parse(reference)
-		if err != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.RawQuery != "" {
-			return address.Address{}, false
-		}
-		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-		if len(parts) != 4 {
-			return address.Address{}, false
-		}
-		target = address.Address{Connector: Name, Workspace: parts[0], Path: parts[1:]}
+// referenced is the issue or pull request a reference names, with no
+// parameters, or, when repository is true, the repository it names
+// (owner/repo, github://owner/repo or https://github.com/owner/repo). It
+// parses with the transport's own parser, so every form the transport reads
+// passes these grants first; anything else is left to the transport to
+// refuse.
+func referenced(reference string, repository bool) (address.Address, bool) {
+	parsed, err := transport.ParseReadReference(reference)
+	if err != nil {
+		return address.Address{}, false
 	}
-	if target.Connector != Name || len(target.Path) != 3 || (target.Path[1] != "issues" && target.Path[1] != "pull") {
+	target := address.Address{Connector: parsed.Connector, Workspace: parsed.Workspace, Path: parsed.Path}
+	switch {
+	case target.Connector != Name:
+		return address.Address{}, false
+	case len(target.Path) == 1 && !repository:
+		return address.Address{}, false
+	case len(target.Path) == 3 && target.Path[1] != "issues" && target.Path[1] != "pull":
 		return address.Address{}, false
 	}
 	if _, ok := repoName(target.Workspace + "/" + target.Path[0]); !ok {

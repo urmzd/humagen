@@ -3,6 +3,7 @@ import {
   type FileEdit,
   failedCommands,
   fileEdits,
+  recoveredCalls,
   type Task,
   type Turn,
 } from "@humagen/core";
@@ -22,27 +23,31 @@ export function workSummary(
   tasks: readonly Task[],
   copy: Copy = defaultCopy,
   turnEdits?: Map<string, FileEdit>,
+  /** Failed calls a later call recovered (`recoveredCalls`): counted as retried, not failed. */
+  recovered: ReadonlySet<string> = recoveredCalls(tasks),
 ): string {
   const w = copy.conversation.toolLine;
   const own = tasks.filter((t) => !t.subagent);
   const all = turnEdits ?? fileEdits(tasks);
   const order: string[] = [];
-  const count = new Map<string, { n: number; failed: number; first: Task }>();
+  type Tally = { n: number; failed: number; retried: number; first: Task };
+  const count = new Map<string, Tally>();
   for (const t of own) {
     const k = all.has(t.id) ? "file" : lineKind(t);
-    const was = count.get(k);
+    let was = count.get(k);
     if (!was) {
       order.push(k);
-      count.set(k, { n: 1, failed: callFailed(t) ? 1 : 0, first: t });
-    } else {
-      was.n += 1;
-      if (callFailed(t)) was.failed += 1;
+      was = { n: 0, failed: 0, retried: 0, first: t };
+      count.set(k, was);
     }
+    was.n += 1;
+    if (recovered.has(t.id)) was.retried += 1;
+    else if (callFailed(t)) was.failed += 1;
   }
   const written = own.flatMap((t) => (all.has(t.id) ? [all.get(t.id) as FileEdit] : []));
   const paths = new Set(written.map((e) => e.path));
   const phrases = order.map((k) => {
-    const { n, failed, first } = count.get(k) as { n: number; failed: number; first: Task };
+    const { n, failed, retried, first } = count.get(k) as Tally;
     const notes: string[] = [];
     let phrase: string;
     if (k === "file") {
@@ -65,6 +70,7 @@ export function workSummary(
             : w[kind].a;
     }
     if (failed > 0) notes.push(w.failed(failed));
+    if (retried > 0) notes.push(w.retried(retried));
     return notes.length ? `${phrase} (${notes.join(", ")})` : phrase;
   });
   return phrases.map((p, i) => (i === 0 ? p : p.charAt(0).toLowerCase() + p.slice(1))).join(", ");

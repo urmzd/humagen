@@ -1,4 +1,4 @@
-import { toolCommand, toolFailed, toolKind } from "./timeline";
+import { toolCommand, toolFailed, toolKind, toolTarget } from "./timeline";
 import type { Task } from "./types";
 
 /**
@@ -62,6 +62,37 @@ export function failedCommands(tasks: readonly Task[]): (CommandResult & { id: s
       .slice(i + 1)
       .some((later) => later.result?.command === result.command && !later.result.failed);
     if (!fixed) out.push({ ...result, id });
+  }
+  return out;
+}
+
+/** The tool a call was made to, by name, or its title when the stream gave no name. */
+const toolName = (task: Pick<Task, "tool" | "title">) => task.tool || task.title;
+
+/**
+ * The failed calls in a turn that a later call recovered, by id. A call that
+ * failed is recovered when a later call in the same turn ended without
+ * failing and either went to the same tool or was pointed at the same
+ * target. A command needs the same command line: a different command
+ * through the same shell is not a retry. A failure no later call recovered
+ * stays a failure.
+ *
+ * Pass every call of the turn, in order, so a retry in a later run of steps
+ * counts.
+ */
+export function recoveredCalls(tasks: readonly Task[]): Set<string> {
+  const out = new Set<string>();
+  for (const [i, task] of tasks.entries()) {
+    if (!toolFailed(task)) continue;
+    const command = toolKind(task) === "run" ? toolCommand(task) : undefined;
+    const target = toolTarget(task);
+    const name = toolName(task);
+    const recovered = tasks.slice(i + 1).some((later) => {
+      if (later.status !== "complete" || callFailed(later)) return false;
+      if (command !== undefined) return toolCommand(later) === command;
+      return (!!name && toolName(later) === name) || (!!target && toolTarget(later) === target);
+    });
+    if (recovered) out.add(task.id);
   }
   return out;
 }

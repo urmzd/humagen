@@ -176,7 +176,7 @@ func (c *Connector) Actions() []connector.Action {
 	actions := c.Connector.Actions()
 	for i, a := range actions {
 		if readActions[a.Name] {
-			actions[i].Invoke = c.grantedRead(a.Invoke)
+			actions[i].Invoke = c.grantedRead(a.Name, a.Invoke)
 		}
 	}
 	if c.cfg.Mutations {

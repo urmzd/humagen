@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callFailed, commandResult, failedCommands } from "./command";
+import { callFailed, commandResult, failedCommands, recoveredCalls } from "./command";
 import { workTurn } from "./fixtures/work";
 import type { Task } from "./types";
 
@@ -90,5 +90,75 @@ describe("the failed commands a turn leaves standing", () => {
       shell("c", "ls", "exit 0\n"),
     ];
     expect(failedCommands(tasks).map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+const read = (id: string, address: string, over: Partial<Task> = {}): Task => ({
+  id,
+  title: "Read GitHub context",
+  tool: "github_read_context",
+  status: "complete",
+  input: JSON.stringify({ address }),
+  output: "{}",
+  ...over,
+});
+const refused = { status: "error" as const, output: "connector: undeliverable" };
+
+describe("a failed call a later call recovered", () => {
+  it("is recovered by a later success of the same tool, even at another address", () => {
+    const calls = [
+      read("a", "urmzd/humagen", refused),
+      read("b", "github://urmzd/humagen/pull/541"),
+    ];
+    expect([...recoveredCalls(calls)]).toEqual(["a"]);
+  });
+
+  it("is recovered by a later success at the same target through another tool", () => {
+    const fetch: Task = {
+      id: "b",
+      title: "Fetch",
+      tool: "web_fetch",
+      status: "complete",
+      input: JSON.stringify({ url: "https://github.com/urmzd/humagen/pull/541" }),
+    };
+    const calls = [read("a", "https://github.com/urmzd/humagen/pull/541", refused), fetch];
+    expect([...recoveredCalls(calls)]).toEqual(["a"]);
+  });
+
+  it("stays failed when nothing later succeeded, or only an earlier call did", () => {
+    expect(recoveredCalls([read("a", "x/y", refused)]).size).toBe(0);
+    expect(recoveredCalls([read("a", "x/y"), read("b", "x/y", refused)]).size).toBe(0);
+    expect(recoveredCalls([read("a", "x/y", refused), read("b", "x/y", refused)]).size).toBe(0);
+    // A later call still running has not succeeded yet.
+    expect(
+      recoveredCalls([read("a", "x/y", refused), read("b", "x/y", { status: "in_progress" })]).size,
+    ).toBe(0);
+  });
+
+  it("counts a result that says the action failed as a failure, and not as a recovery", () => {
+    const said = { output: "action failed: not granted" };
+    expect([...recoveredCalls([read("a", "x/y", said), read("b", "x/z")])]).toEqual(["a"]);
+    expect(recoveredCalls([read("a", "x/y", refused), read("b", "x/z", said)]).size).toBe(0);
+  });
+
+  it("needs the same command line for a command", () => {
+    const broken = { status: "error" as const, output: "spawn failed" };
+    expect(
+      recoveredCalls([shell("a", "go test ./...", undefined, broken), shell("b", "ls", "exit 0\n")])
+        .size,
+    ).toBe(0);
+    expect([
+      ...recoveredCalls([
+        shell("a", "go test ./...", undefined, broken),
+        shell("b", "go test ./...", "exit 0\n"),
+      ]),
+    ]).toEqual(["a"]);
+    // A rerun that exits non-zero did not recover it.
+    expect(
+      recoveredCalls([
+        shell("a", "go test ./...", undefined, broken),
+        shell("b", "go test ./...", "exit 1\n"),
+      ]).size,
+    ).toBe(0);
   });
 });

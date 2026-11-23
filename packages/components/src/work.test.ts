@@ -19,6 +19,16 @@ describe("workSummary", () => {
     );
   });
 
+  it("says a failure a later call recovered as retried, and one it did not as failed", () => {
+    const refused = { status: "error" as const, output: "connector: undeliverable" };
+    const retried = [
+      call("1", "github_read_context", { address: "urmzd/humagen" }, refused),
+      call("2", "github_read_context", { address: "github://urmzd/humagen/pull/541" }),
+    ];
+    expect(workSummary(retried)).toBe("Checked 2 sources (1 retried)");
+    expect(workSummary([...retried].reverse())).toBe("Checked 2 sources (1 failed)");
+  });
+
   it("says lines added and removed across every file written", () => {
     const tasks = [
       call("1", "file_edit", { path: "a.ts", old_string: "a\nb", new_string: "a\nc\nd" }),
@@ -40,13 +50,14 @@ describe("workSummary", () => {
   it("counts a call that failed with its kind, a non-zero exit among them", () => {
     const tasks = [
       call("1", "shell", { command: "make" }, { output: "exit 2\nboom" }),
+      // The page fetched first: no later fetch recovered the one that failed.
+      call("3", "web_fetch", { url: "https://example.org" }),
       call(
         "2",
         "web_fetch",
         { url: "https://example.com" },
         { status: "error", output: "timeout" },
       ),
-      call("3", "web_fetch", { url: "https://example.org" }),
     ];
     expect(workSummary(tasks)).toBe("Ran a command (1 failed), fetched 2 pages (1 failed)");
   });
