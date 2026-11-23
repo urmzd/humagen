@@ -115,7 +115,13 @@ jobs:
   image:
     name: Image
     needs: release
-    if: needs.release.outputs.released == 'true'
+    # A bare condition means success() too, and success() fails when any job
+    # upstream was skipped, ci included (it is skipped when the tree already
+    # passed). So the release's own result is checked instead.
+    if: >-
+      ${{ !cancelled()
+      && needs.release.result == 'success'
+      && needs.release.outputs.released == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
