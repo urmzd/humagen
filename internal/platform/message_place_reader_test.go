@@ -190,3 +190,117 @@ func TestAPlacesRootIsItsOwnTenants(t *testing.T) {
 		t.Fatalf("the root kept %+v, want it as it was: %+v", after, before)
 	}
 }
+
+// sameRoot is sameKept without the workspace's event count, for a root
+// compared across work done elsewhere.
+func sameRoot(a, b placeKept) bool {
+	a.Events, b.Events = 0, 0
+	return sameKept(a, b)
+}
+
+func TestAMessageNamingANewPlaceStartsTheCallersOwnRoot(t *testing.T) {
+	p, st, _, _ := placeRoom(t)
+	vic := placeOperator("vic", tenant)
+	// The request names the app's client, an audience, the app's user and
+	// files, on the request's ref and on the message's: none is read.
+	ref := &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0TEAM", Channel: "G01OTHER", TS: "1700000001.000100", User: "U0ANA", AppUser: "UAPP", Files: true, Audience: &platform.SurfaceAudience{Type: platform.ChannelPrivate, Members: []string{"U0ANA", "U0BEN"}}}
+	own := *ref
+	in := sayIn("@helper hello", ref)
+	in.Messages[0].Ref = &own
+	out, err := p.SendMessages(t.Context(), vic, in)
+	if err != nil || !out.Created {
+		t.Fatalf("a message naming a new place = %+v, %v", out, err)
+	}
+	th, err := p.Threads.Get(tenant, out.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, err := p.PersonalProject(vic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Project != mine.Name || th.Visibility != threads.Private || th.Surface != nil {
+		t.Fatalf("the root is filed in %q, %s, surface %v; want %q, private, none", th.Project, th.Visibility, th.Surface, mine.Name)
+	}
+	got := keptOf(t, p, st, out.Root)
+	if !slices.Equal(got.People, []string{"vic"}) || got.Delivery {
+		t.Fatalf("the root keeps %+v, want vic alone and nowhere to deliver", got)
+	}
+	if got.Audience.Kind != "direct" || !slices.Equal(got.Audience.Members, []string{"vic"}) || got.Audience.Unmapped != 0 {
+		t.Fatalf("the root's audience = %+v, want the caller's own", got.Audience)
+	}
+	for _, r := range out.Posted.Runs {
+		if r.Client != "" || r.Tag().Channel == "slack://T0TEAM/G01OTHER?thread=1700000001.000100" {
+			t.Fatalf("the run answers on %q through %q", r.Tag().Channel, r.Client)
+		}
+	}
+	for _, who := range []string{"ana", "ben"} {
+		if p.SeesSession(placeOperator(who, tenant), out.Root) {
+			t.Fatalf("%s reads the root", who)
+		}
+	}
+}
+
+func TestASurfaceStartsItsOwnRootWhereSomeoneNamedThePlaceFirst(t *testing.T) {
+	p, st, machine, _ := placeRoom(t)
+	vic := placeOperator("vic", tenant)
+	const thread = "1700000001.000100"
+	mine, err := p.SendMessages(t.Context(), vic, sayIn("@helper hello", &platform.ExternalRef{Type: platform.RefSlack, Team: "T0TEAM", Channel: "G01OTHER", TS: thread}))
+	if err != nil || !mine.Created {
+		t.Fatalf("a message naming a new place = %+v, %v", mine, err)
+	}
+	for _, r := range mine.Posted.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
+	before := keptOf(t, p, st, mine.Root)
+	// The thread's first message on Slack, as the app brings it.
+	first, started, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("G01OTHER", thread, "", "<@UAPP> status?"), platform.ChannelPrivate, "U0ANA", "U0BEN"))
+	if err != nil || !started {
+		t.Fatalf("the app's first message there = started %v, %v", started, err)
+	}
+	if first.ID == mine.Root || first.Parent != "slack://T0TEAM/G01OTHER/"+thread || first.Thread.Surface == nil {
+		t.Fatalf("the surface's root = %s at %q, surface %v; want its own at the place", first.ID, first.Parent, first.Thread.Surface)
+	}
+	if after := keptOf(t, p, st, mine.Root); !sameRoot(before, after) {
+		t.Fatalf("the caller's root kept %+v, want it as it was: %+v", after, before)
+	}
+	if got := keptOf(t, p, st, first.ID); !slices.Equal(got.People, []string{"ana", "ben"}) || got.Audience.Kind != "private" {
+		t.Fatalf("the surface's root keeps %+v", got)
+	}
+	if p.SeesSession(vic, first.ID) || p.SeesSession(placeOperator("ana", tenant), mine.Root) {
+		t.Fatal("one root is read by the other's people")
+	}
+	await(t, p, sessionRun(t, first).ID, runs.Completed)
+	// The thread's next message lands in the surface's root.
+	next, started, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("G01OTHER", thread, "1700000001.000300", "<@UAPP> and now?"), platform.ChannelPrivate, "U0ANA", "U0BEN"))
+	if err != nil || started || next.ID != first.ID {
+		t.Fatalf("the app's next message = %s (started %v), %v; want %s", next.ID, started, err, first.ID)
+	}
+	// The caller's own root is still theirs to post to by its id.
+	if _, err := p.SendMessagesUnder(t.Context(), vic, mine.Root, sayIn("@helper and now?", nil)); err != nil {
+		t.Fatalf("the caller's reply under their own root = %v", err)
+	}
+	if after := keptOf(t, p, st, mine.Root); !slices.Equal(after.People, before.People) || !slices.Equal(after.Audience.Members, before.Audience.Members) || after.Audience.Kind != before.Audience.Kind {
+		t.Fatalf("the caller's root keeps %+v, want its people and audience as they were: %+v", after, before)
+	}
+}
+
+func TestAListeningMessageThatIsNotTakenLeavesTheRootsPeople(t *testing.T) {
+	p, st, machine, _ := placeRoom(t)
+	// A thread the app was not asked in: its root listens to nobody.
+	quiet := withAudience(slackSession("G01OTHER", "1700000002.000100", "", "the deploy failed at 2am"), platform.ChannelPrivate, "U0ANA", "U0BEN")
+	quiet.PostOnly = true
+	root, started, err := p.StartSurfaceSession(t.Context(), machine, quiet)
+	if err != nil || !started {
+		t.Fatalf("a thread's first message, posted only = started %v, %v", started, err)
+	}
+	before := keptOf(t, p, st, root.ID)
+	heard := withAudience(slackSession("G01OTHER", "1700000002.000100", "1700000002.000300", "and again at 3am"), platform.ChannelPrivate, "U0ANA", "U0VIC")
+	heard.Listen = true
+	if _, _, err := p.StartSurfaceSession(t.Context(), machine, heard); !errors.Is(err, platform.ErrNotListening) {
+		t.Fatalf("a message that addressed nobody, where nobody listens = %v", err)
+	}
+	if after := keptOf(t, p, st, root.ID); !sameKept(before, after) {
+		t.Fatalf("the root kept %+v, want it as it was: %+v", after, before)
+	}
+}

@@ -30,6 +30,10 @@ import (
 // conversation before root sessions, which stays one.
 var ErrSurfaceThreadBeforeSessions = fmt.Errorf("%w: this thread started before sessions; post to it as a conversation, or start a new thread", threads.ErrExists)
 
+// surfaceRootLabel labels a surface thread's root session when the place's
+// unlabelled root was started by someone naming the place, not by a surface.
+const surfaceRootLabel = "surface"
+
 // surfacePlace is the address of a surface thread's root session.
 func surfacePlace(team, channel, ts string) string {
 	return "slack://" + team + "/" + channel + "/" + ts
@@ -115,25 +119,37 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 			return SessionView{}, false, fmt.Errorf("%w: nobody answers this chat here: the server has no entry agent and %s names no default agent", ErrNoDefault, c.ID)
 		}
 	}
-	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: surfacePlace(c.Identity.Team, ref.Channel, ref.TS), Agent: owner, Channel: wire.Channel(who.Tenant)})
-	if err != nil {
-		return SessionView{}, false, err
-	}
 	// A channel thread whose first message was addressed to the app is
 	// listened to once the app has answered there (listenOnAnswer); a direct
 	// message needs no listening.
 	addressed := !in.PostOnly && !directMessage(ref.Channel) && ref.message() == ref.TS
 	startText, _ := p.surfaceText(who.Tenant, c, ref, in.Text)
-	th := threads.Thread{ID: rec.ID, Addressed: addressed, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), TitleSource: threads.TitlePlaceholder, Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
-	_, err = p.Threads.Create(who.Tenant, th, p.now())
-	started = err == nil
-	if err != nil && !errors.Is(err, threads.ErrExists) {
-		return SessionView{}, false, err
+	var th threads.Thread
+	// The place's root is the surface's when a surface started it. A root
+	// someone started there by naming the place stays theirs, as it is: the
+	// surface's root is then opened beside it, under its own label.
+	for _, label := range []string{"", surfaceRootLabel} {
+		rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: surfacePlace(c.Identity.Team, ref.Channel, ref.TS), Agent: owner, Label: label, Channel: wire.Channel(who.Tenant)})
+		if err != nil {
+			return SessionView{}, false, err
+		}
+		th = threads.Thread{ID: rec.ID, Addressed: addressed, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), TitleSource: threads.TitlePlaceholder, Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+		_, err = p.Threads.Create(who.Tenant, th, p.now())
+		started = err == nil
+		if err != nil && !errors.Is(err, threads.ErrExists) {
+			return SessionView{}, false, err
+		}
+		if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
+			return SessionView{}, false, err
+		}
+		if started || th.Surface != nil {
+			break
+		}
 	}
-	if err := p.audiences.Put(who.Tenant, rec.ID, aud); err != nil {
-		return SessionView{}, false, err
+	if th.Surface == nil {
+		return SessionView{}, false, fmt.Errorf("%w: this place's session was not started on a surface", threads.ErrExists)
 	}
-	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
+	if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
 		return SessionView{}, false, err
 	}
 	out, err = p.surfacePost(ctx, who, th, post)
