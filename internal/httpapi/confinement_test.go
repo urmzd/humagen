@@ -736,6 +736,10 @@ func (h hidden) value(path, param string) (string, bool) {
 		return h.variant, true
 	case "client":
 		return h.client, true
+	case "account":
+		// A user id on the hidden client's surface; the client itself is
+		// what an outsider cannot find.
+		return "U01HIDDEN", prefix("/api/clients/")
 	case "provider":
 		return h.provider, true
 	case "part":
