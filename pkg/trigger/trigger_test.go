@@ -184,3 +184,150 @@ func TestSaidIsTheMessageWithoutItsQuotes(t *testing.T) {
 		}
 	}
 }
+
+// Runes whose lower case is longer or shorter than they are: the Kelvin
+// sign, the dotted capital I, the capital sharp s and the stroked capital A.
+const (
+	kelvin   = "K"
+	dottedI  = "İ"
+	sharpS   = "ẞ"
+	strokedA = "Ⱥ"
+)
+
+func TestOffsetsAreTheSameInAnyCase(t *testing.T) {
+	long := []string{trigger.Name, "humagen-acme"}
+	for _, tc := range []struct {
+		name    string
+		text    string
+		handles []string
+		asked   bool
+		agent   string
+		want    string
+	}{
+		{name: "kelvin signs before an at sign", text: strings.Repeat(kelvin, 4) + "@", handles: handles},
+		{name: "dotted capitals before an open comment", text: strings.Repeat(dottedI, 3) + "<!-- x", handles: handles},
+		{name: "kelvin signs after the trigger, longer handle", text: "@humagen" + kelvin + kelvin, handles: long, asked: true, want: kelvin + kelvin},
+		{name: "kelvin signs then the trigger", text: kelvin + kelvin + " @humagen go", handles: handles, asked: true, want: kelvin + kelvin + " @humagen go"},
+		{name: "dotted capitals then the trigger and an agent", text: dottedI + dottedI + "\n\n@humagen ask docs about " + dottedI, handles: handles, asked: true, agent: "docs", want: dottedI + dottedI + "\n\n@humagen ask docs about " + dottedI},
+		{name: "trigger opens, capital sharp s after", text: "@HUMAGEN " + sharpS + " stra" + sharpS + "e", handles: handles, asked: true, want: sharpS + " stra" + sharpS + "e"},
+		{name: "stroked capitals then the trigger", text: strokedA + strokedA + strokedA + " @humagen", handles: handles, asked: true, want: strokedA + strokedA + strokedA + " @humagen"},
+		{name: "trigger in a comment after dotted capitals", text: dottedI + dottedI + dottedI + dottedI + " <!-- @humagen -->", handles: handles},
+		{name: "trigger after a comment after kelvin signs", text: kelvin + "<!-- " + kelvin + " -->@humagen go", handles: handles, asked: true, want: kelvin + "<!-- " + kelvin + " -->@humagen go"},
+		{name: "trigger in a code element after kelvin signs", text: kelvin + kelvin + "<CODE>@humagen</CODE> " + kelvin, handles: handles},
+		{name: "trigger in a pre element after capital sharp s", text: sharpS + sharpS + "<pre>\n@humagen\n</pre>", handles: handles},
+		{name: "trigger in a fence after kelvin signs", text: kelvin + kelvin + "\n```\n@humagen\n```\n", handles: handles},
+		{name: "trigger after a fence of dotted capitals", text: "```\n" + dottedI + dottedI + "\n```\n@humagen: go " + dottedI, handles: handles, asked: true, want: "```\n" + dottedI + dottedI + "\n```\n@humagen: go " + dottedI},
+		{name: "trigger in a code span after kelvin signs", text: kelvin + kelvin + kelvin + " `@humagen`", handles: handles},
+		{name: "trigger in a quote of kelvin signs", text: "> " + kelvin + kelvin + " @humagen\n", handles: handles},
+		{name: "trigger under a quote of dotted capitals", text: "> " + dottedI + dottedI + dottedI + "\n\n@humagen thanks", handles: handles, asked: true, want: "> " + dottedI + dottedI + dottedI + "\n\n@humagen thanks"},
+		{name: "kelvin sign ends the trigger's word", text: kelvin + " @humagen" + kelvin + " go", handles: handles, asked: true, want: kelvin + " @humagen" + kelvin + " go"},
+		{name: "bytes that are not text before the trigger", text: "\xff\xfe\xff @humagen go", handles: handles, asked: true, want: "\xff\xfe\xff @humagen go"},
+		{name: "bytes that are not text before an open comment", text: "\xff\xff\xff\xff<!--", handles: handles},
+		{name: "accented capitals before the trigger", text: "ÉÉ @Humagen go", handles: handles, asked: true, want: "ÉÉ @Humagen go"},
+		{name: "a handle with an accented capital", text: "@École go", handles: []string{"école"}, asked: true, want: "go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ask, ok := trigger.Read(tc.text, tc.handles, agents)
+			if ok != tc.asked || ask.Agent != tc.agent || ask.Text != tc.want {
+				t.Fatalf("Read(%q) = %+v, %v; want agent %q, text %q, %v", tc.text, ask, ok, tc.agent, tc.want, tc.asked)
+			}
+			start, end, found := trigger.Find(tc.text, tc.handles...)
+			if found != tc.asked {
+				t.Fatalf("Find(%q) found = %v, want %v", tc.text, found, tc.asked)
+			}
+			if found && (start < 0 || end > len(tc.text) || start >= end || tc.text[start] != '@') {
+				t.Fatalf("Find(%q) = %d, %d", tc.text, start, end)
+			}
+		})
+	}
+}
+
+func TestSaidKeepsEveryRuneAsWritten(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		text  string
+		said  string
+		plain bool
+	}{
+		{name: "kelvin signs", text: kelvin + kelvin + " review", said: kelvin + kelvin + " review", plain: true},
+		{name: "a quote of dotted capitals", text: "> " + dottedI + dottedI + "\n\nreview " + dottedI, said: "\nreview " + dottedI, plain: true},
+		{name: "a comment after dotted capitals", text: dottedI + dottedI + dottedI + "<!-- x", said: "", plain: false},
+		{name: "a comment between kelvin signs", text: kelvin + "\n<!-- " + kelvin + " -->\n" + kelvin, said: kelvin + "\n" + kelvin, plain: false},
+		{name: "a code element after capital sharp s", text: sharpS + sharpS + "\n<Code>x</Code>\nreview", said: sharpS + sharpS + "\nreview", plain: false},
+		{name: "a fence after stroked capitals", text: strokedA + strokedA + "\n```\nreview\n```\n", said: strokedA + strokedA + "\n", plain: false},
+		{name: "bytes that are not text", text: "\xff\xff<pre>x</pre>\nreview", said: "review", plain: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			said, plain := trigger.Said(tc.text)
+			if said != tc.said || plain != tc.plain {
+				t.Fatalf("Said(%q) = %q, %v; want %q, %v", tc.text, said, plain, tc.said, tc.plain)
+			}
+		})
+	}
+}
+
+// seeds are texts the fuzz tests start from.
+var seeds = []string{
+	"@humagen what changed?",
+	"@HUMAGEN[bot]: ask docs about this",
+	"could @humagen take a look?",
+	"> quoted @humagen\n\n@humagen docs: go",
+	"```\n@humagen\n```\n@humagen-acme go",
+	"<!-- @humagen --> <code>@humagen</code> <PRE>x</PRE>",
+	"- item\n\n    @humagen\n\n    code `@humagen`",
+	strings.Repeat(kelvin, 4) + "@",
+	strings.Repeat(dottedI, 3) + "<!-- x",
+	"@humagen" + kelvin + kelvin,
+	sharpS + "<code " + strokedA + ">@humagen</code>" + sharpS,
+	"\xff\xfe @humagen \xc3",
+}
+
+func FuzzRead(f *testing.F) {
+	for _, s := range seeds {
+		f.Add(s, "humagen-acme")
+	}
+	f.Fuzz(func(t *testing.T, text, handle string) {
+		hs := []string{trigger.Name, handle}
+		start, end, found := trigger.Find(text, hs...)
+		if found && (start < 0 || start >= end || end > len(text) || text[start] != '@') {
+			t.Fatalf("Find(%q, %q) = %d, %d", text, hs, start, end)
+		}
+		if !found && (start != 0 || end != 0) {
+			t.Fatalf("Find(%q, %q) = %d, %d with nothing found", text, hs, start, end)
+		}
+		ask, ok := trigger.Read(text, hs, agents)
+		if ok != found {
+			t.Fatalf("Read(%q, %q) found = %v, Find found = %v", text, hs, ok, found)
+		}
+		if len(ask.Text) > len(text) || !strings.Contains(text, ask.Text) {
+			t.Fatalf("Read(%q, %q) text = %q, which the text does not hold", text, hs, ask.Text)
+		}
+		if _, n := trigger.Leading(text, agents); n < 0 || n > len(text) {
+			t.Fatalf("Leading(%q) n = %d", text, n)
+		}
+	})
+}
+
+func FuzzSaid(f *testing.F) {
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, text string) {
+		said, plain := trigger.Said(text)
+		if len(said) > len(text) {
+			t.Fatalf("Said(%q) = %q, longer than the text", text, said)
+		}
+		// What was said is whole lines of the text, in order.
+		rest := text
+		for _, line := range strings.SplitAfter(said, "\n") {
+			at := strings.Index(rest, line)
+			if at < 0 {
+				t.Fatalf("Said(%q) = %q, with a line the text does not hold", text, said)
+			}
+			rest = rest[at+len(line):]
+		}
+		if plain && !strings.Contains(text, ">") && said != text {
+			t.Fatalf("Said(%q) = %q, plain with no quote", text, said)
+		}
+	})
+}
