@@ -348,7 +348,10 @@ test("legacy and malformed citation facts remain explicitly unproven", () => {
 
 
 test("provider credential failures preserve safe context without exposing a secret", () => {
-  const failure = failureOf("Anthropic API key sk-private is unauthorized", "r1");
+  const failure = failureOf(
+    "provider anthropic (model claude, status 401): API key sk-private is unauthorized",
+    "r1",
+  );
   assert.equal(failure.cause, "provider_credential");
   assert.equal(failure.retryable, false);
   assert.doesNotMatch(JSON.stringify(failure), /sk-private/);
@@ -389,7 +392,7 @@ test("each runtime error is read as its cause, the specific cause before the ret
     ["session: budget exceeded or not granted", "budget"],
     ["llm call exceeded timeout 30s: context deadline exceeded", "timeout"],
     ["connector: undeliverable: channel_not_found", "undeliverable"],
-    ["provider: 429 too many requests", "provider_rate_limited"],
+    ["provider: 429 too many requests", "rate_limited"],
     ["agent: step 2\nprovider: 529 overloaded", "unknown"],
   ];
   for (const [error, cause] of cases) {
@@ -410,8 +413,21 @@ test("a refusal by a tool or by the app the answer goes to is not said as the mo
     ["connector: undeliverable: slack: rate limited", "undeliverable"],
     ["status 401: unauthorized", "credential"],
     ["too many requests", "rate_limited"],
-    ["Anthropic API key is unauthorized", "provider_credential"],
-    ["openai: status 429: rate limit exceeded", "provider_rate_limited"],
+    // Named in passing, not in the runtime's form for a provider's error: said neutrally.
+    ["Anthropic API key is unauthorized", "credential"],
+    ["openai: status 429: rate limit exceeded", "rate_limited"],
+    ["provider anthropic (model claude-sonnet, status 401): invalid x-api-key", "provider_credential"],
+    ["provider openai (model gpt, status 429): rate limit exceeded", "provider_rate_limited"],
+    ["provider gemini (model g): too many requests", "provider_rate_limited"],
+    // The agent's handle and a tool's or server's name do not make it the model provider's.
+    ['runtime: run r1: agent "openai-evals" version 1.0.0: mcp: linear: unauthorized', "credential"],
+    ["mcp: google-drive: unauthorized", "credential"],
+    ["mcp: google-calendar: status 429 too many requests", "rate_limited"],
+    [
+      'runtime: run r1: agent "connector-bot" version 1.0.0: provider anthropic: status 401: invalid x-api-key',
+      "provider_credential",
+    ],
+    ["tool ask_model: provider openai: status 401: unauthorized", "credential"],
   ];
   for (const [error, cause] of cases) assert.equal(failureCause(error), cause, error);
   const words = defaultCopy.runFailure.because;
@@ -463,8 +479,23 @@ test("a failure offers what it offered before it was said in plain words, but fo
 });
 
 test("the runtime's words are kept only for a failure no sentence explains", () => {
-  for (const error of ["agent: step 2\nprovider: 529 overloaded", "durable: max attempts exhausted: weird thing"])
-    assert.equal(failureOf(error, "r").detail, error, error);
+  assert.equal(
+    failureOf("durable: max attempts exhausted: weird thing", "r").detail,
+    "durable: max attempts exhausted: weird thing",
+  );
+  // Of an error on several lines, only the last: the cause, as it was shown before.
+  assert.equal(failureOf("agent: step 2\nprovider: 529 overloaded", "r").detail, "provider: 529 overloaded");
+  assert.equal(failureOf("boom: sk-abcd\nefgh1234567890 trailing", "r").detail, "efgh1234567890 trailing");
+  const pem = [
+    "sign: bad key:",
+    "-----BEGIN PRIVATE KEY-----",
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC",
+    "-----END PRIVATE KEY-----",
+    "stopped after 2 steps",
+  ].join("\n");
+  const shown = failureOf(pem, "r").detail ?? "";
+  assert.equal(shown, "stopped after 2 steps");
+  assert.doesNotMatch(shown, /PRIVATE KEY|MIIEvQ|bad key/);
   for (const error of [
     NO_PROVIDER,
     "session: access denied",
@@ -487,6 +518,10 @@ test("the runtime's words are shown without an address's sign-in or query, and w
   assert.equal(
     shown("fetch https://dana:hunter2@files.example.test/a/b?sig=abc123&x=1 failed"),
     "fetch https://files.example.test/a/b failed",
+  );
+  assert.equal(
+    shown("read https://files.example.test/data/part-0.parquet?X-Sig=abc: status 500"),
+    "read https://files.example.test/data/part-0.parquet: status 500",
   );
   assert.equal(
     shown("postgres://svc:pw@db.example.test:5432/app: broken pipe"),

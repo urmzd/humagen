@@ -306,7 +306,7 @@ test("a failed run is the same failure in both", () => {
     kind: "internal",
     cause: "unknown",
     message: defaultCopy.runFailure.because.unknown,
-    detail: "agent: step 2\nprovider: 529 overloaded",
+    detail: "provider: 529 overloaded",
     reference: RUN,
   });
   // Keep the diagnostic reference for explicit reporting, out of the everyday response.

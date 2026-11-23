@@ -665,10 +665,20 @@ export function needsOf(run: Pick<Run, "needs_connection">): NonNullable<Turn["n
   });
 }
 
-/** Text that says a model provider is the one that refused, rather than a tool or the app the answer goes to. */
-const NAMES_MODEL_PROVIDER = /\b(?:provider|anthropic|openai|gemini|google|bedrock|vertex)\b/i;
-const NAMES_TOOL = /\b(?:tool|connector)\b/i;
-const fromModelProvider = (text: string) => NAMES_MODEL_PROVIDER.test(text) && !NAMES_TOOL.test(text);
+/**
+ * Whether the model provider is what refused: the error has a segment in the
+ * runtime's own form for one, "provider anthropic (model m, status 401): …"
+ * or "provider anthropic: …" (saige's ProviderError). The agent's handle and
+ * the names of tools and servers are not read for it, and a provider segment
+ * under a tool's or a server's own is theirs. Anything else is not said to be
+ * the model provider's.
+ */
+function fromModelProvider(error: string): boolean {
+  const text = error.replace(/\bagent "[^"]*" version [^:\s]*:/g, "");
+  const segment = /(?:^|:\s+|\n\s*)provider [^\s:()]+(?: \(model [^)]*\))?:/i.exec(text);
+  if (!segment) return false;
+  return !/(?:^|:\s+|\n\s*)(?:tool\b[^:\n]*|mcp|connector):/i.test(text.slice(0, segment.index + 1));
+}
 
 /**
  * The cause of a run's failure, read from the runtime's error, for the plain
@@ -743,7 +753,11 @@ const DETAILED: ReadonlySet<FailureCause> = new Set(["unknown", "max_attempts"])
 export function scrubbed(error: string): string {
   return error
     .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1")
-    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#"'<>]+)\?[^\s"'<>)]*/gi, "$1")
+    .replace(
+      /(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#"'<>]+)\?[^\s"'<>)]*/gi,
+      // A colon that ends the address, as in "…/file?sig=1: status 500", is the sentence's.
+      (whole: string, address: string) => (whole.endsWith(":") ? `${address}:` : address),
+    )
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [hidden]")
     .replace(
       /\b((?:api[_-]?key|access[_-]?token|token|secret|password|passwd)["']?\s*[=:]\s*)["']?[^\s"',;&]+["']?/gi,
@@ -755,18 +769,19 @@ export function scrubbed(error: string): string {
 
 /**
  * A run's failure from the runtime's error: its cause, said in plain words
- * (`copy.runFailure`), and how it is handled. The error itself is kept as
- * `detail`, for Show details, only where no sentence explains it, scrubbed,
- * and never when it names where a credential is kept.
+ * (`copy.runFailure`), and how it is handled. The error's last line is kept
+ * as `detail`, for Show details, only where no sentence explains it,
+ * scrubbed, and never when the error names where a credential is kept.
  */
 export function failureOf(error: string | undefined, reference: string): Failure {
   const cause = failureCause(error);
-  const detail = error?.trim();
+  // The last line is the cause; the lines above it are not shown.
+  const detail = lastLine(error);
   return {
     ...handling(error),
     cause,
     message: defaultCopy.runFailure.because[cause],
-    ...(detail && DETAILED.has(cause) && !CREDENTIAL_TEXT.test(detail)
+    ...(detail && DETAILED.has(cause) && !CREDENTIAL_TEXT.test(error ?? "")
       ? { detail: scrubbed(detail) }
       : {}),
     reference,
