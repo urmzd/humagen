@@ -319,7 +319,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 	// saved on its tag, so a retry answers the same way.
 	shape := ""
 	if c.Surface == clients.GitHub {
-		shape = githubShape(tag)
+		shape = githubShape(tag, c.Triggers())
 	}
 	var out []event.Envelope
 	for _, a := range who {

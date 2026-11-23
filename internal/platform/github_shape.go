@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/trigger"
 	"github.com/urmzd/saige/flow/event"
 )
 
@@ -15,7 +16,9 @@ import (
 // whose shape is review, or the exact command "review", "re-review" or
 // "/review". Anything else starts as a reply, and the agent turns it into a
 // review with start_review when the person asked for one in other words.
-func githubShape(tag event.Envelope) string {
+// handles are the client's triggers (clients.Client.Triggers), the one
+// mention that addresses a command.
+func githubShape(tag event.Envelope, handles []string) string {
 	_, kind, _, ok := channelRepository(tag.Channel)
 	if !ok || kind != "pull" {
 		return wire.ShapeReply
@@ -28,27 +31,32 @@ func githubShape(tag event.Envelope) string {
 	if _, requested := tag.Data.(event.GitHubReviewRequested); requested {
 		return wire.ShapeReview
 	}
-	if isReviewCommand(wire.TextOf(tag)) {
+	if isReviewCommand(wire.TextOf(tag), handles) {
 		return wire.ShapeReview
 	}
 	return wire.ShapeReply
 }
 
 // reviewCommand is the whole message as a command: "review", "re-review"
-// or "rereview", with trailing punctuation, or one that starts "/review".
-var reviewCommand = regexp.MustCompile(`^(?:re-?review|review)[.!?]*$|^/review\b`)
-
-// mentionWord is an @mention, which says who is asked, not what.
-var mentionWord = regexp.MustCompile(`@[A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9-]+)?(?:\[bot\])?`)
+// or "rereview", with closing punctuation, or a message that starts with
+// the word "/review".
+var reviewCommand = regexp.MustCompile(`^(?:re-?review|review)[.!?]*$|^/review(?:\s|$)`)
 
 // quotedLine is a quoted line: what a person replies to, not what they ask.
 var quotedLine = regexp.MustCompile(`(?m)^[ \t]*>.*$`)
 
-// isReviewCommand reports whether text, the message after the trigger, is
-// the review command. Nothing else is read for intent here: the agent reads
-// what a person meant.
-func isReviewCommand(text string) bool {
-	text = quotedLine.ReplaceAllString(text, " ")
-	text = strings.TrimSpace(mentionWord.ReplaceAllString(strings.ToLower(text), " "))
-	return reviewCommand.MatchString(text)
+// isReviewCommand reports whether text is the review command and nothing
+// else: the command alone, or addressed by a trigger that opens the
+// message ("@humagen review"). Case, surrounding space and quoted lines do
+// not count. A trigger inside a sentence, a mention of anyone else, and any
+// other word make the message a reply. Nothing else is read for intent
+// here: the agent reads what a person meant.
+func isReviewCommand(text string, handles []string) bool {
+	text = quotedLine.ReplaceAllString(text, "")
+	if ask, ok := trigger.Read(text, handles, nil); ok {
+		// A trigger that opens the message is its address and is taken
+		// out; one inside a sentence stays, so the sentence is no command.
+		text = ask.Text
+	}
+	return reviewCommand.MatchString(strings.ToLower(strings.TrimSpace(text)))
 }
