@@ -5,7 +5,7 @@ go 1.26.11
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.6
-	github.com/urmzd/saige v0.49.1-0.20261123041230-cfe63502e7fd
+	github.com/urmzd/saige v0.50.0
 	golang.org/x/oauth2 v0.37.0
 )
 
