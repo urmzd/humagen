@@ -49,6 +49,11 @@ the client's event rules, which are written to read issues, but asks no
 agent. A review request counts as its requester's, since only people with
 write access may request one.
 
+A person may also [link their GitHub account](connections.md#accounts-a-person-links)
+in the console. A link records their GitHub user id beside their subject. It
+is not read here yet: who may ask, and whom a comment acts for, is
+`github.people` and the repository's own access, as above.
+
 `github.askers` (`HUMAGEN_GITHUB_ASKERS`, comma separated) narrows this to
 the logins it lists:
 

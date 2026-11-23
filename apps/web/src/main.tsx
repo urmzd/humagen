@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { Branding } from "./api.ts";
 import { brandCopy } from "./branding.ts";
+import { takeConsentReturn } from "./consentReturn.ts";
 import { browserUpdates, noUpdates } from "./pwa.ts";
 import { installViewport } from "./viewport.ts";
 import "@humagen/render-web/fonts.css";
@@ -24,6 +25,8 @@ async function preload(): Promise<Branding | null> {
 }
 
 async function start() {
+  // A consent's return leaves the address before anything else reads it.
+  takeConsentReturn(window);
   installViewport(window);
   const root = document.getElementById("root");
   if (!root) throw new Error("missing #root");

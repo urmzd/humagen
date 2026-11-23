@@ -10473,6 +10473,59 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/clients/{id}/accounts:
+    get:
+      operationId: listClientLinkedAccounts
+      tags: [clients]
+      summary: List the people who linked an account on a client's surface
+      description: |
+        The GitHub or Slack accounts people in the workspace linked to
+        themselves. A link records who a person is on the surface; it does
+        not change whom the client acts for. A Slack client lists its own
+        team's. At most 200.
+      x-permission: clients:read
+      parameters:
+        - {$ref: "#/components/parameters/ClientID"}
+      responses:
+        "200":
+          description: The linked accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accounts]
+                properties:
+                  accounts:
+                    type: array
+                    maxItems: 200
+                    items: {$ref: "#/components/schemas/LinkedAccount"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/clients/{id}/accounts/{account}:
+    delete:
+      operationId: unlinkClientAccount
+      tags: [clients]
+      summary: Unlink a person's GitHub or Slack account
+      description: |
+        Removes the link a person made to this GitHub or Slack user (the
+        surface's user id; a Slack client's own team), as an administrator
+        does for someone who left. The person may link again. Audited.
+      x-permission: clients:write
+      parameters:
+        - {$ref: "#/components/parameters/ClientID"}
+        - name: account
+          in: path
+          required: true
+          description: The surface's user id, such as a GitHub numeric id or a Slack user id.
+          schema: {type: string, maxLength: 64}
+      responses:
+        "204": {description: Unlinked.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/clients/{id}:
     get:
       operationId: getClient
@@ -11522,6 +11575,34 @@ paths:
           "$ref": "#/components/responses/ServerError"
         '503':
           "$ref": "#/components/responses/Unavailable"
+  "/api/connections/consents/end":
+    post:
+      operationId: endConsent
+      tags:
+      - connections
+      summary: End an account link consent by its state
+      description: For a consent's return in a tab that began no link. The account
+        link consent the state names, whoever began it, is ended and completes nothing
+        afterwards; the answer is the same whether one was ended or not. Carries no
+        code.
+      x-permission: runs:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ConsentEnd"
+      responses:
+        '204':
+          description: The state names no consent that can be completed.
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
   "/api/connections/{provider}":
     get:
       operationId: getConnection
@@ -21952,6 +22033,38 @@ components:
           description: A confirmed provider rejection requires renewed consent.
         health:
           "$ref": "#/components/schemas/ConnectionHealth"
+        account:
+          description: For an account_oauth preset, the GitHub or Slack account
+            the caller linked. It holds no credential.
+          "$ref": "#/components/schemas/LinkedAccount"
+    LinkedAccount:
+      type: object
+      additionalProperties: false
+      description: |
+        One GitHub or Slack user linked to one person in a workspace. The
+        id is the surface's stable id for the user (GitHub's numeric user
+        id, Slack's user id); the login is for display only.
+      required: [surface, id, login, subject, linked_at]
+      properties:
+        surface:
+          type: string
+          enum: [github, slack]
+        id:
+          type: string
+        team:
+          type: string
+          description: The Slack team the user signed in from. Empty on GitHub.
+        login:
+          type: string
+          description: The GitHub login or Slack name at the last sign-in.
+        avatar_url:
+          type: string
+        subject:
+          type: string
+          description: The person the account is linked to.
+        linked_at:
+          type: string
+          format: date-time
     ConnectionRegistration:
       type: object
       additionalProperties: false
@@ -22013,6 +22126,15 @@ components:
           type: string
         code:
           type: string
+    ConsentEnd:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      properties:
+        state:
+          type: string
+          maxLength: 512
     BigQuerySetupCredential:
       type: object
       additionalProperties: false

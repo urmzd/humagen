@@ -3519,6 +3519,17 @@ export const defaultCopy = {
     noMatch: "No plugin matches that search.",
     noneInstalled: "You have not added any plugins yet. Add one from the catalog.",
     mcps: "MCPs",
+    /** Who you are on GitHub and Slack, linked by signing in there. */
+    accounts: {
+      title: "Connected accounts",
+      lede: "Who you are on GitHub and in Slack.",
+      connect: "Connect",
+      disconnect: "Disconnect",
+      notConnected: "Not connected",
+      /** On a GitHub or Slack app: who linked an account there. */
+      linkedPeople: "Linked people",
+      unlinkFailed: "The account could not be disconnected.",
+    },
     /** The shelves MCPs sit on. */
     families: {
       google: {

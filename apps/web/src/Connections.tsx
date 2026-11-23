@@ -20,6 +20,7 @@ import {
   type ToolCredentials,
 } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
+import { ConnectedAccounts, LinkedPeople } from "./ConnectedAccounts.tsx";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
@@ -36,6 +37,7 @@ import {
   ways,
   whereReferences,
 } from "./connections.ts";
+import { consentReturn } from "./consentReturn.ts";
 import { GitHubRules } from "./GitHubRules.tsx";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
@@ -474,17 +476,20 @@ export function Connections({
   }, [provider, resolve, selectConnection]);
   const callbackStarted = useRef(false);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has("state") || callbackStarted.current) return;
+    if (callbackStarted.current) return;
+    // Taken from the address when the console started (consentReturn.ts).
+    const back = consentReturn();
+    if (!back) return;
     callbackStarted.current = true;
     const provider = sessionStorage.getItem("humagen.connection.provider");
-    const nonce = params.get("state");
-    const code = params.get("code");
-    const installation = params.get("installation_id") ?? undefined;
-    // Remove authorization material from browser history before any request.
-    window.history.replaceState(window.history.state, "", "/connections");
+    const nonce = back.get("state");
+    const code = back.get("code");
+    const installation = back.get("installation_id") ?? undefined;
     sessionStorage.removeItem("humagen.connection.provider");
     if (!provider || !nonce || !code) {
+      // A return this tab cannot complete still ends the consent it names,
+      // by its state alone.
+      if (nonce) connectionApi.endConsent(nonce).catch(() => undefined);
       setProblem("Connection was not authorized. Choose Connect to try again.");
       return;
     }
@@ -920,6 +925,15 @@ export function Connections({
       {scope === "apps" && apps.length > 0 && rows(words.apps.title, apps)}
       {scope !== "apps" && (
         <>
+          {kind === "mcps" && (
+            <ConnectedAccounts
+              presets={presets}
+              busy={busy}
+              canConnect={canConnect}
+              onConnect={(preset) => connect(preset, "person")}
+              onDisconnect={disconnect}
+            />
+          )}
           <div className={kind === "mcps" ? "flex min-w-0 flex-wrap items-center gap-3" : "hidden"}>
             <label className="flex h-9 min-w-0 flex-1 basis-56 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
               <SearchIcon size={14} />
@@ -1133,6 +1147,9 @@ export function Connections({
                             onChanged={changed}
                           />
                         )}
+                        {(c.surface === "github" || c.surface === "slack") && (
+                          <LinkedPeople client={c.id} canUnlink={canWrite} />
+                        )}
                         {link(
                           {
                             page: "operations",
@@ -1145,7 +1162,9 @@ export function Connections({
                     ))}
                   {(selected === "slack" || selected === "github") && (
                     <details className="text-aui-sm">
-                      <summary className="cursor-pointer text-aui-muted">Set up by hand</summary>
+                      <summary className="-mx-1.5 w-fit cursor-pointer rounded-aui px-1.5 py-0.5 text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
+                        Set up by hand
+                      </summary>
                       <div className="pt-3">
                         <ClientConnect
                           key={selected}

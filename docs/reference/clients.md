@@ -446,6 +446,15 @@ withheld. Explicit action-policy Ask still requires the native approval path;
 automatic delivery cannot grant it. Direction edits preserve binding identity and
 require the channel's current version and existing project/client permissions.
 
+People link their own GitHub and Slack accounts in the console
+([accounts a person links](connections.md#accounts-a-person-links)). A link is
+the workspace's, keyed by the surface's own user id, and holds no credential.
+`GET /api/clients/{id}/accounts` (`clients:read`) lists who linked an account
+on a client's surface, and a Slack client lists its own team's.
+`DELETE /api/clients/{id}/accounts/{account}` (`clients:write`, audited)
+removes one, by the surface's user id. A link does not change whom a client
+acts for: its people map does.
+
 GitHub installations may set `github.people`, a bounded exact GitHub-login to
 workspace-subject map. Only that verified installation's map applies. Bot,
 unmapped and disabled-installation actors act for nobody. A mapping does not

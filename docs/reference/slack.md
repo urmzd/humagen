@@ -42,6 +42,11 @@ reach it: a new member of the workspace, a guest, or someone from another
 company in a Slack Connect channel. So the app refuses everyone else, and so
 does the server.
 
+A person may also [link their Slack account](connections.md#accounts-a-person-links)
+in the console. A link records their Slack user and team ids beside their
+subject. It is not read here yet: a linked person the client does not map
+starts nothing.
+
 | Entry | A mapped person | Anyone else |
 |---|---|---|
 | A direct message, a mention in any channel, a reply that mentions the app | Asks as themselves (`act_as`) | Told privately, nothing posted or run |

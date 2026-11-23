@@ -561,7 +561,7 @@ func (s *System) Defaults() {
 		sp.Server.Addr = "127.0.0.1:8080"
 	}
 	if sp.Server.PublicURL == "" {
-		sp.Server.PublicURL = "http://localhost:8080"
+		sp.Server.PublicURL = DefaultPublicURL
 	}
 	if sp.Server.Role == "" {
 		sp.Server.Role = "all"
@@ -634,7 +634,7 @@ func (s System) Tenant() string { return s.Spec.Auth.Tenant.Fixed }
 
 func (s System) check(kinds Kinds) error {
 	sp := s.Spec
-	if err := sp.Connections.check(); err != nil {
+	if err := sp.Connections.check(sp.Server.PublicURL); err != nil {
 		return err
 	}
 	if err := sp.Notifications.check(); err != nil {

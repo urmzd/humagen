@@ -56,6 +56,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if c := cfg.System.Spec.Connections; c == nil || c.EncryptionKey.Ref != "env:HUMAGEN_CONNECTION_KEY" || c.Redirect(cfg.System.Spec.Server.PublicURL) != "http://localhost:8080/connections/callback" {
+		t.Fatalf("the example's connections = %+v", c)
+	}
 	if sl := cfg.Platforms[0].Spec.Surfaces.Slack; sl.Machine != "humagen-slack" || len(sl.People) != 1 || sl.People["U0123456"] != "issuer|person-subject" {
 		t.Fatalf("the example's Slack app acts for %v as %q", sl.People, sl.Machine)
 	}

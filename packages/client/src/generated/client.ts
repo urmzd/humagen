@@ -62,6 +62,7 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  ConsentEnd,
   ContextResult,
   ContinueImportedDocumentBody,
   ConversationMemory,
@@ -132,6 +133,7 @@ import type {
   ListAuditResponse,
   ListChannelsResponse,
   ListClientBindingsResponse,
+  ListClientLinkedAccountsResponse,
   ListClientsResponse,
   ListCorporaResponse,
   ListDeletionsResponse,
@@ -9059,6 +9061,49 @@ is left out.
     });
   }
 
+  /** The GitHub or Slack accounts people in the workspace linked to
+themselves. A link records who a person is on the surface; it does
+not change whom the client acts for. A Slack client lists its own
+team's. At most 200.
+ */
+  async listClientLinkedAccounts(id: string, options?: RequestOptions): Promise<ListClientLinkedAccountsResponse> {
+    let path = "/api/clients/{id}/accounts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListClientLinkedAccountsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listClientLinkedAccountsRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListClientLinkedAccountsResponse>> {
+    let path = "/api/clients/{id}/accounts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListClientLinkedAccountsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Removes the link a person made to this GitHub or Slack user (the
+surface's user id; a Slack client's own team), as an administrator
+does for someone who left. The person may link again. Audited.
+ */
+  async unlinkClientAccount(id: string, account: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/clients/{id}/accounts/{account}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{account}", encodeURIComponent(String(account)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async unlinkClientAccountRaw(id: string, account: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/clients/{id}/accounts/{account}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{account}", encodeURIComponent(String(account)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
   /** Get a client */
   async getClient(id: string, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";
@@ -9698,6 +9743,25 @@ owns cannot be changed here and answers 409.
   async completeConnectionRaw(provider: string, body: ConnectionCallback, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/connections/{provider}/callback";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** For a consent's return in a tab that began no link. The account link consent the state names, whoever began it, is ended and completes nothing afterwards; the answer is the same whether one was ended or not. Carries no code. */
+  async endConsent(body: ConsentEnd, options?: RequestOptions): Promise<void> {
+    const path = "/api/connections/consents/end";
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async endConsentRaw(body: ConsentEnd, options?: RequestOptions): Promise<ApiResponse<void>> {
+    const path = "/api/connections/consents/end";
     return this.rawRequest<void>("POST", path, {
       body,
       contentType: "application/json",

@@ -54,6 +54,7 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -478,6 +479,9 @@ type Platform struct {
 	// Credentials is each person's own credentials for person-scoped tool
 	// providers. Values are kept in the store client secrets are kept in.
 	Credentials *credentials.Store
+	// Accounts is the GitHub and Slack accounts people linked to
+	// themselves. Nothing resolves a surface's user through it yet.
+	Accounts *accounts.Store
 	// Blobs holds the bytes of published files.
 	Blobs blob.Store
 	// ToolProviders is the MCP servers agents reach through "mcp:<name>"

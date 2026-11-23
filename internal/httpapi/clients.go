@@ -22,6 +22,8 @@ func (s *Server) clientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/clients", s.authed(auth.ClientsWrite, s.createClient))
 	mux.HandleFunc("GET /api/clients/{id}", s.authed(auth.ClientsRead, s.getClient))
 	mux.HandleFunc("GET /api/clients/{id}/bindings", s.authed(auth.ClientsRead, s.clientBindings))
+	mux.HandleFunc("GET /api/clients/{id}/accounts", s.authed(auth.ClientsRead, s.clientLinkedAccounts))
+	mux.HandleFunc("DELETE /api/clients/{id}/accounts/{account}", s.authed(auth.ClientsWrite, s.unlinkClientAccount))
 	mux.HandleFunc("PUT /api/clients/{id}", s.authed(auth.ClientsWrite, s.updateClient))
 	mux.HandleFunc("DELETE /api/clients/{id}", s.authed(auth.ClientsWrite, s.deleteClient))
 }
@@ -218,6 +220,26 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) deleteClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	if err := s.P.DeleteClient(r.Context(), who.Tenant, r.PathValue("id"), who.Subject); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// clientLinkedAccounts lists who linked an account on a client's surface.
+func (s *Server) clientLinkedAccounts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.LinkedAccounts(who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"accounts": out})
+}
+
+// unlinkClientAccount removes the account a surface user linked on a
+// client's surface, for an administrator.
+func (s *Server) unlinkClientAccount(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.UnlinkAccount(who, r.PathValue("id"), r.PathValue("account")); err != nil {
 		s.problem(w, err)
 		return
 	}

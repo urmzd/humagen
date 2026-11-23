@@ -192,7 +192,8 @@ func (p *Platform) slackSender(c clients.Client, team, user string) bool {
 // connector: the subject the enabled Slack clients serving the client's team
 // map the user to, or "" for nobody. A Slack user in another team is nobody
 // here whatever the map says; the caller checks the team (slackSender).
-// Linked accounts, once they land, are read here too.
+// The accounts people link (Accounts) are not read yet; when they are, they
+// are read here too.
 func (p *Platform) slackPerson(c clients.Client, id string) string {
 	id = strings.TrimSpace(id)
 	if c.Surface != clients.Slack || id == "" || c.Identity.Team == "" {

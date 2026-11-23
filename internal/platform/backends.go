@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -352,6 +353,7 @@ func (p *Platform) openStores(cfg Config) error {
 	// same way.
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
+	p.Accounts = accounts.Open(perRequest)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
 	p.deliveryFailures = state.NewTable[deliveryFailure](perRequest, "delivery_failures")
 	p.memoryFailures = egressguard.NewMemoryFailures()

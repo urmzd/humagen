@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -182,6 +183,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/clients/{id}/check", s.authed(auth.ClientsWrite, s.checkClientConnection))
 	mux.HandleFunc("POST /api/connections/{provider}/authorize", s.authed(auth.RunsWrite, s.authorizeConnection))
 	mux.HandleFunc("POST /api/connections/{provider}/callback", s.authed(auth.RunsWrite, s.completeConnection))
+	mux.HandleFunc("POST /api/connections/consents/end", s.authed(auth.RunsRead, s.endConsent))
 	mux.HandleFunc("DELETE /api/connections/{provider}", s.authed(auth.RunsWrite, s.disconnectConnection))
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
@@ -1343,6 +1345,12 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, accounts.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, accounts.ErrClaimed):
+		fail(w, http.StatusConflict, detail(err, accounts.ErrClaimed))
+	case errors.Is(err, platform.ErrAccountRefused):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAccountRefused))
 	case errors.Is(err, connectionauth.ErrUnavailable):
 		fail(w, 503, "connection authentication is unavailable")
 	case errors.Is(err, connectionauth.ErrInvalid):

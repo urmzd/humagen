@@ -27,6 +27,7 @@ import {
 import { accentAttribute, agentShown, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
+import { signInAddress } from "./consentReturn.ts";
 import type { Source as About } from "./mail.ts";
 import { useNotifications } from "./notificationDelivery.ts";
 import {
@@ -119,7 +120,7 @@ type Session =
 
 /** Where sign-in starts, coming back to this page after. */
 function signInUrl(): string {
-  return `/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  return signInAddress(window.location);
 }
 
 export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) {

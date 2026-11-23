@@ -203,6 +203,11 @@ spec:
         default:
           "issuer|person-subject": person@example.test
 
+  connections:              # consent for services people connect, and the accounts they link. Left out: both are off
+    encryption_key: {ref: env:HUMAGEN_CONNECTION_KEY}   # 32 random bytes in base64, kept outside the state database
+    redirect_url: http://localhost:8080/connections/callback   # left out: server.public_url, then /connections/callback
+    # clients, github: the registered applications; see Service connection authorization below
+
   extensions: []            # process-wide parts a binary registered, each a slot
 
   deploy:                   # slot: local | compose | kubernetes. Read by humagen deploy
@@ -1564,10 +1569,31 @@ for fields, deterministic checks, and approved regression overrides.
 
 ### Service connection authorization
 
-`System.spec.connections` defaults to disabled. It accepts an `encryption_key`
-secret reference, a `redirect_url`, optional registered `clients`, and optional
-GitHub App installation configuration under `github`. The key resolves to a
-base64-encoded 32-byte value. Registered clients bind an issuer, client ID,
-optional secret reference and scopes; native providers use their fixed profiles.
+`System.spec.connections` defaults to disabled: left out, nobody connects a
+service or links an account, and the server reads none of the settings below.
 Configuration does not grant host access, tools or agent routing. See
 [connection authorization](connections.md).
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `encryption_key` | required | A reference to 32 random bytes in base64. Pending consents and kept credentials are encrypted with it. Keep it outside the state database and across restarts. A key that cannot be read, or is not 32 bytes, stops the server |
+| `redirect_url` | `server.public_url` followed by `/connections/callback` | The one address every consent returns to, registered with each application. HTTPS, or plain HTTP only on a loopback address; anything else stops the server. It is never read from a request |
+| `clients` | none | Registered applications by name: `notion`, `linear`, `granola`, `atlassian` (an `issuer`, a `client_id`, an optional `client_secret` reference and `scopes`), and `google`, `drive`, `onedrive`, `bigquery`, `slack` (a `client_id` and a `client_secret` reference; `slack` also a `signing_secret`), whose issuer and scopes are fixed |
+| `github` | none | The GitHub App the console installs: `app_id`, `app_slug`, `client_id`, and references for `client_secret`, `private_key` and `webhook_secret` |
+
+People [link their own GitHub and Slack accounts](connections.md#accounts-a-person-links)
+through the same block. Each surface is on only when its OAuth client is
+known, and off otherwise:
+
+| Surface | Client id and secret | Else, from the environment |
+|---------|----------------------|----------------------------|
+| GitHub | `connections.github` (`client_id`, `client_secret`) | `HUMAGEN_GITHUB_CLIENT_ID` and `HUMAGEN_GITHUB_CLIENT_SECRET` |
+| Slack | `connections.clients.slack` (`client_id`, `client_secret`) | `HUMAGEN_SLACK_OAUTH_CLIENT_ID` and `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET` |
+
+The environment's pair is read only with a `connections` block, and the
+secret through `env:`, never stored. A client id set with no secret, or a
+secret that cannot be read, stops the server; a secret set with no id, or a
+variable the spec's app replaces, is not read, with a warning at start. `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET`
+is the Slack app's own client secret, from Slack; it is not
+`HUMAGEN_SLACK_CLIENT_SECRET`, which the example above uses for the secret the
+Slack app signs in to Humagen with (`surfaces.slack.humagen_client`).
