@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.193.0 (2026-11-23)
+
+### Breaking
+
+- **github**: only the humagen trigger asks; agents are named after it ([4e51145](https://github.com/urmzd/humagen/commit/4e5114515147df57bc18ed627fb5a45a19498e15))
+
+### Features
+
+- **github**: humagen is the one trigger on GitHub and Slack ([dc4b24d](https://github.com/urmzd/humagen/commit/dc4b24d561254634d0f3eb2e833e621273adc871))
+
+### Bug Fixes
+
+- **trigger**: whole tag names, and list paragraphs are prose ([421f0aa](https://github.com/urmzd/humagen/commit/421f0aa4048b15b1ac011bc3b6e93af356decb56))
+
+### Misc
+
+- **github**: declare the trigger's answer without an unused value ([1292e3c](https://github.com/urmzd/humagen/commit/1292e3c87f19128bef9d271268fbfbf78d6add4d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.192.1...v0.193.0)
+
+
 ## 0.192.1 (2026-11-23)
 
 ### Bug Fixes
