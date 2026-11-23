@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.195.4 (2026-11-23)
+
+### Bug Fixes
+
+- **web**: place an alert by its time when its run's root read hangs ([bd0a853](https://github.com/urmzd/humagen/commit/bd0a8533a6f3f88b50fd393bde196939287f6a42))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.3...v0.195.4)
+
+
 ## 0.195.3 (2026-11-23)
 
 ### Bug Fixes
