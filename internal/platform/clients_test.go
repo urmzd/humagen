@@ -618,13 +618,13 @@ func TestTwoGitHubClientsAreToldApartByTheAccountTheyServe(t *testing.T) {
 		return w.Code
 	}
 	// One installation's secret does not open the other's account.
-	if code := post("secret-acme-gh", "d0", "acme-labs", "202", "triage"); code != http.StatusUnauthorized {
+	if code := post("secret-acme-gh", "d0", "acme-labs", "202", "humagen"); code != http.StatusUnauthorized {
 		t.Fatalf("acme's secret on labs' account answered %d, want 401", code)
 	}
-	if code := post("secret-acme-gh", "d1", "acme", "101", "reviewer"); code != http.StatusOK {
+	if code := post("secret-acme-gh", "d1", "acme", "101", "humagen"); code != http.StatusOK {
 		t.Fatalf("acme delivery answered %d", code)
 	}
-	if code := post("secret-labs-gh", "d2", "acme-labs", "202", "triage"); code != http.StatusOK {
+	if code := post("secret-labs-gh", "d2", "acme-labs", "202", "humagen"); code != http.StatusOK {
 		t.Fatalf("labs delivery answered %d", code)
 	}
 	acme, labs := f.githubFor("token-acme-gh"), f.githubFor("token-labs-gh")

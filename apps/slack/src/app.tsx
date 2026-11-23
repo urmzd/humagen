@@ -56,7 +56,7 @@ import {
   type SerializeResult,
   suggestedPrompts,
 } from "@humagen/render-slack";
-import { BUILDER, choose, mayRoute, namesAgent, type Routing } from "./agents.ts";
+import { BUILDER, choose, mayRoute, namesAgent, type Routing, tagLeading } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
 import { CodeChannels } from "./codechannel.ts";
@@ -1506,8 +1506,12 @@ export class App {
         this.log(`thread history skipped: ${(e as Error).message}`);
       }
     }
+    // The agent named right after the app's mention is a tag for the platform.
+    const text = job.listen
+      ? job.text
+      : tagLeading(job.text, await this.agents().catch(() => [] as Agent[]));
     return post({
-      text: job.text,
+      text,
       act_as: asking,
       surface: this.surfaceOf(job, job.triggerTs),
       ...(job.listen ? { listen: true } : {}),

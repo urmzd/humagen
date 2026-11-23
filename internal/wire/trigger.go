@@ -358,6 +358,11 @@ func Clone(e event.Envelope) event.Envelope {
 	return e
 }
 
+// MetaTriggered marks a surface's request that holds the trigger
+// ("@humagen", pkg/trigger) and names no agent after it. Its host asks the
+// default where it is filed, not whichever agent answered there before.
+const MetaTriggered = "_humagen.triggered"
+
 // MetaSession is pinned by platform admission, never accepted from ingress.
 const MetaSession = "_humagen.session"
 

@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/trigger"
 )
 
 type Config struct {
@@ -79,7 +80,16 @@ func New(cfg Config) (*Connector, error) {
 	base.Feedback, base.ObserveDelivery, base.ContinueThread, base.StatusReactions, base.ActionChannels = cfg.Feedback, cfg.ObserveDelivery, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionChannels
 	base.Prepare = func(_ context.Context, tag *event.Envelope) error {
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
-			if agent, stripped, ok := mention.Find(wire.TextOf(*tag), cfg.Agents); ok {
+			text := wire.TextOf(*tag)
+			// The agent named right after the app's mention is asked, with or
+			// without an "@": "@Humagen docs-bot help", "@Humagen ask
+			// docs-bot ...". Agents are not Slack users, so a person cannot
+			// pick one from Slack's list.
+			at := leadingUser(text)
+			if agent, n := trigger.Leading(text[at:], cfg.Agents.Lookup); agent != "" {
+				wire.SetAgent(tag, agent)
+				wire.SetText(tag, strings.TrimSpace(text[:at]+text[at+n:]))
+			} else if agent, stripped, ok := mention.Find(text, cfg.Agents); ok {
 				wire.SetAgent(tag, agent)
 				wire.SetText(tag, stripped)
 			}
@@ -163,3 +173,20 @@ const (
 
 var NewFake = transport.NewFake
 var NewHTTPAPI = transport.NewHTTPAPI
+
+// leadingUser is how many bytes of text the Slack user it opens with takes,
+// with the space after it: the app's own mention, as the transport writes it
+// ("@U08BOT"). 0 when it opens with none.
+func leadingUser(text string) int {
+	if len(text) < 3 || text[0] != '@' || text[1] != 'U' && text[1] != 'W' {
+		return 0
+	}
+	i := 2
+	for i < len(text) && (text[i] >= 'A' && text[i] <= 'Z' || text[i] >= '0' && text[i] <= '9') {
+		i++
+	}
+	if i < len(text) && text[i] != ' ' && text[i] != '\t' && text[i] != ':' && text[i] != ',' {
+		return 0
+	}
+	return i
+}

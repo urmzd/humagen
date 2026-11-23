@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { choose, mayRoute } from "./agents.ts";
+import { choose, mayRoute, tagLeading } from "./agents.ts";
 import { NEEDED, readConfig, USEFUL } from "./config.ts";
 import {
   type ClientRecord,
@@ -71,7 +71,12 @@ test("choose: a named agent, then the default, then the platform's default", () 
   });
   assert.deepEqual(choose("ask @docs-bot, please", agents, {}), {
     agent: "docs-bot",
-    text: "ask , please",
+    text: "please",
+    how: "named",
+  });
+  assert.deepEqual(choose("could @docs-bot look?", agents, {}), {
+    agent: "docs-bot",
+    text: "could look?",
     how: "named",
   });
   assert.deepEqual(choose("hello", agents, { defaultAgent: "lead" }), {
@@ -85,6 +90,28 @@ test("choose: a named agent, then the default, then the platform's default", () 
   assert.equal(choose("@someone hello", agents, {}).text, "@someone hello");
   // Naming an agent and saying nothing else still sends the words.
   assert.equal(choose("@helper", agents, {}).text, "@helper");
+});
+
+test("choose: the agent named first after the app's mention, with or without @", () => {
+  assert.deepEqual(choose("docs-bot summarize this", agents, { defaultAgent: "lead" }), {
+    agent: "docs-bot",
+    text: "summarize this",
+    how: "named",
+  });
+  assert.deepEqual(choose("ask Helper: why did CI fail?", agents, {}), {
+    agent: "helper",
+    text: "why did CI fail?",
+    how: "named",
+  });
+  // A first word that is no agent names nobody, and neither does "ask" alone.
+  assert.equal(choose("ask what changed", agents, { defaultAgent: "lead" }).agent, "lead");
+  assert.equal(choose("helpers are welcome", agents, { defaultAgent: "lead" }).agent, "lead");
+  // An agent this surface may not route to is no name.
+  const narrow = { client: client({ default_agent: "lead", agents: ["lead"] }) };
+  assert.equal(choose("helper look", agents, narrow).agent, "lead");
+  assert.equal(tagLeading("ask docs-bot: summarize", agents), "@docs-bot summarize");
+  assert.equal(tagLeading("docs-bot", agents), "@docs-bot");
+  assert.equal(tagLeading("what changed?", agents), "what changed?");
 });
 
 test("choose: @auto names nobody, and * as the default lets agents decide where the surface may route to any agent", () => {

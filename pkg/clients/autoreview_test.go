@@ -101,25 +101,9 @@ func TestAutoReviewNeedsTheSwitchAnAgentAndTheEvent(t *testing.T) {
 	}
 }
 
-func TestMentionsAreWholeNames(t *testing.T) {
-	for text, want := range map[string]bool{
-		"@humagen review":          true,
-		"please @humagen.":         true,
-		"(@Humagen) again":         true,
-		"@humagen-bot review":      false,
-		"mail me at a@humagen.dev": false,
-		"@@humagen":                false,
-		"humagen review":           false,
-		"thanks @lead, done":       false,
-	} {
-		if got := mentions(text, "humagen"); got != want {
-			t.Errorf("mentions(%q) = %v", text, got)
-		}
-	}
-}
-
-// A person addressing the app or an agent on a pull request is what resumes
-// automatic review there. Bots, issues and other accounts do not.
+// A person asking with the trigger on a pull request is what resumes
+// automatic review there. An agent's name alone, bots, issues and other
+// accounts do not.
 func TestAMentionOnAPullRequestIsFound(t *testing.T) {
 	gh := githubOf("gh", "acme")
 	gh.Agents = []string{"reviewer", "*"}
@@ -143,8 +127,10 @@ func TestAMentionOnAPullRequestIsFound(t *testing.T) {
 		pull, want               bool
 	}{
 		{"the app", "issue_comment", "User", "@humagen review", true, true},
-		{"the default agent", "pull_request_review_comment", "User", "@lead look here", true, true},
-		{"a listed agent", "issue_comment", "User", "@reviewer again", true, true},
+		{"the trigger naming an agent", "pull_request_review_comment", "User", "@Humagen reviewer look here", true, true},
+		{"the default agent alone", "pull_request_review_comment", "User", "@lead look here", true, false},
+		{"a listed agent alone", "issue_comment", "User", "@reviewer again", true, false},
+		{"the trigger in a quote", "issue_comment", "User", "> @humagen review\n\nthanks", true, false},
 		{"nobody", "issue_comment", "User", "looks good", true, false},
 		{"a bot", "issue_comment", "Bot", "@humagen review", true, false},
 		{"an issue", "issue_comment", "User", "@humagen review", false, false},
