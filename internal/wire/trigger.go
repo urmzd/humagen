@@ -388,3 +388,32 @@ const MetaSession = "_humagen.session"
 // MetaSourceAlert links a run to the authorized alert that initiated its session.
 // Ingress copies are stripped; only immutable session identity may pin it.
 const MetaSourceAlert = "_humagen.source_alert"
+
+// MetaAnswerShape is what a run on a surface answers with, as its host
+// chose it when the run started: ShapeReview or ShapeReply. It is saved on
+// the run's tag, so a retry answers with the shape first chosen, and the
+// model reads it in its trigger context. A run without it is from before
+// the host chose, or from a surface that does not.
+const MetaAnswerShape = "answer_shape"
+
+// The shapes an answer takes.
+const (
+	// ShapeReview is a requested review: the agent returns the fields of a
+	// review report and the host renders and posts it.
+	ShapeReview = "review"
+	// ShapeReply is anything else: plain Markdown prose, not checked
+	// against a format.
+	ShapeReply = "reply"
+)
+
+// ShapeOf is the answer shape the host saved on an event, "" when none.
+func ShapeOf(e event.Envelope) string {
+	switch shape := Meta(e)[MetaAnswerShape]; shape {
+	case ShapeReview, ShapeReply:
+		return shape
+	}
+	return ""
+}
+
+// SetShape saves the answer shape the host chose on an event.
+func SetShape(e *event.Envelope, shape string) { SetMeta(e, MetaAnswerShape, shape) }

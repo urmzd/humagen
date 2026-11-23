@@ -395,6 +395,10 @@ type Run struct {
 	// requesters are every name the person who asked for the run went by
 	// when it was accepted, pinned so a mapping removed later still counts.
 	requesters []string
+	// reviewStarted says the run turned from a reply into a review
+	// (StartReview). It is kept on the run's record, so every process and
+	// every later read sees it.
+	reviewStarted bool
 	// tally sums the usage reported while the run works. final is set once
 	// the runtime's own figure has replaced it.
 	tally *event.Tally

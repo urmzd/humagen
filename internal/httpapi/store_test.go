@@ -31,7 +31,7 @@ func TestTheStoreInstallsAndRemovesPackages(t *testing.T) {
 	}
 	// A reader sees what the lead reviewer would be granted, before anyone installs it.
 	lead := store[1].(map[string]any)["agents"].([]any)[0].(map[string]any)
-	if lead["name"] != platform.BuiltinCodeReviewer || lead["model"] != "offline" || len(lead["tools"].([]any)) != 4 ||
+	if lead["name"] != platform.BuiltinCodeReviewer || lead["model"] != "offline" || len(lead["tools"].([]any)) != 5 ||
 		len(lead["connectors"].([]any)) != 1 || lead["connectors"].([]any)[0] != "github" || len(lead["tool_servers"].([]any)) != 0 ||
 		len(lead["access"].(map[string]any)["spawn"].([]any)) != 3 {
 		t.Fatalf("the lead reviewer's listing = %v", lead)

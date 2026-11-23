@@ -112,9 +112,31 @@ func TestReviewProvenanceChecksRecordedStepSourceAndHistoricalCutoff(t *testing.
 	if got := p.reviewText(t.Context(), run, text, &foreign, time.Time{}); got != reviewEvidenceUnavailable {
 		t.Fatal("foreign reader retained proof")
 	}
-	wrong := strings.Replace(text, strings.Repeat("a", 40), strings.Repeat("b", 40), 1)
-	if got := p.reviewText(t.Context(), run, wrong, &who, time.Time{}); got != reviewNeedsCorrection {
-		t.Fatal("unpinned scope displayed", got)
+	// The host pins the reviewed commit: a commit the model wrote is
+	// replaced, and a report without one is scoped to the pinned head.
+	for _, answer := range []string{
+		strings.Replace(text, strings.Repeat("a", 40), strings.Repeat("b", 40), 1),
+		strings.Replace(text, `"scope":{"commit":"`+strings.Repeat("a", 40)+`"},`, "", 1),
+	} {
+		var report presentation.ReviewReport
+		got := p.reviewText(t.Context(), run, answer, &who, time.Time{})
+		if json.Unmarshal([]byte(got), &report) != nil || report.Scope == nil || report.Scope.Commit != strings.Repeat("a", 40) {
+			t.Fatal("the pinned head did not scope the review", got)
+		}
+	}
+}
+
+// A run with no head pinned and none read has no reviewed commit to show.
+func TestReviewProvenanceNeedsAReviewedCommit(t *testing.T) {
+	p, _, who, at := reviewFixture(t)
+	tag := wire.NewEvent(wire.Raise{ID: "unpinned", Tenant: "t", Agent: "reviewer", Origin: runs.OriginAPI, Text: "Review", At: at})
+	id := runtime.RunID("t", tag.ID)
+	if err := p.Runs.Record(id, tag, 1); err != nil {
+		t.Fatal(err)
+	}
+	run, _ := p.Runs.Get("t", id)
+	if got := p.reviewText(t.Context(), run, reviewReport(t), &who, time.Time{}); got != reviewNeedsCorrection {
+		t.Fatal("a review with no reviewed commit was shown", got)
 	}
 }
 

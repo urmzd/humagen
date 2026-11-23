@@ -42,8 +42,11 @@ func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T
 		return nil
 	}}
 	env := event.Envelope{Tenant: "tenant", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
-	for range 2 {
-		cfg.DeliveryState = deliverystate.NewMemory()
+	// Each delivery is a connector whose receipt was lost: a fresh scope in
+	// the same durable store, which keeps the review's layout record.
+	cfg.DeliveryState = deliverystate.NewMemory()
+	for i := range 2 {
+		cfg.DeliveryScope = fmt.Sprint("lost-receipt-", i)
 		c, err := github.New(cfg)
 		if err != nil {
 			t.Fatal(err)
@@ -61,7 +64,7 @@ func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T
 		t.Fatalf("recovery duplicated or changed review: %+v findings=%d", reviews, findings)
 	}
 	evidence = false
-	cfg.DeliveryState = deliverystate.NewMemory()
+	cfg.DeliveryScope = "lost-receipt-again"
 	c, err := github.New(cfg)
 	if err != nil {
 		t.Fatal(err)

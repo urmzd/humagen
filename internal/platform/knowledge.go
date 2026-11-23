@@ -97,6 +97,7 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 		return req, err
 	}
 	req = p.withBackgroundTools(req)
+	req = p.withStartedReview(req)
 	if req, err = boundRunContext(req); err != nil {
 		return req, err
 	}

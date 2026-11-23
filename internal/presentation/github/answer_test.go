@@ -8,14 +8,14 @@ import (
 	render "github.com/urmzd/saige/flow/connectors/github"
 )
 
-// A structured review renders as a review, whatever the session link.
-func TestAReviewCommentIsUnchanged(t *testing.T) {
+// A structured review renders as a review, with the session link under it.
+func TestAReviewCommentIsTheReviewAndItsSessionLink(t *testing.T) {
 	encoded, _ := json.Marshal(testReport())
 	for _, v := range []render.View{
 		{Agent: "reviewer", Status: render.StatusRunning, Text: string(encoded[:80])},
 		{Agent: "reviewer", Status: render.StatusDone, Text: string(encoded)},
 	} {
-		if got, want := RenderComment(v, "https://console.example/sessions/s_1"), RenderReview(v); got != want {
+		if got, want := RenderComment(v, "https://console.example/sessions/s_1"), RenderReview(v)+SessionFooter("https://console.example/sessions/s_1"); got != want {
 			t.Fatalf("a review rendered as\n%s\nwant\n%s", got, want)
 		}
 	}
