@@ -57,6 +57,12 @@ type Config struct {
 	// through connector rebuilds. Replicas must share both.
 	DeliveryState deliverystate.Store
 	DeliveryScope string
+	// Sender is who the client acts for. A message, mention, slash command
+	// or interactive payload from anyone else is answered here and goes no
+	// further (refuse), and a stop in a session with no run known settles
+	// its status only for them. Nil leaves the decision to the platform
+	// alone.
+	Sender SenderFunc
 }
 type Connector struct {
 	*transport.Connector
@@ -65,6 +71,7 @@ type Connector struct {
 	statusMu  sync.Mutex
 	statusSeq map[string]uint64
 	live      live
+	turned    turnAway
 }
 
 func New(cfg Config) (*Connector, error) {
@@ -84,6 +91,15 @@ func New(cfg Config) (*Connector, error) {
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Feedback, base.ObserveDelivery, base.ContinueThread, base.StatusReactions, base.ActionChannels = cfg.Feedback, cfg.ObserveDelivery, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionChannels
 	base.Prepare = func(ctx context.Context, tag *event.Envelope) error {
+		// The team the sender belongs to, as the delivery named it, for
+		// whoever decides again what the event may start. Nothing else
+		// writes this key.
+		wire.DeleteMeta(tag, wire.MetaSlackSenderTeam)
+		if who, ok := ctx.Value(senderKey{}).(sender); ok && who.noTeam {
+			wire.SetMeta(tag, wire.MetaSlackSenderTeam, noSlackTeam)
+		} else if ok && who.team != "" {
+			wire.SetMeta(tag, wire.MetaSlackSenderTeam, who.team)
+		}
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
 			text := wire.TextOf(*tag)
 			// The agent named right after the app's own mention that opens
@@ -198,6 +214,10 @@ func firstToken(text string) int {
 	return i
 }
 
+// noSlackTeam is written as the sender's team when the delivery named it
+// with something that is not a string. It is no team's id.
+const noSlackTeam = "(none)"
+
 type openedKey struct{}
 
 // maxOpenedBody bounds the delivery read for the app's mention. A larger one
@@ -207,17 +227,37 @@ const maxOpenedBody = 25 << 20
 // openedBySelf matches an event's text that opens with a user mention.
 var openedBySelf = regexp.MustCompile(`^\s*<@([A-Z0-9]+)(?:\|[^<>]*)?>`)
 
-// ServeHTTP notes whether a message opens with the app's own bot user, the
-// one place a word after it names an agent (prepare). The transport reads
-// and verifies the delivery as before.
+// ServeHTTP refuses a request from a sender the client does not map
+// (refuse), and notes whether a message opens with the app's own bot user,
+// the one place a word after it names an agent (prepare). The transport
+// reads and verifies the delivery as before.
 func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.Body == nil || c.cfg.Agents == nil {
+	if r.Method != http.MethodPost || r.Body == nil {
 		c.Connector.ServeHTTP(w, r)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxOpenedBody+1))
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
-	if err == nil && len(body) <= maxOpenedBody && openedByApp(body) {
+	if err == nil && len(body) <= maxOpenedBody {
+		who, ok, unread := c.asks(r, body)
+		if unread != nil {
+			// A verified delivery whose sender cannot be read is
+			// acknowledged, so Slack does not send it again, and goes
+			// no further.
+			if c.cfg.Log != nil {
+				c.cfg.Log.Debug("slack: a delivery was not read for its sender and went no further")
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if ok {
+			if c.refuse(w, who) {
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), senderKey{}, who))
+		}
+	}
+	if err == nil && len(body) <= maxOpenedBody && c.cfg.Agents != nil && openedByApp(body) {
 		r = r.WithContext(context.WithValue(r.Context(), openedKey{}, true))
 	}
 	c.Connector.ServeHTTP(w, r)

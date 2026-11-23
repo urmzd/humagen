@@ -461,7 +461,15 @@ func (p *Platform) bind(s *surface, st *seat) {
 	}
 	tenant, client, name := st.client.Tenant, st.client.ID, s.name
 	stopper.OnStop(func(ctx context.Context, runID, who string) error {
-		return p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		err := p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		if errors.Is(err, ErrForbidden) {
+			p.log.Info("platform: a stop from a surface was refused", "surface", name, "tenant", tenant, "client", client, "run", runID, "user", who, "why", err.Error())
+			return fmt.Errorf("%w: %w", slack.ErrStopRefused, err)
+		}
+		if errors.Is(err, errNothingToStop) {
+			return fmt.Errorf("%w: %w", slack.ErrNothingToStop, err)
+		}
+		return err
 	})
 }
 
@@ -497,6 +505,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			DeliveryState: deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.Sender = func(team, user string) bool { return p.slackSender(c, team, user) }
 		cfg.ContinueThread = func(team, channel, thread string) bool {
 			return p.continueSurface(c, address.Address{Connector: "slack", Workspace: team, Path: []string{channel}}.WithParam("thread", thread))
 		}

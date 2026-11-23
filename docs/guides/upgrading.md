@@ -2,6 +2,43 @@
 
 Steps an operator runs once, after a release that needs them.
 
+## Mapping people for the Slack webhook connector
+
+The Slack webhook connector (`/connectors/slack`) starts and continues runs
+only for a person the client's team maps
+([who can start and stop a run](../reference/slack.md#who-can-start-and-stop-a-run-on-the-webhook-connector)).
+After this release a Slack client whose team maps nobody starts no runs, and
+the server says so at start, once for each such client:
+
+```
+humagen: Slack client "default-slack" in workspace "default" maps no people, so its webhook connector starts no runs until people are mapped for its team ...
+```
+
+Map the people who should ask, and grant each one `runs:write`:
+
+1. Map each Slack user id to the person it is, in `slack.people` of an
+   enabled Slack client of the same team: on the client itself through
+   `PUT /api/clients/{id}` or Settings, Connections, or on the Slack app's
+   record with `surfaces.slack.people` in the Platform document
+   ([clients](../reference/clients.md#people-a-slack-app-answers-for)). A
+   client that maps people names a `slack.machine`.
+2. Grant each mapped subject `runs:write` in the workspace's policy by
+   subject (`grant operator to subject "..."`): a Slack message carries no
+   sign-in, so a role held only through a group does not count.
+3. Make each of them a member of any project a bound Slack channel files
+   into.
+
+The default client the `HUMAGEN_SLACK_*` variables make has no people of its
+own and is not changed through the API. Its team's people come from another
+Slack client record of the same team, such as the one
+`surfaces.slack.people` keeps; without `HUMAGEN_SLACK_APP` no second client
+can be made for its team through the API. A connector an embedding program
+passes as a `Connection` has no client record and starts no runs on Slack:
+make a client for it instead.
+
+A run is stopped from Slack by a mapped person or by the Slack user who
+asked for it. Ratings by reaction are unchanged.
+
 ## Filing past work into sessions
 
 A mention on a GitHub pull request or issue opens or continues that place's

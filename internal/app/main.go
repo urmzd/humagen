@@ -571,6 +571,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	for _, app := range slack {
 		app.client = slackClients[app.tenant]
 	}
+	noteSlackPeople(p, o.notes)
 	postReleaseNotes(p, file.cfg, release.Running(o.Version.Version), o.Changelog, log)
 	// After the agents, so an agent the file or the seed names keeps its
 	// name and a person whose handle would be it gets a suffix.

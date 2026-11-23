@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -374,23 +376,61 @@ func (p *Platform) StopRun(ctx context.Context, who auth.Principal, runID string
 	return now, err
 }
 
+// errNothingToStop is stopFromSurface's answer for a run it did not ask to
+// stop: one the client did not raise, one that has ended, or none at all.
+var errNothingToStop = errors.New("platform: nothing to stop")
+
 // stopFromSurface asks a run to stop for a person who pressed stop where the
 // run is answering, such as a Slack session. The tenant and the client are
 // those of the client whose secret verified the request, never the request's,
-// and a run outside either does not exist to this caller. Anyone who can see
-// the surface's stop control may use it: the surface, not a console role, is
-// the authority here.
+// and a run outside either does not exist to this caller.
+//
+// On Slack who pressed is decided first: a run is stopped by a person the
+// client's team maps, or by the Slack user who asked for it (slackMayStop).
+// Anyone else is refused with ErrForbidden and the run carries on. nil means
+// the run was asked to stop; a run the client did not raise, or one that is
+// over, is errNothingToStop, so nobody is told it stopped.
 func (p *Platform) stopFromSurface(ctx context.Context, tenant, client, surface, runID, who string) error {
 	run, err := p.Runs.Get(tenant, runID)
 	if errors.Is(err, runs.ErrNotFound) {
-		return nil
+		return errNothingToStop
 	}
 	if err != nil {
 		return err
 	}
+	if surface == string(clients.Slack) && !p.slackMayStop(client, run, who) {
+		return fmt.Errorf("%w: only a person the client maps, or whoever asked for the run, stops it from Slack", ErrForbidden)
+	}
 	if run.Client != client || run.Status.Terminal() {
-		return nil
+		return errNothingToStop
 	}
 	by := surface + ":" + who
 	return p.requestStop(ctx, tenant, runID, "Stopped by "+by, by)
+}
+
+// slackMayStop reports whether Slack user who may stop a run through a
+// client: they asked for it (the run's own Slack user, or its root's), or
+// the client's team maps them to a person now. The requester keeps the stop
+// of their own run when the map no longer names them.
+func (p *Platform) slackMayStop(client string, run runs.Run, who string) bool {
+	who = strings.TrimSpace(who)
+	if who == "" {
+		return false
+	}
+	asked := func(r runs.Run) bool {
+		return r.Client == client && r.Origin == runs.OriginSlack && !r.Actor.Bot && r.Actor.ID == who
+	}
+	if asked(run) {
+		return true
+	}
+	if run.Root != "" && run.Root != run.ID {
+		if root, err := p.Runs.Get(run.Tenant, run.Root); err == nil && asked(root) {
+			return true
+		}
+	}
+	c, err := p.Clients.Get(run.Tenant, client)
+	if err != nil || !c.Enabled {
+		return false
+	}
+	return p.slackPerson(c, who) != ""
 }

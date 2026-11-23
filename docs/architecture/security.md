@@ -230,8 +230,11 @@ no permission, grants nothing.
   A run a Slack client's own connector raises is held to the same: it acts
   for the person the team maps the Slack user to only if the policy grants
   their subject `runs:write` and they are a member where it is filed, else
-  it is not started, and in a Slack channel bound to a project someone the
-  team maps to nobody is not answered. Mapping a person is `clients:write`.
+  it is not started, and someone the team maps to nobody, or who writes
+  from another Slack team, is not answered in any channel. A run is stopped
+  from Slack by a mapped person or by the Slack user who asked for it
+  ([reference](../reference/slack.md#who-can-start-and-stop-a-run-on-the-webhook-connector)).
+  Mapping a person is `clients:write`.
 - **A Slack app starts nothing for someone it was not given.** Anyone who
   can message a Slack app reaches it: a new member, a guest, or someone from
   another company in a Slack Connect channel. So the app checks the sender of
