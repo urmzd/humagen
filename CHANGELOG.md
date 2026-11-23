@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.200.2 (2026-11-23)
+
+### Bug Fixes
+
+- **migrate**: adopt Slack threads by the machine's own view, and go on past kept records ([8b3b85a](https://github.com/urmzd/humagen/commit/8b3b85a19517e1d701d35f792728b25c63131432))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.1...v0.200.2)
+
+
 ## 0.200.1 (2026-11-23)
 
 ### Bug Fixes
