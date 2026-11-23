@@ -67,9 +67,11 @@ The server holds the app's credential to the same rule, whatever the app
 sends, so an old or forged app starts nothing either. `POST /api/runs` from a
 credential a Slack client names as its `slack.machine` (or the `slack-app:`
 credential the server makes) needs `act_as` or `asked_by` naming a person the
-client maps who holds `runs:write`; without one it answers 403. The same
-credential makes no call (`POST /api/runs/{id}/calls`), tests no skill and
-asks no failed turn again through the inbox. Runs the server starts itself
+client maps who holds `runs:write`; without one it answers 403. A run at a
+person's asking acts for nobody and records them as `requested_by`. The same
+credential makes no call (`POST /api/runs/{id}/calls`), runs no assignment
+(`POST /api/assignments/{id}/run`), tests no skill and asks no failed turn
+again through the inbox. A stop that names no Slack user stops nothing. Runs the server starts itself
 (schedules, automations, housekeeping) are not affected.
 
 The rest of this page describes the connector. The app is described in its

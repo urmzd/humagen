@@ -14116,6 +14116,12 @@ components:
             as `m-3`. Runs that answer one message answer it side by side and
             are not branches.
           type: string
+        requested_by:
+          description: |
+            The person, by subject, who asked through a surface's credential
+            for a run that acts for nobody (`asked_by`). The run uses nobody's
+            credentials; this only records who asked.
+          type: string
         lease:
           description: The run's budget in micro-USD. Zero means unmetered.
           type: integer

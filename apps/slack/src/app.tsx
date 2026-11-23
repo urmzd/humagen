@@ -171,6 +171,11 @@ interface Job {
   /** The message that asked. Lifecycle reactions go on it. */
   triggerTs: string;
   user: string;
+  /**
+   * The sender's own team, as the delivery said, when it said: a sender
+   * whose team is another company's (Slack Connect) is nobody.
+   */
+  team?: string;
   /** Names the Slack event, so the same event is one run. */
   key: string;
   /**
@@ -904,8 +909,13 @@ export class App {
     }
     if (event.type === "agent_session_stopped") {
       const channel = event.channel ?? event.channel_id;
-      // Stop is a button too: someone the client maps to nobody stops nobody's run.
-      if (event.user && !(await this.mapped(event.user, senderTeam(event))))
+      // Stop is a button too: someone the client maps to nobody, or a stop
+      // that names nobody, stops nobody's run.
+      if (!event.user) {
+        this.log("a stop that names nobody was ignored");
+        return;
+      }
+      if (!(await this.mapped(event.user, senderTeam(event))))
         return this.turnAway({
           user: event.user,
           ...(channel ? { channel } : {}),
@@ -1009,9 +1019,11 @@ export class App {
     // A mention in a code channel continues the conversation of the thread it was opened from.
     const conversation =
       this.code && event.type === "app_mention" ? await this.code.originOf(event.channel) : null;
+    const team = senderTeam(event);
     this.enqueue({
       files: Boolean(event.files?.length),
       session,
+      ...(team ? { team } : {}),
       ...(conversation ? { conversation } : {}),
       text: text || defaultCopy.attachedFilesPrompt,
       triggerTs: event.ts,
@@ -1064,11 +1076,13 @@ export class App {
       channel: event.channel,
       threadTs: event.thread_ts,
     };
+    const team = senderTeam(event);
     this.enqueue({
       session,
       text,
       triggerTs: event.ts,
       user: event.user,
+      ...(team ? { team } : {}),
       key: eventKey(session, event.ts),
       listen: true,
     });
@@ -1240,7 +1254,7 @@ export class App {
     // Every way in checks the sender first; this is the check behind them
     // all. A person the client maps no longer (as since a message queued)
     // starts nothing, and a reply that asked nobody is not answered at all.
-    const who = await this.mapped(job.user);
+    const who = await this.mapped(job.user, job.team);
     if (!who) {
       if (!job.listen)
         await this.turnAway({
@@ -1992,10 +2006,13 @@ export class App {
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.humagen.getRun(ui.payload.turnId);
       const outcome = run
-        ? await this.again(run, p.user.id, p.message?.ts, {
-            channel: at,
-            threadTs: p.message?.thread_ts,
-          })
+        ? await this.again(
+            run,
+            p.user.id,
+            p.message?.ts,
+            { channel: at, threadTs: p.message?.thread_ts },
+            p.user.team_id,
+          )
         : "elsewhere";
       if (outcome !== "started") await this.refuseRetry(p, outcome);
     }
@@ -2043,6 +2060,7 @@ export class App {
     user: string,
     clickedTs?: string,
     clicked?: { channel?: string; threadTs?: string },
+    team?: string,
   ): Promise<Again> {
     const session = await this.sessionOfRun(run);
     if (!session || session.team !== this.opts.team) return "elsewhere";
@@ -2058,13 +2076,13 @@ export class App {
     const person = acted === this.opts.subject ? "" : acted;
     let as: ActAs | null = null;
     if (person) {
-      const mapped = await this.mapped(user);
+      const mapped = await this.mapped(user, team);
       if (!mapped || mapped.person !== person) return "not-theirs";
       as = mapped.as;
     } else {
       // Asked again for nobody, it is still asked at a person's asking: the
       // presser must be someone the client maps, an operator included.
-      if (!(await this.mapped(user))) return "not-yours";
+      if (!(await this.mapped(user, team))) return "not-yours";
       const operator = (this.opts.operators ?? []).includes(user);
       if (!operator && (!owner || owner !== user)) return "not-yours";
     }
@@ -2076,6 +2094,7 @@ export class App {
       text,
       triggerTs: clickedTs ?? session.threadTs,
       user,
+      ...(team ? { team } : {}),
       // A turn asked again for its person is theirs to settle; one asked again
       // for nobody stays its first asker's.
       requester: person ? user : (owner ?? null),
@@ -2339,7 +2358,7 @@ export class App {
    * would be. It is answered beside the call, not behind it: the call's
    * card keeps waiting, with its buttons, and the answer streams below.
    */
-  private async askCall(user: string, at: AskCall, question: string): Promise<void> {
+  private async askCall(user: string, at: AskCall, question: string, team?: string): Promise<void> {
     const run = await this.humagen.getRun(at.run).catch(() => null);
     const session = run ? await this.sessionOfRun(run) : null;
     if (!run || !session || session.team !== this.opts.team) {
@@ -2367,6 +2386,7 @@ export class App {
       text: `${run.agent ? `@${run.agent} ` : ""}${this.words.askCallAsked(action, question)}`,
       triggerTs: said.ts,
       user,
+      ...(team ? { team } : {}),
       key: eventKey(session, said.ts),
     };
     this.seen.set(job.key, true);
@@ -2468,7 +2488,9 @@ export class App {
       return null;
     }
     const run = part.failure.reference ? await this.humagen.getRun(part.failure.reference) : null;
-    const outcome = run ? await this.again(run, p.user.id, clickedTs) : "elsewhere";
+    const outcome = run
+      ? await this.again(run, p.user.id, clickedTs, undefined, p.user.team_id)
+      : "elsewhere";
     if (outcome !== "started") {
       await this.refuseRetry(p, outcome);
       return null;
@@ -3245,12 +3267,12 @@ export class App {
    * what, then answer in that message's thread.
    */
   private async start(
-    where: { channel: string; user: string },
+    where: { channel: string; user: string; team?: string },
     text: string,
     responseUrl?: string,
   ): Promise<void> {
     // Nothing is posted for someone the client maps to nobody, not even their words.
-    if (!(await this.mapped(where.user)))
+    if (!(await this.mapped(where.user, where.team)))
       return this.turnAway({
         user: where.user,
         ...(responseUrl
@@ -3278,7 +3300,14 @@ export class App {
       return;
     }
     const session: Session = { team: this.opts.team, channel: root.channel, threadTs: root.ts };
-    this.enqueue({ session, text, triggerTs: root.ts, user: where.user, key: threadKey(session) });
+    this.enqueue({
+      session,
+      text,
+      triggerTs: root.ts,
+      user: where.user,
+      ...(where.team ? { team: where.team } : {}),
+      key: threadKey(session),
+    });
   }
 
   private async onCommand(c: CommandPayload): Promise<void> {
@@ -3296,14 +3325,17 @@ export class App {
     // Only a person the client maps uses a command. `/agent connections`
     // says itself how to be connected, so it is left to say so.
     const text = (c.text ?? "").trim();
-    if (!(c.command === ENTRY.command && text === "connections") && !(await this.mapped(c.user_id)))
+    if (
+      !(c.command === ENTRY.command && text === "connections") &&
+      !(await this.mapped(c.user_id, c.team_id))
+    )
       return this.turnAway({ user: c.user_id, responseUrl: c.response_url });
     if (c.command !== ENTRY.command && c.command !== "/skill") {
       const skills = (await this.routing()).client?.slack?.commands ?? [];
       const skill = skills.find((skill) => `/${skill.name}` === c.command);
       if (!skill) return;
       return this.start(
-        { channel: c.channel_id, user: c.user_id },
+        { channel: c.channel_id, user: c.user_id, team: c.team_id },
         `/${skill.name} ${(c.text ?? "").trim()}`,
         c.response_url,
       );
@@ -3329,7 +3361,7 @@ export class App {
         return;
       }
       return this.start(
-        { channel: c.channel_id, user: c.user_id },
+        { channel: c.channel_id, user: c.user_id, team: c.team_id },
         `/${name} ${rest.join(" ")}`.trim(),
         c.response_url,
       );
@@ -3359,7 +3391,11 @@ export class App {
       }
       return;
     }
-    await this.start({ channel: c.channel_id, user: c.user_id }, text, c.response_url);
+    await this.start(
+      { channel: c.channel_id, user: c.user_id, team: c.team_id },
+      text,
+      c.response_url,
+    );
   }
 
   private async openConnections(c: CommandPayload) {
@@ -3455,6 +3491,7 @@ export class App {
         text,
         triggerTs: message.ts,
         user: p.user.id,
+        ...(p.user.team_id ? { team: p.user.team_id } : {}),
         key: eventKey(session, message.ts, p.trigger_id),
         // Someone else's message, or a bot's, is not the presser's to run as them.
         ...(message.user !== p.user.id ? { notTheirs: true } : {}),
@@ -3502,7 +3539,7 @@ export class App {
     const about = p.type === "view_submission" && p.view ? askCallOf(p.view) : null;
     if (about) {
       const question = p.view?.state?.values?.text?.value?.value?.trim() ?? "";
-      if (question) await this.askCall(p.user.id, about, question);
+      if (question) await this.askCall(p.user.id, about, question, p.user.team_id);
       return;
     }
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
@@ -3517,7 +3554,7 @@ export class App {
     // Build an Agent's words go to the builder, tagged as anyone would tag it.
     const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : asked;
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
-    await this.start({ channel: p.user.id, user: p.user.id }, text);
+    await this.start({ channel: p.user.id, user: p.user.id, team: p.user.team_id }, text);
   }
 }
 
@@ -3669,6 +3706,8 @@ interface InteractivePayload {
 
 interface CommandPayload {
   command: string;
+  /** The team the command was used in, which the app serves (handle). */
+  team_id?: string;
   text?: string;
   user_id: string;
   channel_id: string;

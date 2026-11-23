@@ -36,12 +36,19 @@ func TestASlackAppsCredentialStartsNoRunForNobody(t *testing.T) {
 	if actor, _ := run["actor"].(map[string]any); actor["user"] != nil && actor["user"] != "" {
 		t.Fatalf("a run at ana's asking acts for %v, want nobody", actor)
 	}
+	// The run says ana asked for it, though it acts for nobody.
+	if run["requested_by"] != "ana" {
+		t.Fatalf("a run at ana's asking was requested by %v", run["requested_by"])
+	}
 
 	// Asked again through the inbox or as a call, the credential names
 	// nobody, so it starts nothing there either.
 	id, _ := run["id"].(string)
 	if res, out := f.do(t, nil, "POST", "/api/runs/"+id+"/calls", app, `{"agent":"worker","text":"and more"}`); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("the app made a call as itself: %d %v", res.StatusCode, out)
+	}
+	if res, out := f.do(t, nil, "POST", "/api/assignments/any/run", app, ""); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("the app ran an assignment as itself: %d %v", res.StatusCode, out)
 	}
 
 	// Any other credential is someone the workspace let in, and asks as itself.

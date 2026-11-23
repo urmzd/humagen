@@ -295,3 +295,57 @@ test("a person the client maps still asks everywhere: a direct message, a mentio
   await settle();
   await w.app.idle();
 });
+
+test("a stop that names nobody stops nothing", async () => {
+  const w = mappedWorld();
+  await w.app.handle(mention("write a long report", TS));
+  await settle();
+  const run = w.humagen.last.id;
+  w.humagen.emit(run, "run.accepted.v1");
+  await settle();
+  await w.app.handle({
+    type: "events_api",
+    envelope_id: "env-nameless-stop",
+    payload: {
+      team_id: TEAM,
+      event: { type: "agent_session_stopped", channel: CHANNEL, thread_ts: TS },
+    },
+  });
+  await settle();
+  assert.deepEqual(w.humagen.stops, [], "nothing was stopped");
+  assert.ok(w.logs.some((l) => /a stop that names nobody/.test(l)));
+  w.humagen.emit(run, "run.completed.v1", { text: "ok" });
+  await settle();
+  await w.app.idle();
+});
+
+test("someone from another company with an id the client maps uses no shortcut, form or message action", async () => {
+  const w = mappedWorld();
+  const them = { id: USER, team_id: OTHER_TEAM };
+  await deliver(w, interactive({ type: "shortcut", callback_id: "aui_ask", user: them }));
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      user: them,
+      view: {
+        callback_id: "aui_form",
+        private_metadata: '{"kind":"ask"}',
+        state: { values: { text: { value: { value: "summarize the payroll sheet" } } } },
+      },
+    }),
+  );
+  await deliver(
+    w,
+    interactive({
+      type: "message_action",
+      callback_id: "aui_ask_about",
+      user: them,
+      channel: { id: CHANNEL },
+      message: { ts: "1700000500.000100", text: "rotate every key", user: STRANGER },
+    }),
+  );
+  nothingAsked(w);
+  assert.equal(w.slack.of("views.open").length, 0);
+  assert.deepEqual(w.slack.of("chat.postMessage"), [{ channel: USER, text: NOT_CONNECTED }]);
+});

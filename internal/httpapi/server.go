@@ -836,12 +836,15 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	// starts a run only for a person its client maps: as them, or for
 	// nobody at their asking. Without either it is refused here, whatever
 	// the app that called says, so an old or forged app starts nothing.
+	requested := ""
 	if body.ActAs == nil {
 		if body.AskedBy != nil {
-			if _, err := s.P.AskedBy(who, *body.AskedBy); err != nil {
+			person, err := s.P.AskedBy(who, *body.AskedBy)
+			if err != nil {
 				s.problem(w, err)
 				return
 			}
+			requested = person.Subject
 		} else if err := s.P.MayAskForNobody(who); err != nil {
 			s.problem(w, err)
 			return
@@ -908,6 +911,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	keeps := project != "" && s.P.MayChangeNotes(asks, project) == nil
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
 		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
+		RequestedBy: requested,
 		// An agent the person may not read is one that is not there.
 		Sees: s.P.Seer(asks).Agent,
 		// The text is the person's own, so a skill it names is used.
