@@ -461,7 +461,12 @@ func (p *Platform) bind(s *surface, st *seat) {
 	}
 	tenant, client, name := st.client.Tenant, st.client.ID, s.name
 	stopper.OnStop(func(ctx context.Context, runID, who string) error {
-		return p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		err := p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		if errors.Is(err, ErrForbidden) {
+			p.log.Info("platform: a stop from a surface was refused", "surface", name, "tenant", tenant, "client", client, "run", runID, "user", who, "why", err.Error())
+			return fmt.Errorf("%w: %w", slack.ErrStopRefused, err)
+		}
+		return err
 	})
 }
 

@@ -16,6 +16,11 @@ import (
 // package.
 type StopFunc = func(ctx context.Context, runID, slackUser string) error
 
+// ErrStopRefused is what a StopFunc answers when the Slack user may not stop
+// the run. The run is left as it is: still open, nothing said in the
+// session, and the press is acknowledged so Slack does not deliver it again.
+var ErrStopRefused = errors.New("slack: stop refused")
+
 // maxRuns bounds how many open and stopping runs the connector remembers.
 // Forgetting an open run costs its stop button; forgetting a stopping one lets
 // a late lifecycle event set the session back to working until the run ends.
@@ -131,10 +136,15 @@ func (c *Connector) stopped(ctx context.Context, s stopRequest) error {
 	c.live.mu.Unlock()
 
 	var failed error
-	halted := 0
+	halted, refused := 0, 0
 	for _, id := range c.live.in(at) {
 		if stop != nil {
-			if err := stop(ctx, id, s.User); err != nil {
+			err := stop(ctx, id, s.User)
+			if errors.Is(err, ErrStopRefused) {
+				refused++
+				continue
+			}
+			if err != nil {
 				failed = errors.Join(failed, err)
 				continue
 			}
@@ -155,7 +165,9 @@ func (c *Connector) stopped(ctx context.Context, s stopRequest) error {
 			return err
 		}
 	}
-	if !c.cfg.Sessions {
+	// A press that stopped nothing because it was refused leaves the
+	// session as it is: its runs are still working.
+	if !c.cfg.Sessions || (halted == 0 && refused > 0) {
 		return nil
 	}
 	err := c.cfg.API.(transport.AgentAPI).SetStatus(ctx, Session{
