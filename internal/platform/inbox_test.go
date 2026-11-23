@@ -627,3 +627,67 @@ func inboxCount(t testing.TB, p *platform.Platform, who auth.Principal) inbox.Co
 	}
 	return c
 }
+
+// A Slack app's credential asks no failed turn again through the inbox: the
+// app asks it again itself, as the person who pressed (apps/slack), so a
+// retry here would be a run for nobody of the app's own accord. Any other
+// credential that may retry still does.
+func TestASlackAppsCredentialRetriesNoFailedTurnThroughTheInbox(t *testing.T) {
+	p := startWith(t, platform.Config{
+		Backoff: func(int) time.Duration { return time.Millisecond },
+		AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) {
+			return refusing{}, nil
+		})},
+		ClientInterval: -1,
+	})
+	ctx := t.Context()
+	broken := wire.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
+	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
+		t.Fatal(err)
+	}
+	app := slackClient("app", "A01APP", "T01ACME", "broken")
+	app.Slack.Machine = "svc-slack"
+	if _, err := p.CreateClient(ctx, tenant, "ada", app); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-nobody", Agent: "broken", Text: "Plan the renewal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Failed)
+	var msg inbox.Message
+	within(t, "the failure reached the inbox", func() bool {
+		page, _, _ := p.InboxPage(admin, inbox.Query{Kind: inbox.KindFailure})
+		for _, m := range page {
+			if m.Source.Run == first.ID {
+				msg = m
+				return true
+			}
+		}
+		return false
+	})
+	retry := platform.Resolution{Action: platform.ActRetry}
+	others := func() (n int) {
+		for _, r := range p.Runs.List(tenant, 10) {
+			if r.ID != first.ID {
+				n++
+			}
+		}
+		return n
+	}
+
+	slack := auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Roles: []auth.Role{auth.Operator}}
+	if _, err := p.InboxResolve(ctx, slack, msg.ID, msg.Parts[0].ID, retry); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("the Slack app's retry = %v, want forbidden", err)
+	}
+	if n := others(); n != 0 {
+		t.Fatalf("a refused retry started %d runs", n)
+	}
+	ci := auth.Principal{Subject: "ci-bot", Tenant: tenant, Kind: auth.Machine, Roles: []auth.Role{auth.Operator}}
+	if _, err := p.InboxResolve(ctx, ci, msg.ID, msg.Parts[0].ID, retry); err != nil {
+		t.Fatalf("another machine's retry = %v", err)
+	}
+	if n := others(); n != 1 {
+		t.Fatalf("another machine's retry started %d runs, want 1", n)
+	}
+}

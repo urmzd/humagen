@@ -4,7 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { App } from "./app.tsx";
-import { BOT, CHANNEL, FakeHumagen, FakeSlack, mention, SUBJECT, settle, TEAM } from "./harness.ts";
+import {
+  BOT,
+  CHANNEL,
+  FakeHumagen,
+  FakeSlack,
+  mention,
+  PEOPLE,
+  SUBJECT,
+  settle,
+  TEAM,
+} from "./harness.ts";
 import { words } from "./host.ts";
 import {
   defaultJournalPath,
@@ -20,11 +30,21 @@ const path = () => join(mkdtempSync(join(tmpdir(), "journal-")), "streams.json")
 
 function appOver(slack: FakeSlack, journalPath: string, humagen = new FakeHumagen()) {
   const journal = fileJournal(journalPath);
+  // The client maps the person who asks: nobody else starts anything.
+  humagen.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    agents: ["*"],
+    identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: PEOPLE },
+  });
   const app = new App(journaled(slack, journal), humagen, {
     team: TEAM,
     botUser: BOT,
     subject: SUBJECT,
     tenant: "acme",
+    clientId: "app",
     defaultAgent: "lead",
     flushMs: 0,
     pollMs: 20,
