@@ -312,7 +312,7 @@ const maxDelegates = 3
 // owns and agent is that agent: a message to it is answered by the entry
 // agent's one run.
 func (p *Platform) entryRoot(ctx context.Context, tenant string, th threads.Thread, agent string) bool {
-	if agent != p.cfg.EntryAgent || th.Session == nil || th.Session.Agent != agent || strings.HasPrefix(th.Session.Parent, "s_") {
+	if agent != p.cfg.EntryAgent || th.Session == nil || th.Session.Agent != agent || threads.SessionParent(th.Session.Parent) {
 		return false
 	}
 	r, err := p.Catalog().Get(ctx, tenant, agent, 0)

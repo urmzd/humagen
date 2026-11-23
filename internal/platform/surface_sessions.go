@@ -84,6 +84,11 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		if th.Session == nil {
 			return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 		}
+		// A conversation adopted as a session (threads.Adopted) stays as it
+		// was filed: the place's members now are not made its people, and
+		// no audience is kept for it, so its answers draw on what they drew
+		// on as a conversation's.
+		adopted := threads.Adopted(th)
 		if in.Listen {
 			// Refused before the root's people follow the conversation, so a
 			// message that is not taken keeps nothing.
@@ -95,16 +100,18 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		}
 		// Who may post is checked before the root's people or audience
 		// change, so a message that is not taken keeps nothing.
-		if err := p.mayKeepFor(who, in.ActAs, th, postNeed(post), vis == threads.Private && reportsMember(c, ref.Audience, person)); err != nil {
+		if err := p.mayKeepFor(who, in.ActAs, th, postNeed(post), !adopted && vis == threads.Private && reportsMember(c, ref.Audience, person)); err != nil {
 			return SessionView{}, false, err
 		}
-		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
+		if !adopted && vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
 			if err := p.keepAudience(who.Tenant, th, people); err != nil {
 				return SessionView{}, false, err
 			}
 		}
-		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
-			return SessionView{}, false, err
+		if !adopted {
+			if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
+				return SessionView{}, false, err
+			}
 		}
 		out, err := p.surfacePost(ctx, who, th, post)
 		return out, false, err
@@ -147,15 +154,31 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
 			return SessionView{}, false, err
 		}
-		if started || th.Surface != nil {
+		if started || th.Surface != nil || th.Session == nil {
 			break
 		}
+	}
+	// The place's key can open a conversation's own id: another app of the
+	// team adopted it (threads.Adopted), or an adoption has yet to finish and
+	// it is still a conversation, which is not posted to as a session. An
+	// adopted one keeps no audience, as above.
+	if th.Session == nil {
+		return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 	}
 	if th.Surface == nil {
 		return SessionView{}, false, fmt.Errorf("%w: this place's session was not started on a surface", threads.ErrExists)
 	}
-	if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
-		return SessionView{}, false, err
+	if !started {
+		// Another message started the root first: who may post is checked
+		// before its audience is kept, as above.
+		if err := p.mayKeepFor(who, in.ActAs, th, postNeed(post), !threads.Adopted(th) && vis == threads.Private && reportsMember(c, ref.Audience, person)); err != nil {
+			return SessionView{}, false, err
+		}
+	}
+	if !threads.Adopted(th) {
+		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
+			return SessionView{}, false, err
+		}
 	}
 	out, err = p.surfacePost(ctx, who, th, post)
 	if err == nil && started {
@@ -295,7 +318,7 @@ func (p *Platform) SessionAudience(tenant, session string) (SessionAudience, boo
 		if err != nil || th.Session == nil {
 			return SessionAudience{}, false
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			break
 		}
 		id = th.Session.Parent

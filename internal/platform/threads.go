@@ -1599,8 +1599,19 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 	room := sync.OnceValue(func() string {
 		return threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
 	})
+	// A conversation adopted as a session (threads.Adopted) has no
+	// transcript of its agent's until that agent first answers it as the
+	// session's: that answer is sent the room, which its transcript then
+	// carries.
+	adoptedFirst := sync.OnceValue(func() bool {
+		if !threads.Adopted(th) {
+			return false
+		}
+		bound, err := p.Sessions.Runs(ctx, tenant, th.ID, 1)
+		return err == nil && len(bound) == 0
+	})
 	bodyFor := func(agent string) string {
-		if cfg.History == HistoryRecent && (th.Session == nil || th.Session.Agent != agent) {
+		if cfg.History == HistoryRecent && (th.Session == nil || th.Session.Agent != agent || adoptedFirst()) {
 			return room()
 		}
 		// The room's transcript carries the commands run before the

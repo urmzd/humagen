@@ -19,7 +19,11 @@
 // This package is a leaf: stdlib only.
 package trigger
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 // Name is the trigger's word: a person writes "@humagen".
 const Name = "humagen"
@@ -67,14 +71,14 @@ func Read(text string, handles []string, lookup Lookup) (Ask, bool) {
 func Find(text string, handles ...string) (start, end int, ok bool) {
 	names := make([]string, 0, len(handles))
 	for _, h := range handles {
-		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+		if h = lowered(strings.TrimSpace(h)); h != "" {
 			names = append(names, h)
 		}
 	}
 	if len(names) == 0 {
 		return 0, 0, false
 	}
-	lower := strings.ToLower(text)
+	lower := lowered(text)
 	shown := hidden(text)
 	for i := 0; i < len(text); i++ {
 		if text[i] != '@' || shown[i] {
@@ -101,6 +105,23 @@ func Find(text string, handles ...string) (start, end int, ok bool) {
 	return 0, 0, false
 }
 
+// lowered is s in lower case, byte for byte as long as s, so an offset into
+// one is the same offset into the other. A rune whose lower case takes a
+// different number of bytes, and a byte that is not UTF-8, stay as written.
+func lowered(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if l := unicode.ToLower(r); l != r && utf8.RuneLen(l) == size {
+			out = utf8.AppendRune(out, l)
+		} else {
+			out = append(out, s[i:i+size]...)
+		}
+		i += size
+	}
+	return string(out)
+}
+
 // endsWord reports whether a name may end at text[e:]: a space, or
 // punctuation other than "/" and a "." followed by more of a word.
 func endsWord(text string, e int) bool {
@@ -125,7 +146,7 @@ func hidden(text string) []bool {
 			out[i] = true
 		}
 	}
-	lower := strings.ToLower(text)
+	lower := lowered(text)
 	// Elements and comments, wherever they sit.
 	for _, pair := range [][2]string{{"<!--", "-->"}, {"<code", "</code>"}, {"<pre", "</pre>"}} {
 		for from := 0; ; {

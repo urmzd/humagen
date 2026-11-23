@@ -157,7 +157,7 @@ func (p *Platform) githubSessionOf(tenant, id string) (threads.Thread, bool) {
 		if err != nil || th.Session == nil {
 			return threads.Thread{}, false
 		}
-		if strings.HasPrefix(th.Session.Parent, "s_") {
+		if threads.SessionParent(th.Session.Parent) {
 			id = th.Session.Parent
 			continue
 		}

@@ -146,7 +146,7 @@ func (p *Platform) surfaceRoot(tenant, thread string) (threads.Thread, bool) {
 		if th.Surface != nil {
 			return th, true
 		}
-		if th.Session == nil || !strings.HasPrefix(th.Session.Parent, "s_") {
+		if th.Session == nil || !threads.SessionParent(th.Session.Parent) {
 			return threads.Thread{}, true
 		}
 		id = th.Session.Parent

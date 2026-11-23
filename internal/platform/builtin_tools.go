@@ -291,7 +291,7 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 			if err != nil || th.Session == nil || th.Visibility != threads.Shared || !open(th.Project) || tree.PendingFork(th.Project) || !agentOpen(th.Session.Agent) {
 				return false
 			}
-			if !strings.HasPrefix(th.Session.Parent, "s_") {
+			if !threads.SessionParent(th.Session.Parent) {
 				return true
 			}
 			id = th.Session.Parent
