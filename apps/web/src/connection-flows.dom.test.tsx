@@ -926,6 +926,114 @@ test("the GitHub app's sheet holds the rules that start a session, saved on the 
   );
 });
 
+test("a rule answers with a review or a reply, a pull request rule reviewing unless told", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+
+  // A stored pull request rule without a shape reads as the review it is.
+  const rule = within(rules).getByRole("listitem", { name: "review-prs" });
+  await choose(rule, "review-prs", "Edit");
+  const edit = within(rules).getByRole("form", { name: "Edit review-prs" });
+  const shape = () => within(edit).getByLabelText(/^Answers with/) as HTMLSelectElement;
+  assert.equal(shape().value, "review");
+  assert.deepEqual(
+    within(shape())
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+    ["Review", "Reply"],
+  );
+
+  // A check run replies unless told, and an issue or a push cannot review.
+  fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value: "check_run" } });
+  assert.equal(shape().value, "reply");
+  for (const event of ["issues", "push"]) {
+    fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value: event } });
+    assert.equal(within(edit).queryByLabelText(/^Answers with/), null, event);
+  }
+  fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value: "pull_request" } });
+  assert.equal(shape().value, "review");
+
+  fireEvent.change(shape(), { target: { value: "reply" } });
+  fireEvent.click(within(edit).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; event: string; shape?: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, a.event, a.shape]),
+    [["review-prs", "pull_request", "reply"]],
+  );
+});
+
+test("a rule left at its default saves no shape, so the server's default holds", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  fireEvent.click(within(rules).getByRole("button", { name: "Add Rule" }));
+  const form = within(rules).getByRole("form", { name: "New rule" });
+  assert.equal((within(form).getByLabelText(/^Answers with/) as HTMLSelectElement).value, "review");
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "check-prs" } });
+  fireEvent.change(within(form).getByLabelText(/^Repository/), { target: { value: "acme/api" } });
+  await waitFor(() => assert.ok(within(form).getByRole("option", { name: "@code-reviewer" })));
+  fireEvent.change(within(form).getByLabelText(/^Agent/), {
+    target: { value: "code-reviewer" },
+  });
+  fireEvent.change(within(form).getByLabelText(/^Instructions/), {
+    target: { value: "Check the change." },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; shape?: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, "shape" in a]),
+    [
+      ["review-prs", false],
+      ["check-prs", false],
+    ],
+  );
+});
+
 test("a rule the form cannot save says why before anything is sent", async () => {
   const client = githubApp();
   net = stubFetch(
