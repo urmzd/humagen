@@ -450,7 +450,7 @@ func (s *Seer) sessionAncestorsVisible(id string) bool {
 			return false
 		}
 		parent := th.Session.Parent
-		if !strings.HasPrefix(parent, "s_") {
+		if !threads.SessionParent(parent) {
 			return true
 		}
 		p, err := s.record(parent)
@@ -573,7 +573,7 @@ func (s *Seer) Session(id string) bool {
 		if err != nil || th.Session == nil || !s.Place(Place{Project: th.Project, Thread: id}) || !s.Agent(th.Session.Agent) {
 			return false
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			return true
 		}
 		id = th.Session.Parent

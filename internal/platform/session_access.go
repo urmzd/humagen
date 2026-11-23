@@ -2,7 +2,6 @@ package platform
 
 import (
 	"slices"
-	"strings"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -26,7 +25,7 @@ func (p *Platform) invitationReader(tenant, subject string) auth.Principal {
 
 // Inviting someone to a child cannot also grant its inherited parent context.
 func (p *Platform) sessionInviteeSeesAncestors(tenant string, th threads.Thread, subject string) bool {
-	if th.Session == nil || !strings.HasPrefix(th.Session.Parent, "s_") {
+	if th.Session == nil || !threads.SessionParent(th.Session.Parent) {
 		return true
 	}
 	return p.SeesSession(p.invitationReader(tenant, subject), th.Session.Parent)

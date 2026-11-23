@@ -13,6 +13,7 @@ import (
 	"time"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/runtime"
 	"github.com/urmzd/saige/flow/signature"
 
@@ -139,6 +140,12 @@ func TestTheTriggerAsksTheDefaultAfterANamedAgentAnswered(t *testing.T) {
 	if run := answeredBy(t, p, "asked"); run.Agent != "docs" {
 		t.Fatalf("asked answered by %s", run.Agent)
 	}
+	// A reply continues an answer a person can see: one posted on the
+	// issue, which is on record once it is delivered, a moment after its
+	// run completes.
+	eventually(t, "the answer on issue 10 was delivered", func() bool {
+		return p.SurfaceAnswered(tenant, "gh", address.MustParse("github://acme/site/issues/10"))
+	})
 	comment("reply", 10, "ada", "@ops thanks, one more thing")
 	if run := answeredBy(t, p, "reply"); run.Agent != "docs" || run.Text != "@ops thanks, one more thing" {
 		t.Fatalf("the reply was answered by %q with %q, want docs continuing", run.Agent, run.Text)

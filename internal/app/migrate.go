@@ -32,9 +32,10 @@ sessions  files each GitHub run from before GitHub sessions in the session
           record was created after the first run filed in it had ended,
           is dated from its runs too, archived or not. A session whose
           first run is still queued or running, such as one a mention
-          just opened, is left. A deleted session is left.
-          Conversations from before sessions are listed and left as they
-          are.
+          just opened, is left. A deleted session is left. A
+          conversation from before sessions that names one agent becomes
+          that agent's session under the id it has, read by the people
+          who read it before; any other is listed and left as it is.
 
 It writes nothing unless -apply is given: without it, it prints what it
 would do. A second -apply finds the first one's work and writes nothing.

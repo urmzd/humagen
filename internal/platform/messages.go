@@ -603,12 +603,17 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
 		return threads.Thread{}, false, err
 	}
-	if !created && vis == threads.Private && origin.Audience != nil && len(origin.Audience.Members) > 0 {
+	// A place whose key opens a conversation's own id is one adopted as a
+	// session, or one an adoption has yet to finish: it stays as it was
+	// filed, so the place's members now are not made its people and no
+	// audience is kept for it (StartSurfaceSession).
+	adopted := threads.Adopted(th) || strings.HasPrefix(rec.ID, threads.IDPrefix)
+	if !adopted && !created && vis == threads.Private && origin.Audience != nil && len(origin.Audience.Members) > 0 {
 		if err := p.keepAudience(who.Tenant, th, people); err != nil {
 			return threads.Thread{}, false, err
 		}
 	}
-	if aud.Kind != "" {
+	if !adopted && aud.Kind != "" {
 		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
 			return threads.Thread{}, false, err
 		}
@@ -736,7 +741,7 @@ func (p *Platform) sessionRoot(tenant string, th threads.Thread) (root, place st
 		if th.Session == nil {
 			return "", "", threads.ErrNotFound
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			return th.ID, th.Session.Parent, nil
 		}
 		if th, err = p.Threads.Get(tenant, th.Session.Parent); err != nil {

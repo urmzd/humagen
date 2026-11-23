@@ -154,7 +154,7 @@ func (p *Platform) sessionOrigin(tenant, session string) (root, origin string, e
 		if th.Session == nil {
 			return "", "", threads.ErrNotFound
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			return th.ID, th.Session.Parent, nil
 		}
 		id = th.Session.Parent
