@@ -5759,7 +5759,8 @@ audience are read only from that client's own machine posting for a
 person (act_as); from any other caller they are ignored, and a root
 the message starts is the caller's own. A place that already has a
 root takes a message only from someone who reads that root; anyone
-else is answered 404.
+else is answered 404. A slack or github place's root is started only
+by its surface: until then a message to it is answered 404.
  */
 export interface ExternalRef {
   type: "slack" | "github" | "schedule" | "url" | "web";

@@ -308,7 +308,7 @@ func TestARunAskedOnAnIssueReadsIt(t *testing.T) {
 // for a person in the console, and not for a run no GitHub client raised.
 func TestAGitHubPlaceOutsideTheGrantsIsNotRead(t *testing.T) {
 	p, ana := slackWorkspace(t)
-	out, err := p.SendMessages(t.Context(), ana, sayIn("review it", &platform.ExternalRef{Type: platform.RefGitHub, Repo: "other/secret", Kind: "pull", Number: 9}))
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("review it", &platform.ExternalRef{Type: platform.RefGitHub, Repo: "other/secret", Kind: "pull", Number: 9}))
 	if err != nil {
 		t.Fatal(err)
 	}

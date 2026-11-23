@@ -93,6 +93,15 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 			// Heard either way; answered only when the agent says it is for it.
 			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
 		}
+		// Who may post is checked before the root's people or audience
+		// change, so a message that is not taken keeps nothing. A member the
+		// conversation reports is one of its people once they are kept, and
+		// is checked as one when the message posts.
+		if vis != threads.Private || !reportsMember(c, ref.Audience, person) {
+			if _, err := p.mayPost(person, Place{Project: th.Project, Thread: th.ID}, postNeed(post)); err != nil {
+				return SessionView{}, false, err
+			}
+		}
 		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
 			if err := p.keepAudience(who.Tenant, th, people); err != nil {
 				return SessionView{}, false, err
@@ -398,6 +407,20 @@ func (p *Platform) keepAudience(tenant string, th threads.Thread, people []threa
 	}
 	_, err := p.Threads.Participants(tenant, th.ID, th.Version, add, remove, func(threads.Participant) bool { return true }, "surface", p.now())
 	return err
+}
+
+// reportsMember says whether a private channel's or a group direct
+// message's members, as the client reports them, include person. The person
+// a message is posted for is not one by posting it.
+func reportsMember(c clients.Client, a *SurfaceAudience, person auth.Principal) bool {
+	if a == nil || (a.Type != ChannelPrivate && a.Type != ChannelGroupDM) || c.Slack == nil {
+		return false
+	}
+	self := humanSubject(person)
+	return slices.ContainsFunc(a.Members, func(u string) bool {
+		s, ok := c.ActsFor(c.Slack.Machine, u)
+		return ok && s != "" && s == self
+	})
 }
 
 // sessionReading is the text of a session message as mentions are read

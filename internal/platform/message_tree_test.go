@@ -229,7 +229,7 @@ func TestTheRootsAreListedNewestFirstWithTheirPlaceAndAudience(t *testing.T) {
 	// the first root is answered before the second is asked, so the answer
 	// to the first is not what changed last.
 	rootAnswered(t, p, first)
-	second, err := p.SendMessages(t.Context(), ana, sayIn("howdy", slackRef("D0ANA", "1700000000.000200", "")))
+	second, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("howdy", slackRef("D0ANA", "1700000000.000200", "")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestARootThatChangesBetweenPagesNeitherRepeatsNorHidesTheRootsAfterIt(t *te
 	p, ana := slackWorkspace(t)
 	var roots []string
 	for _, ts := range []string{"1700000000.000100", "1700000000.000200", "1700000000.000300"} {
-		m, err := p.SendMessages(t.Context(), ana, sayIn("howdy", slackRef("C01ANY", ts, "")))
+		m, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("howdy", slackRef("C01ANY", ts, "")))
 		if err != nil {
 			t.Fatal(err)
 		}

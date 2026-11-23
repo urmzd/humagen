@@ -545,7 +545,8 @@ func (p *Platform) sendToNewConsoleRoot(ctx context.Context, who auth.Principal,
 // A root that is already there is who's to post to only when who reads it;
 // otherwise it is not found and nothing is kept. Its people and its audience
 // follow the origin only when verified says a surface built into the server
-// reported them.
+// reported them. Unverified, a Slack or GitHub place's root is not started:
+// only its surface starts it.
 func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string, origin ExternalRef, mentioned string, verified bool) (threads.Thread, bool, error) {
 	var c *clients.Client
 	if origin.Client != "" {
@@ -606,6 +607,16 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if owner == "" {
 		return threads.Thread{}, false, fmt.Errorf("%w: nobody answers here: the server has no entry agent and the origin's client names no default agent", ErrNoDefault)
 	}
+	if !verified && (origin.Type == RefSlack || origin.Type == RefGitHub) {
+		// A Slack thread's or a GitHub pull request's root is started only by
+		// its surface. Through the API it is posted to when it is there and
+		// who reads it; otherwise it is not found and nothing is kept.
+		th, err := p.Threads.Get(who.Tenant, session.Key{Tenant: who.Tenant, Parent: place, Agent: owner}.ID())
+		if err != nil || th.Session == nil || !p.SeesSession(who, th.ID) {
+			return threads.Thread{}, false, threads.ErrNotFound
+		}
+		return th, false, nil
+	}
 	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: place, Agent: owner, Channel: wire.Channel(who.Tenant)})
 	if err != nil {
 		return threads.Thread{}, false, err
@@ -619,11 +630,14 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
 		return threads.Thread{}, false, err
 	}
+	// Who reads the root is checked before its people or audience change, so
+	// a message that is not taken keeps nothing. A member the surface reports
+	// is one of its people once they are kept, and is checked again below.
+	if !created && !p.SeesSession(who, th.ID) && (c == nil || vis != threads.Private || !reportsMember(*c, origin.Audience, who)) {
+		return threads.Thread{}, false, threads.ErrNotFound
+	}
 	if !created && !verified {
-		// The root is as it was started: who reads it, or it is not there.
-		if !p.SeesSession(who, th.ID) {
-			return threads.Thread{}, false, threads.ErrNotFound
-		}
+		// The root is as it was started.
 		return th, false, nil
 	}
 	if !created && vis == threads.Private && origin.Audience != nil && len(origin.Audience.Members) > 0 {

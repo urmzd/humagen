@@ -172,6 +172,72 @@ func TestASurfacesMessageStillBringsThePlacesMembersToItsRoot(t *testing.T) {
 	}
 }
 
+// The app posts for vic, who is not in the private channel's root, with the
+// channel's members as the app reports them (ana and ben): vic does not post
+// there, and the root keeps nothing.
+func TestTheAppsMessageForSomeoneOutsideTheRootIsNotTaken(t *testing.T) {
+	p, st, machine, root := placeRoom(t)
+	before := keptOf(t, p, st, root)
+	in := withAudience(slackSession(placeChannel, placeThread, "1700000000.000500", "<@UAPP> what was said?"), platform.ChannelPrivate, "U0ANA", "U0BEN")
+	in.ActAs.User = "U0VIC"
+	if v, _, err := p.StartSurfaceSession(t.Context(), machine, in); err == nil {
+		t.Fatalf("a message for vic, who does not read the root, was taken: root %s", v.ID)
+	}
+	if after := keptOf(t, p, st, root); !sameKept(before, after) {
+		t.Fatalf("the root kept %+v, want it as it was: %+v", after, before)
+	}
+	if p.SeesSession(placeOperator("vic", tenant), root) {
+		t.Fatal("vic reads the root")
+	}
+}
+
+// A listening message that is not taken keeps nothing, its audience included.
+func TestAListeningMessageNotTakenKeepsNothing(t *testing.T) {
+	p, st, machine, root := placeRoom(t)
+	before := keptOf(t, p, st, root)
+	// The root listens for ana, who asked first; vic's listening message,
+	// which names him a member, is not hers.
+	in := withAudience(slackSession(placeChannel, placeThread, "1700000000.000500", "just chatting"), platform.ChannelPrivate, "U0ANA", "U0VIC")
+	in.ActAs.User = "U0VIC"
+	in.Listen = true
+	if _, _, err := p.StartSurfaceSession(t.Context(), machine, in); !errors.Is(err, platform.ErrNotListening) {
+		t.Fatalf("a listening message in a root nobody asked to listen = %v, want not listening", err)
+	}
+	if after := keptOf(t, p, st, root); !sameKept(before, after) {
+		t.Fatalf("the root kept %+v, want it as it was: %+v", after, before)
+	}
+}
+
+// Through the API, vic names a private channel's thread before the app has
+// posted there. Only the surface starts that place's root: vic's message is
+// not found, and ana's first message there starts the root, which vic does
+// not read.
+func TestOnlyTheSurfaceStartsASurfacePlacesRoot(t *testing.T) {
+	p, _, machine, _ := placeRoom(t)
+	vic := placeOperator("vic", tenant)
+	const next = "1700000000.000700"
+	ref := placeRef(next, "U0VIC")
+	ref.ThreadTS = ""
+	if out, err := p.SendMessages(t.Context(), vic, sayIn("@helper hello", ref)); !errors.Is(err, threads.ErrNotFound) || out.Root != "" {
+		t.Fatalf("vic's message to a place with no root = %+v, %v; want not found", out, err)
+	}
+	gh := &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/web", Kind: "pull", Number: 7}
+	if out, err := p.SendMessages(t.Context(), vic, sayIn("@helper hello", gh)); !errors.Is(err, threads.ErrNotFound) || out.Root != "" {
+		t.Fatalf("vic's message to a pull request with no root = %+v, %v; want not found", out, err)
+	}
+	in := withAudience(slackSession(placeChannel, next, "", "<@UAPP> the plan is X"), platform.ChannelPrivate, "U0ANA", "U0BEN")
+	v, started, err := p.StartSurfaceSession(t.Context(), machine, in)
+	if err != nil || !started {
+		t.Fatalf("ana's first message in the thread = started %v, %v; want started", started, err)
+	}
+	if p.SeesSession(vic, v.ID) {
+		t.Fatalf("vic reads ana's private channel root %s", v.ID)
+	}
+	if !p.SeesSession(placeOperator("ben", tenant), v.ID) {
+		t.Fatalf("ben does not read the root %s", v.ID)
+	}
+}
+
 func TestAPlacesRootIsItsOwnTenants(t *testing.T) {
 	p, st, _, root := placeRoom(t)
 	before := keptOf(t, p, st, root)
