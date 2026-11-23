@@ -1,11 +1,11 @@
 import { defaultCopy } from "@humagen/components";
-import { BellIcon, CheckIcon } from "@humagen/render-web";
+import { BellIcon, buttonClass, CheckIcon } from "@humagen/render-web";
 import { Modal } from "@humagen/web";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
 import { turnOf } from "./adapter.ts";
 import { alertAnchor, alertReason, byTime, groupAlerts } from "./alertPlacement.ts";
-import { call, type ThreadTurn } from "./api.ts";
+import { api, call, type ThreadTurn } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import { Pill } from "./cards.tsx";
 import { href, type Route } from "./route.ts";
@@ -19,6 +19,7 @@ import {
   sessionCenter,
 } from "./sessionCenter.ts";
 import { AgentMark, button, field, MoreMenu, type PageAction, Problem, primary } from "./ui.tsx";
+import { useWide } from "./wide.ts";
 
 export { alertAnchor };
 
@@ -68,10 +69,19 @@ export function useSessionAlerts(
     setRows([]);
     setUndo(undefined);
   }, [id]);
+  // Undo is offered for a while, then the change stands.
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(undefined), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
   /** Change one alert, or every copy of a repeated one, together. */
-  const change = async (alerts: Alert | Alert[], state: "open" | "resolved" | "snoozed") => {
+  const change = async (
+    alerts: Alert | Alert[],
+    state: "open" | "resolved" | "snoozed",
+  ): Promise<boolean> => {
     const all = Array.isArray(alerts) ? alerts : [alerts];
-    if (busy || all.length === 0) return;
+    if (busy || all.length === 0) return false;
     setBusy(true);
     setProblem(undefined);
     try {
@@ -85,8 +95,10 @@ export function useSessionAlerts(
       setUndo(state === "open" ? undefined : all);
       refresh();
       onChanged();
+      return true;
     } catch (error) {
       setProblem(error instanceof Error ? error.message : "The alert was not updated.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -94,6 +106,8 @@ export function useSessionAlerts(
   return { rows, problem, busy, undo, refresh, change };
 }
 export type SessionAttention = ReturnType<typeof useSessionAlerts>;
+/** How long Undo is offered after an alert changes. */
+export const UNDO_MS = 8000;
 
 /** Suppress only projected approvals whose run actually renders a pending approval. */
 export function duplicatesInlineApproval(alert: Alert, turns: ThreadTurn[]): boolean {
@@ -114,22 +128,86 @@ function visit(to: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-/** An alert's one action, as quiet as the line it sits on. */
-const textAction =
-  "inline-flex min-h-7 pointer-coarse:min-h-11 shrink-0 items-center rounded-aui px-1.5 font-medium underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50";
+/**
+ * An alert's one text action: the same small quiet button as a failed
+ * answer's Retry, so the transcript has one kind of action control.
+ */
+const textAction = `${buttonClass("default")} h-6 shrink-0 px-2 py-0 text-aui-xs`;
 const iconAction =
   "inline-flex size-9 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50";
 
-/** Red for a failure or urgency, amber for the rest. */
-const tone = (alert: Alert) =>
-  alert.priority === "urgent" || alert.severity === "critical" || alert.action === "retry"
-    ? "bg-aui-bad"
-    : "bg-aui-warn";
+/** Red for a failure or urgency, amber for the rest, muted once settled. */
+const tone = (alert: Alert, open: boolean) =>
+  !open
+    ? "bg-aui-muted/50"
+    : alert.priority === "urgent" || alert.severity === "critical" || alert.action === "retry"
+      ? "bg-aui-bad"
+      : "bg-aui-warn";
+
+/** The agent an alert is about, if any: an eval regression is Humagen's own. */
+const agentOf = (alert: Alert) => (alert.kind === "eval_below" ? "humagen" : alert.agent);
+
+/** What a line says, the same for the eye and for a screen reader. */
+export function alertSaid(alert: Alert): string {
+  const agent = agentOf(alert);
+  return agent
+    ? `${agentShown(agent)} ${alertReason({ title: alert.title, agent: alert.agent })}`
+    : alert.title;
+}
+
+/**
+ * A failed run's own alert: its failure card already says the run failed
+ * and offers Retry, so the alert adds Mark Done there instead of a line.
+ */
+export function foldsIntoFailure(alert: Alert, turns: ThreadTurn[]): string | undefined {
+  if (!alert.run_id || !(alert.kind === "run_failed" || alert.action === "retry")) return;
+  const run = turns.find((t) => t.run?.id === alert.run_id)?.run;
+  return run?.status === "failed" ? run.id : undefined;
+}
+
+/** How many runs not on view a session reads to place their alerts. */
+const ROOT_READS = 20;
+
+/**
+ * The run at the top of each call tree an alert is about, when that run is
+ * not on view itself, such as a specialist another agent called: read once
+ * each, so its alert sits after the answer that called it.
+ */
+export function useAlertRoots(alerts: Alert[], turns: ThreadTurn[]): Map<string, string> {
+  const [roots, setRoots] = useState<Map<string, string>>(() => new Map());
+  const asked = useRef(new Set<string>());
+  const shown = new Set(turns.map((t) => t.run?.id).filter(Boolean));
+  const wanted = [
+    ...new Set(
+      alerts
+        .map((a) => a.run_id)
+        .filter((id): id is string => !!id && !shown.has(id) && !asked.current.has(id)),
+    ),
+  ];
+  const key = wanted.slice(0, Math.max(0, ROOT_READS - asked.current.size)).join(",");
+  useEffect(() => {
+    if (!key) return;
+    for (const id of key.split(",")) {
+      asked.current.add(id);
+      api.run(id).then(
+        (run) => {
+          if (run.root && run.root !== id) setRoots((m) => new Map(m).set(id, run.root));
+        },
+        () => {},
+      );
+    }
+  }, [key]);
+  return roots;
+}
+
+type Fix = { alert: Alert; agent: string };
 
 /**
  * A session's alerts, one quiet line each, where they happened in the
  * transcript. The same alert raised again on one answer is one line with a
- * count. Each line has one action; the rest wait in its ⋯ menu.
+ * count. Each line has one action; the rest wait in its ⋯ menu. As
+ * `controls`, the alerts of a failed answer are only Mark Done and the menu,
+ * drawn in that answer's failure card.
  */
 export function SessionAlerts({
   alerts,
@@ -138,6 +216,7 @@ export function SessionAlerts({
   agents,
   onOpen,
   beside = false,
+  controls = false,
 }: {
   alerts: Alert[];
   attention: SessionAttention;
@@ -149,13 +228,15 @@ export function SessionAlerts({
    * that answer goes nowhere new. A function decides it alert by alert.
    */
   beside?: boolean | ((alert: Alert) => boolean);
+  controls?: boolean;
 }) {
-  const [fix, setFix] = useState<{ alert: Alert; agent: string }>();
+  const [fix, setFix] = useState<Fix>();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
   const [reviewing, setReviewing] = useState<string>();
   const [reviewProblem, setReviewProblem] = useState<{ id: string; message: string }>();
+  const wide = useWide();
   const words = defaultCopy.attention;
   const review = async (alert: Alert) => {
     if (reviewing) return;
@@ -191,34 +272,50 @@ export function SessionAlerts({
       setBusy(false);
     }
   };
+  const groups = groupAlerts(alerts);
+  const line = (group: (typeof groups)[number]) => (
+    <AlertLine
+      // The oldest copy names the line, so settling it keeps the same line (and focus).
+      key={group.alerts[group.alerts.length - 1]!.id}
+      alerts={group.alerts}
+      open={group.open}
+      canWrite={canWrite}
+      agents={agents}
+      beside={typeof beside === "function" ? beside(group.lead) : beside}
+      wide={wide}
+      controls={controls}
+      attention={attention}
+      reviewing={reviewing}
+      reviewProblem={reviewProblem}
+      onReview={onOpen ? (alert) => void review(alert) : undefined}
+      onOpen={onOpen}
+      onFix={(alert, agent) => {
+        setFix({ alert, agent });
+        setText(
+          `Help resolve this alert: ${alert.title}${alert.body ? `\n\n${alert.body}` : ""}${alert.resolve_when ? `\n\nResolution needed: ${alert.resolve_when}` : ""}\n\nExplain the proposed fix before changing anything.`,
+        );
+      }}
+    />
+  );
+  let drawn: ReactNode = null;
+  if (controls) {
+    // A failed answer's alerts act together: one Mark Done, one menu.
+    const open = alerts.filter(openAlert);
+    drawn =
+      open.length > 0
+        ? line({
+            key: "failure",
+            alerts: byTime(open).reverse(),
+            lead: byTime(open).at(-1)!,
+            open: true,
+          })
+        : null;
+  } else if (groups.length > 0)
+    // One slot's lines sit together, as one entry of the transcript.
+    drawn = <div className="flex min-w-0 flex-col">{groups.map(line)}</div>;
   return (
     <>
-      {/* One slot's lines sit together, as one entry of the transcript. */}
-      {alerts.length > 0 && (
-        <div className="flex min-w-0 flex-col">
-          {groupAlerts(alerts).map((group) => (
-            <AlertLine
-              key={group.key}
-              alerts={group.alerts}
-              open={group.open}
-              canWrite={canWrite}
-              agents={agents}
-              beside={typeof beside === "function" ? beside(group.lead) : beside}
-              attention={attention}
-              reviewing={reviewing}
-              reviewProblem={reviewProblem}
-              onReview={onOpen ? (alert) => void review(alert) : undefined}
-              onOpen={onOpen}
-              onFix={(alert, agent) => {
-                setFix({ alert, agent });
-                setText(
-                  `Help resolve this alert: ${alert.title}${alert.body ? `\n\n${alert.body}` : ""}${alert.resolve_when ? `\n\nResolution needed: ${alert.resolve_when}` : ""}\n\nExplain the proposed fix before changing anything.`,
-                );
-              }}
-            />
-          ))}
-        </div>
-      )}
+      {drawn}
       {fix && (
         <Modal
           title="Start a fix session"
@@ -279,6 +376,8 @@ function AlertLine({
   canWrite,
   agents,
   beside,
+  wide,
+  controls,
   attention,
   reviewing,
   reviewProblem,
@@ -291,6 +390,8 @@ function AlertLine({
   canWrite: boolean;
   agents: string[];
   beside: boolean;
+  wide: boolean;
+  controls: boolean;
   attention: SessionAttention;
   reviewing?: string;
   reviewProblem?: { id: string; message: string };
@@ -299,17 +400,19 @@ function AlertLine({
   onFix: (alert: Alert, agent: string) => void;
 }) {
   const detail = useId();
+  // A line, or the controls in a failure card: either way the element focus returns to.
+  const self = useRef<HTMLFieldSetElement>(null);
   const words = defaultCopy.attention;
   const alert = alerts[0]!;
   const anchor = alertAnchor(alert);
-  const agent = alert.kind === "eval_below" ? "humagen" : alert.agent;
+  const agent = agentOf(alert);
   const page = alertPage(alert);
   // Where View goes: the page the alert names, Connections, or the answer it is about.
   const view: Route | string | undefined = page
     ? page
     : alert.action === "reconnect"
       ? "/connections"
-      : beside && anchor
+      : (beside || controls) && anchor
         ? undefined
         : // An answer that is not on view, such as a specialist's, opens at its own address.
           alert.run_id && alert.run_id === anchor && !alert.message
@@ -348,10 +451,10 @@ function AlertLine({
     });
   if (!open && alert.review && onOpen)
     actions.push({ kind: "button", label: words.openReview, run: () => onOpen(alert.review!) });
-  // A settled line asks nothing: what it still offers waits in its menu, so
-  // its right edge lines up with the open lines around it.
-  const main = open ? actions[0] : undefined;
-  const rest = open ? actions.slice(1) : actions;
+  // A settled line asks nothing, and a phone has no room: the action waits in the menu.
+  // In a failure card, the card's own Retry is the action.
+  const main = open && wide && !controls ? actions[0] : undefined;
+  const rest = main ? actions.slice(1) : actions;
   const menu: PageAction[] = rest.map((a) => ({
     label: a.label,
     disabled: a.disabled,
@@ -367,10 +470,42 @@ function AlertLine({
   const said = [alert.body, alert.resolve_when && words.doneWhen(alert.resolve_when)]
     .filter(Boolean)
     .join("\n\n");
+  const markDone = open && canWrite && (
+    <button
+      type="button"
+      className={iconAction}
+      aria-label={words.markDone}
+      title={words.markDone}
+      disabled={attention.busy}
+      onClick={async () => {
+        // The line stays, settled: focus stays on it rather than falling to the page.
+        if (await attention.change(alerts, "resolved")) self.current?.focus();
+      }}
+    >
+      <CheckIcon size={16} aria-hidden />
+    </button>
+  );
+  const more = menu.length > 0 && <MoreMenu label={words.more} items={menu} />;
+  const name = `Alert: ${alertSaid(alert)}`;
+  if (controls)
+    return (
+      <fieldset
+        ref={self}
+        tabIndex={-1}
+        aria-label={name}
+        data-alert-line=""
+        data-alert-state={state}
+        className="inline-flex min-w-0 items-center rounded-aui focus-visible:outline-2 focus-visible:outline-aui-accent"
+      >
+        {markDone}
+        {more}
+      </fieldset>
+    );
   return (
     <section
+      ref={self}
       tabIndex={-1}
-      aria-label={`Alert: ${alert.title}`}
+      aria-label={name}
       aria-describedby={said ? detail : undefined}
       data-alert-line=""
       data-alert-message={anchor}
@@ -378,81 +513,62 @@ function AlertLine({
       data-reviewed={alert.review ? "" : undefined}
       className={`flex min-w-0 flex-col rounded-aui px-1 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "" : "text-aui-muted"}`}
     >
-      {/* What it is on the left, what to do on the right; on a narrow screen the actions wrap under it. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2">
-        <span className="flex min-h-9 min-w-0 flex-1 basis-56 items-center gap-2">
-          {open ? (
-            <span
-              role="img"
-              aria-label={words.states.open}
-              className={`size-2 shrink-0 rounded-full ${tone(alert)}`}
-            />
-          ) : (
-            <Pill size="compact">{words.states[state]}</Pill>
-          )}
-          {agent ? (
-            <span className={`flex shrink-0 items-center gap-1.5 ${open ? "" : "opacity-60"}`}>
-              <AgentMark name={agent} size={16} />
-              <span className={`font-medium ${open ? "text-aui-fg" : ""}`}>
-                {agentShown(agent)}
-              </span>
-            </span>
-          ) : (
-            <BellIcon size={14} aria-hidden />
-          )}
-          <span className="min-w-0 flex-1 truncate" title={said || undefined}>
-            {agent ? alertReason({ title: alert.title, agent: alert.agent }) : alert.title}
-            {alerts.length > 1 && (
-              <span className="ml-1.5 tabular-nums text-aui-muted">
-                <span aria-hidden>{words.count(alerts.length)}</span>
-                <span className="sr-only">{words.countLabel(alerts.length)}</span>
-              </span>
-            )}
+      <div className="flex min-h-9 min-w-0 items-center gap-2">
+        {/* The status keeps one slot, so every line's mark and name line up. */}
+        <span
+          role="img"
+          aria-label={words.states[state]}
+          className={`size-2 shrink-0 rounded-full ${tone(alert, open)}`}
+        />
+        {agent ? (
+          <span className={`flex shrink-0 items-center gap-1.5 ${open ? "" : "opacity-60"}`}>
+            <AgentMark name={agent} size={16} />
+            <span className={`font-medium ${open ? "text-aui-fg" : ""}`}>{agentShown(agent)}</span>
           </span>
-          {said && (
-            <span id={detail} className="sr-only">
-              {said}
+        ) : (
+          <BellIcon size={14} aria-hidden />
+        )}
+        <span className="min-w-0 flex-1 truncate" title={said || undefined}>
+          {agent ? alertReason({ title: alert.title, agent: alert.agent }) : alert.title}
+          {alerts.length > 1 && (
+            <span className="ml-1.5 tabular-nums text-aui-muted">
+              <span aria-hidden>{words.count(alerts.length)}</span>
+              <span className="sr-only">{words.countLabel(alerts.length)}</span>
             </span>
           )}
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-2 empty:hidden">
-          {main &&
-            (main.kind === "link" ? (
-              <a
-                className={`${textAction} ${open ? "text-aui-fg" : "text-aui-muted"}`}
-                href={main.to}
-                onClick={(event) => {
-                  if (event.button || event.metaKey || event.ctrlKey || event.shiftKey) return;
-                  event.preventDefault();
-                  main.run();
-                }}
-              >
-                {main.label}
-              </a>
-            ) : (
-              <button
-                type="button"
-                className={`${textAction} ${open ? "text-aui-fg" : "text-aui-muted"}`}
-                disabled={main.disabled}
-                onClick={main.run}
-              >
-                {main.label}
-              </button>
-            ))}
-          {open && canWrite && (
+        {said && (
+          <span id={detail} className="sr-only">
+            {said}
+          </span>
+        )}
+        {/* A settled state reads at the right, as a card's status does. */}
+        {!open && <Pill size="compact">{words.states[state]}</Pill>}
+        {main &&
+          (main.kind === "link" ? (
+            <a
+              className={textAction}
+              href={main.to}
+              onClick={(event) => {
+                if (event.button || event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                main.run();
+              }}
+            >
+              {main.label}
+            </a>
+          ) : (
             <button
               type="button"
-              className={iconAction}
-              aria-label={words.markDone}
-              title={words.markDone}
-              disabled={attention.busy}
-              onClick={() => void attention.change(alerts, "resolved")}
+              className={textAction}
+              disabled={main.disabled}
+              onClick={main.run}
             >
-              <CheckIcon size={16} aria-hidden />
+              {main.label}
             </button>
-          )}
-          {menu.length > 0 && <MoreMenu label={words.more} items={menu} />}
-        </span>
+          ))}
+        {markDone}
+        {more}
       </div>
       {reviewProblem && alerts.some((a) => a.id === reviewProblem.id) && (
         <Problem message={reviewProblem.message} />
@@ -471,5 +587,5 @@ export function jumpToOpenAlert(root: ParentNode = document) {
   return true;
 }
 
-/** How many alerts wait in a session, counting a repeated one once. */
-export const openAlertCount = (alerts: Alert[]) => groupAlerts(alerts.filter(openAlert)).length;
+/** How many open lines a slot draws: a repeated alert is one line. */
+export const openLines = (alerts: Alert[]) => groupAlerts(alerts).filter((g) => g.open).length;

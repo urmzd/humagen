@@ -44,18 +44,47 @@ test("an alert about a turn on view sits after it; any other at its own time", (
   );
 });
 
-test("with earlier turns still unread, a settled alert older than every turn waits for them", () => {
-  const old = [
+test("with earlier turns still unread, an alert older than every turn, or about a turn not loaded, is listed as earlier", () => {
+  const alerts = [
     alert({ id: "open-old", at: "2026-11-22T08:00:00Z" }),
     alert({ id: "done-old", state: "resolved", at: "2026-11-22T08:00:00Z" }),
+    // About a turn on an unread page: never placed by time among turns it is not about.
+    alert({ id: "unloaded", message: "m-0", at: "2026-11-22T09:20:00Z" }),
+    alert({ id: "late-plain", at: "2026-11-22T09:20:00Z" }),
   ];
+  const unread = placeAlerts(turns, alerts, true);
   assert.deepEqual(
-    placeAlerts(turns, old, true).lead.map((a) => a.id),
-    ["open-old"],
+    unread.earlier.map((a) => a.id),
+    ["open-old", "unloaded"],
   );
+  assert.deepEqual(unread.lead, []);
   assert.deepEqual(
-    placeAlerts(turns, old, false).lead.map((a) => a.id),
+    unread.after.get("m-2")?.map((a) => a.id),
+    ["late-plain"],
+  );
+  // Once every turn is read, the start of the session is the start.
+  const all = placeAlerts(turns, alerts, false);
+  assert.deepEqual(
+    all.lead.map((a) => a.id),
     ["open-old", "done-old"],
+  );
+  assert.deepEqual(all.earlier, []);
+});
+
+test("an alert about a run another turn called sits after that turn, when the turn is on view", () => {
+  const child = alert({ id: "child", run_id: "r-child", at: "2026-11-22T09:20:00Z" });
+  assert.deepEqual(
+    placeAlerts(turns, [child], false, new Map([["r-child", "r-1"]]))
+      .after.get("r-1")
+      ?.map((a) => a.id),
+    ["child"],
+  );
+  // A caller not on view does not place it.
+  assert.deepEqual(
+    placeAlerts(turns, [child], false, new Map([["r-child", "r-9"]]))
+      .after.get("m-2")
+      ?.map((a) => a.id),
+    ["child"],
   );
 });
 

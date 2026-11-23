@@ -2612,20 +2612,29 @@ removing its mention drops the draft choice. Canonical sessions use the generate
 post contract.
 
 Session alerts sit in the transcript where they happened: right after the
-answer or message they are about, else at their own time (after the last turn
-that began before them, or before every loaded turn). Each is one quiet line: a
-status dot (red for a failure or urgency, amber otherwise), the agent's mark and
-shown name, the reason, one text action, Mark Done as a check icon, and the rest
-(View, Fix with the agent, Snooze) in its ⋯ menu. The same alert raised again on
-one answer is one line with a count, and Mark Done settles every copy. A done or
-snoozed alert stays in the history, muted, with a Done or Snoozed pill; one older
-than every loaded turn waits until earlier turns are read. The header's bell,
-with the count of open alerts, moves focus to the first one. Reading does not
-resolve them. Resolve and Snooze are permission-gated and offer Undo. Known
-actions lead to existing approval, answer, retry or connection controls; unknown
-actions open the session. A line right after its own answer omits the link back
-to it; page and connection links stay, and an answer not on view, such as a
-specialist's, opens at its own address. A reviewed fix
+answer or message they are about, after the answer that called the run they
+are about (its root run, read once), else at their own time (after the last
+turn that began before them, or before every turn). While earlier turns are
+unread, an open alert about a turn not loaded, or older than every loaded turn,
+is listed under "Earlier in this session" with a View to its turn; a done one
+waits for its turn to load. Each is one quiet line: a status dot in a fixed slot
+(red for a failure or urgency, amber otherwise, muted once settled), the agent's
+mark and shown name, the reason, one small action button like a failed
+answer's Retry, Mark Done as a check icon, and the rest (View, Fix with the
+agent, Snooze) in its ⋯ menu. A done or snoozed line keeps its slot and shows
+a Done or Snoozed pill at the right. On a phone the action moves into the menu,
+so each line is one row. The line's name is the text it shows. A failed
+answer's own alert (`run_failed` or a retry) is not a line: its Mark Done and
+menu join that answer's failure card beside Retry. The same alert raised again
+on one answer is one line with a count, and Mark Done settles every copy and
+keeps focus on the line. The header's bell counts what is drawn and moves focus
+to the first open one. Undo sits beside the composer in a live region that is
+always mounted, and expires after eight seconds. Reading does not resolve
+alerts. Resolve and Snooze are permission-gated and offer Undo. Known actions
+lead to existing approval, answer, retry or connection controls; unknown
+actions open the session. A line right after its own answer omits the link
+back to it; page and connection links stay, and an answer not on view, such as
+a specialist's, opens at its own address. A reviewed fix
 request carries `source_alert`, uses a permitted agent, and inherits its source
 audience. Alert-only sessions render before their first human message. An
 addressed older message uses a bounded `around` page read and scrolls only the
@@ -2647,10 +2656,11 @@ Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
 archive synchronization, explicit deletion review, alert resolution/undo, the
 alert line beside its own message without a link back to the session, fix
 review, canonical sharing and bounded old-anchor reads. `alerts-transcript.dom.test.tsx`
-covers placement after the answer, by time and before loaded history, the
-repeated-alert count, done lines, the header jump, Mark Done on every copy with
-Undo, Review and Snooze; `alert-placement.dom.test.tsx` covers the placement and
-grouping rules. `wave.dom.test.tsx` checks
+covers placement after the answer, after the calling answer and by time, the
+earlier list, the repeated-alert count, done lines, the header count and jump,
+Mark Done on every copy with focus kept and Undo, Review, Snooze, the failure
+card's Mark Done and the phone menu; `alert-placement.dom.test.tsx` covers the
+placement and grouping rules. `wave.dom.test.tsx` checks
 that addressed history scrolls only the transcript once. Existing fork, share,
 room and Slack interaction suites retain their governed approval checks. Browser
 host access was unavailable; real responsive layout, live OAuth and user-visible

@@ -109,11 +109,12 @@ function room(
   alerts: Alert[],
   routes: Record<string, (body: unknown) => unknown> = {},
   onOpenThread?: (id: string) => void,
+  initial: ThreadPage = page,
 ) {
   restoreEvents = stubEventSource();
   net = stubFetch({
     [`GET /api/sessions/${SID}`]: () => ({ id: SID, messages: [], children: [], links: [] }),
-    [`GET /api/threads/${SID}`]: () => page,
+    [`GET /api/threads/${SID}`]: () => initial,
     "GET /api/sessions/options": () => ({ images: [], imageRegistries: [], repos: [] }),
     "GET /api/people": () => ({ people: [], next: null }),
     "GET /api/alerts": () => ({ alerts }),
@@ -123,7 +124,7 @@ function room(
     <ThreadRoom
       id={SID}
       me="ada"
-      initial={page}
+      initial={initial}
       tick={0}
       agents={[reviewer("github-reviewer"), reviewer("code-reviewer")]}
       projects={[]}
@@ -138,9 +139,9 @@ function room(
   );
 }
 
-/** The transcript in reading order: each turn by its id, each alert line by its title. */
+/** The transcript in reading order: each turn by its id, each alert line by its name. */
 const reading = () =>
-  [...document.querySelectorAll<HTMLElement>("[data-turn-id], [data-alert-line]")]
+  [...document.querySelectorAll<HTMLElement>("[data-turn-id], section[data-alert-line]")]
     .map((el) =>
       el.hasAttribute("data-alert-line")
         ? `alert:${el.getAttribute("aria-label")?.replace(/^Alert: /, "")}`
@@ -149,14 +150,14 @@ const reading = () =>
     // An answer marks its turn on more than one element.
     .filter((entry, i, all) => entry !== all[i - 1]);
 
-test("alerts sit in the transcript where they happened: after their answer, or at their own time", async () => {
+test("alerts sit in the transcript where they happened: after their answer, its caller, or at their own time", async () => {
   room(
     [
       // Raised in the wrong order on purpose: placement is by time, not by arrival.
       eval_("a-dup-2", "code-reviewer", "r-2", "2026-11-22T09:07:00Z"),
       eval_("a-1", "github-reviewer", "r-1", "2026-11-22T09:01:00Z"),
       eval_("a-dup-1", "code-reviewer", "r-2", "2026-11-22T09:06:00Z"),
-      // A specialist's answer that is not a turn here: at its own time.
+      // A specialist r-1 called: after r-1, though it was raised after the next question.
       {
         ...base,
         id: "a-child",
@@ -187,24 +188,28 @@ test("alerts sit in the transcript where they happened: after their answer, or a
         at: "2026-11-22T08:00:00Z",
       },
     ],
-    {},
+    {
+      "GET /api/runs/r-child": () => ({ ...run("r-child", "security-reviewer", ""), root: "r-1" }),
+    },
     () => {},
   );
-  await screen.findByRole("region", { name: "Alert: security-reviewer failed" });
-  assert.deepEqual(reading(), [
-    "alert:Pick a reviewer",
-    "turn:m-1",
-    "turn:r-1",
-    "alert:github-reviewer needs review: format",
-    "alert:Confirm the owner",
-    "turn:m-2",
-    "turn:r-2",
-    "alert:code-reviewer needs review: format",
-    "alert:security-reviewer failed",
-  ]);
+  await waitFor(() =>
+    assert.deepEqual(reading(), [
+      "alert:Pick a reviewer",
+      "turn:m-1",
+      "turn:r-1",
+      "alert:Github Reviewer Needs review: format",
+      "alert:Confirm the owner",
+      "alert:Security Reviewer Failed",
+      "turn:m-2",
+      "turn:r-2",
+      "alert:Code Reviewer Needs review: format",
+    ]),
+  );
 
   // One quiet line: a status, the agent by its shown name, the reason, one action.
-  const line = screen.getByRole("region", { name: "Alert: github-reviewer needs review: format" });
+  // Its name is what it shows.
+  const line = screen.getByRole("region", { name: "Alert: Github Reviewer Needs review: format" });
   assert.ok(within(line).getByRole("img", { name: "Waiting" }));
   assert.ok(within(line).getByText("Github Reviewer"));
   assert.ok(within(line).getByText("Needs review: format"));
@@ -220,31 +225,32 @@ test("alerts sit in the transcript where they happened: after their answer, or a
 
   // The same alert raised twice on one answer is one line with a count.
   const repeated = screen.getAllByRole("region", {
-    name: "Alert: code-reviewer needs review: format",
+    name: "Alert: Code Reviewer Needs review: format",
   });
   assert.equal(repeated.length, 1);
   assert.ok(within(repeated[0]!).getByText("Raised 2 times"));
 
   // A specialist's answer that is not on view opens at its own address.
-  const child = screen.getByRole("region", { name: "Alert: security-reviewer failed" });
+  const child = screen.getByRole("region", { name: "Alert: Security Reviewer Failed" });
   assert.equal(
     within(child).getByRole("link", { name: "View" }).getAttribute("href"),
     "/messages/r-child",
   );
 
-  // Settled, it stays where it happened, muted, with nothing left to do there.
+  // Settled, it stays where it happened, muted: the status keeps its slot, the state reads at the right.
   const old = screen.getByRole("region", { name: "Alert: Pick a reviewer" });
   assert.equal(old.getAttribute("data-alert-state"), "resolved");
+  assert.ok(within(old).getByRole("img", { name: "Done" }));
   assert.ok(within(old).getByText("Done"));
   assert.equal(within(old).queryByRole("button", { name: "Mark Done" }), null);
 
-  // The header goes to the first alert still waiting, counting a repeated one once.
+  // The header counts the lines drawn and goes to the first one still waiting.
   const jump = screen.getByRole("button", { name: "Go to the first of 4 open alerts" });
   fireEvent.click(jump);
   assert.equal(document.activeElement, line);
 });
 
-test("marking a repeated alert done settles every copy, and Undo opens them again", async () => {
+test("marking a repeated alert done settles every copy, keeps focus on the line, and Undo opens them again", async () => {
   const states: Record<string, string> = { "a-dup-1": "open", "a-dup-2": "open" };
   const writes: { id: string; state: string }[] = [];
   const alerts = () => [
@@ -268,17 +274,25 @@ test("marking a repeated alert done settles every copy, and Undo opens them agai
     "PATCH /api/alerts/a-dup-1": patch("a-dup-1"),
     "PATCH /api/alerts/a-dup-2": patch("a-dup-2"),
   });
-  const name = { name: "Alert: code-reviewer needs review: format" };
+  const name = { name: "Alert: Code Reviewer Needs review: format" };
   const line = await screen.findByRole("region", name);
+  // The live region is there before anything changes, so its words are announced.
+  const status = document.querySelector('p[role="status"][data-alert-undo]');
+  assert.ok(status);
+  assert.equal(status.textContent, "");
   fireEvent.click(within(line).getByRole("button", { name: "Mark Done" }));
   await waitFor(() =>
     assert.equal(screen.getByRole("region", name).getAttribute("data-alert-state"), "resolved"),
   );
+  // The same line, settled, holds focus: it was not drawn again, and focus did not fall to the page.
+  assert.equal(screen.getByRole("region", name), line);
+  await waitFor(() => assert.equal(document.activeElement, line));
   assert.deepEqual(
     writes.map((w) => w.state),
     ["resolved", "resolved"],
   );
   assert.deepEqual(writes.map((w) => w.id).sort(), ["a-dup-1", "a-dup-2"]);
+  assert.match(status.textContent ?? "", /Alert updated/);
   // Nothing waits now: the header has no way to an open alert.
   assert.equal(screen.queryByRole("button", { name: /open alert/ }), null);
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
@@ -289,6 +303,7 @@ test("marking a repeated alert done settles every copy, and Undo opens them agai
     writes.slice(2).map((w) => w.state),
     ["open", "open"],
   );
+  assert.equal(status.textContent, "");
   assert.ok(screen.getByRole("button", { name: "Go to the open alert" }));
 });
 
@@ -316,7 +331,7 @@ test("Review asks the agent about the newest copy, and Snooze waits in the menu"
     },
   );
   const line = await screen.findByRole("region", {
-    name: "Alert: github-reviewer needs review: format",
+    name: "Alert: Github Reviewer Needs review: format",
   });
   fireEvent.click(within(line).getByRole("button", { name: "Review" }));
   await waitFor(() => assert.equal(opened, "s_review"));
@@ -326,4 +341,109 @@ test("Review asks the agent about the newest copy, and Snooze waits in the menu"
   fireEvent.click(within(line).getByRole("menuitem", { name: "Snooze 1h" }));
   await waitFor(() => assert.equal(snoozed.length, 1));
   assert.equal((snoozed[0] as { state: string }).state, "snoozed");
+});
+
+test("a failed answer's own alert is its failure card's Mark Done, not a second line", async () => {
+  const failed = {
+    ...page,
+    turns: [
+      page.turns[0],
+      {
+        kind: "run",
+        run: {
+          ...run("r-1", "github-reviewer", "2026-11-22T09:00:01Z"),
+          status: "failed",
+          answer: "",
+          error: "The model provider is not set up.",
+        },
+      },
+    ],
+  } as unknown as ThreadPage;
+  const writes: unknown[] = [];
+  const alert: Alert = {
+    ...base,
+    id: "a-failed",
+    kind: "run_failed",
+    agent: "github-reviewer",
+    run_id: "r-1",
+    action: "retry",
+    title: "github-reviewer failed",
+    state: "open",
+    priority: "urgent",
+    at: "2026-11-22T09:00:05Z",
+  };
+  room(
+    [alert],
+    {
+      "PATCH /api/alerts/a-failed": (body) => {
+        writes.push(body);
+        return { ...alert, state: "resolved" };
+      },
+    },
+    () => {},
+    failed,
+  );
+  const controls = await screen.findByRole("group", { name: "Alert: Github Reviewer Failed" });
+  // No line of its own: the failure card is the one place.
+  assert.equal(document.querySelector("section[data-alert-line]"), null);
+  // In the failure's own row of actions, beside Retry.
+  assert.ok(controls.closest('[data-aui-block="failure"]'));
+  assert.ok(controls.closest('[data-turn-id="r-1"]'));
+  // Fix with the agent waits in its menu.
+  fireEvent.click(within(controls).getByRole("button", { name: "More alert actions" }));
+  assert.ok(within(controls).getByRole("menuitem", { name: "Fix with Github Reviewer" }));
+  assert.ok(screen.getByRole("button", { name: "Go to the open alert" }));
+  fireEvent.click(within(controls).getByRole("button", { name: "Mark Done" }));
+  await waitFor(() => assert.deepEqual(writes, [{ state: "resolved" }]));
+});
+
+test("an alert about a turn not loaded yet is listed as earlier, not placed among other turns", async () => {
+  room(
+    [
+      eval_("a-early", "code-reviewer", "r-old", "2026-11-22T09:30:00Z"),
+      {
+        ...eval_("a-early-done", "github-reviewer", "r-old", "2026-11-22T09:31:00Z"),
+        state: "resolved",
+      },
+    ],
+    {},
+    undefined,
+    { ...page, next: "older" } as ThreadPage,
+  );
+  const line = await screen.findByRole("region", {
+    name: "Alert: Code Reviewer Needs review: format",
+  });
+  assert.ok(screen.getByText("Earlier in this session"));
+  // It reads before the loaded turns, and its View opens its own turn.
+  assert.deepEqual(reading().slice(0, 2), ["alert:Code Reviewer Needs review: format", "turn:m-1"]);
+  assert.equal(
+    within(line).getByRole("link", { name: "View" }).getAttribute("href"),
+    `/messages/${SID}?message=r-old`,
+  );
+  // A settled one waits for its turn to load.
+  assert.equal(
+    screen.queryByRole("region", { name: "Alert: Github Reviewer Needs review: format" }),
+    null,
+  );
+});
+
+test("on a phone the line's action waits in its menu, so the line stays one row", async () => {
+  const wide = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  })) as unknown as typeof window.matchMedia;
+  try {
+    room([eval_("a-1", "github-reviewer", "r-1", "2026-11-22T09:01:00Z")], {}, () => {});
+    const line = await screen.findByRole("region", {
+      name: "Alert: Github Reviewer Needs review: format",
+    });
+    assert.equal(within(line).queryByRole("button", { name: "Review" }), null);
+    fireEvent.click(within(line).getByRole("button", { name: "More alert actions" }));
+    assert.ok(within(line).getByRole("menuitem", { name: "Review" }));
+  } finally {
+    window.matchMedia = wide;
+  }
 });

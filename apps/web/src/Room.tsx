@@ -8,6 +8,7 @@ import {
   type UiAction,
 } from "@humagen/core";
 import {
+  ActionsExtraContext,
   BellIcon,
   ForkIcon,
   GitHubRefKindsContext,
@@ -96,9 +97,11 @@ import {
 import { SessionActions } from "./SessionActions.tsx";
 import {
   duplicatesInlineApproval,
+  foldsIntoFailure,
   jumpToOpenAlert,
-  openAlertCount,
+  openLines,
   SessionAlerts,
+  useAlertRoots,
   useSessionAlerts,
 } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
@@ -107,6 +110,7 @@ import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./Sessio
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
+import { type Alert, openAlert } from "./sessionCenter.ts";
 import { useSessionOptions } from "./sessionOptions.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
@@ -633,8 +637,11 @@ function AnswerView({
   focused = false,
   background = [],
   onBackgroundChanged,
+  failureControls,
 }: {
   run: Run;
+  /** The answer's own open alerts, drawn in its failure card beside Retry. */
+  failureControls?: ReactNode;
   canStop?: boolean;
   focused?: boolean;
   /** The reader's background work from this session, which a step's own Stop ends. */
@@ -696,20 +703,28 @@ function AnswerView({
           {(rated) => (
             <RetryCallContext.Provider value={ownsRun ? retryCalls : null}>
               <CallThreads run={run} calls={rated.tasks.some((t) => t.subagent)}>
-                <AgentMessage
-                  actions={actions}
-                  stop={stop}
-                  itemStops={itemStops}
-                  disclaimer={false}
-                  activity={false}
-                  timestamp={<MessageTime at={run.created_at} />}
-                  turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
-                  copy={copyFor(ask)}
-                  itemActions={itemActions(run)}
-                  capabilities={{ regenerate: false }}
-                  onAskAgent={onAsk}
-                  onRedirect={onRedirect}
-                />
+                <ActionsExtraContext.Provider
+                  value={
+                    failureControls
+                      ? (block) => (block === `failure:${rated.id}` ? failureControls : null)
+                      : null
+                  }
+                >
+                  <AgentMessage
+                    actions={actions}
+                    stop={stop}
+                    itemStops={itemStops}
+                    disclaimer={false}
+                    activity={false}
+                    timestamp={<MessageTime at={run.created_at} />}
+                    turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
+                    copy={copyFor(ask)}
+                    itemActions={itemActions(run)}
+                    capabilities={{ regenerate: false }}
+                    onAskAgent={onAsk}
+                    onRedirect={onRedirect}
+                  />
+                </ActionsExtraContext.Provider>
               </CallThreads>
             </RetryCallContext.Provider>
           )}
@@ -866,12 +881,23 @@ export function ThreadRoom({
   const [before, setBefore] = useState<string | null>(initial.next);
   // Each alert sits in the transcript where it happened: after the answer it
   // is about, or at its own time.
-  const placed = placeAlerts(
-    turns,
-    alertRows.filter((a) => !duplicatesInlineApproval(a, turns)),
-    !!before,
-  );
-  const waiting = openAlertCount(alertRows.filter((a) => !duplicatesInlineApproval(a, turns)));
+  // A failed answer's own alert is drawn in that answer's failure card.
+  const calledBy = useAlertRoots(alertRows, turns);
+  const folded = new Map<string, Alert[]>();
+  const inline: Alert[] = [];
+  for (const a of alertRows) {
+    if (duplicatesInlineApproval(a, turns)) continue;
+    const run = foldsIntoFailure(a, turns);
+    if (run) folded.set(run, [...(folded.get(run) ?? []), a]);
+    else inline.push(a);
+  }
+  const placed = placeAlerts(turns, inline, !!before, calledBy);
+  // What the header counts is what is drawn: a line each, and a failure card each.
+  const waiting =
+    openLines(placed.lead) +
+    openLines(placed.earlier) +
+    [...placed.after.values()].reduce((n, slot) => n + openLines(slot), 0) +
+    [...folded.values()].filter((slot) => slot.some(openAlert)).length;
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
@@ -1318,19 +1344,22 @@ export function ThreadRoom({
                             Reload alerts
                           </button>
                         )}
-                        {attention.undo && (
-                          <p role="status" className="text-aui-xs">
-                            Alert updated.{" "}
-                            <button
-                              type="button"
-                              className="underline"
-                              disabled={attention.busy}
-                              onClick={() => void attention.change(attention.undo!, "open")}
-                            >
-                              Undo
-                            </button>
-                          </p>
-                        )}
+                        {/* Mounted while empty, so what it says next is announced. */}
+                        <p role="status" data-alert-undo="" className="text-aui-xs empty:hidden">
+                          {attention.undo && (
+                            <>
+                              Alert updated.{" "}
+                              <button
+                                type="button"
+                                className="underline"
+                                disabled={attention.busy}
+                                onClick={() => void attention.change(attention.undo!, "open")}
+                              >
+                                Undo
+                              </button>
+                            </>
+                          )}
+                        </p>
                         {canRun && !posts && (
                           <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
                         )}
@@ -1420,6 +1449,20 @@ export function ThreadRoom({
                         {words.olderTurns}
                       </button>
                     )}
+                    {placed.earlier.length > 0 && (
+                      <div className="flex min-w-0 flex-col">
+                        <p className="px-1 text-aui-2xs text-aui-muted">
+                          {defaultCopy.attention.earlier}
+                        </p>
+                        <SessionAlerts
+                          alerts={placed.earlier}
+                          attention={attention}
+                          canWrite={!!alertAccess?.write}
+                          agents={posts ? agents.map((a) => a.spec.name) : []}
+                          onOpen={onOpenThread}
+                        />
+                      </div>
+                    )}
                     <SessionAlerts
                       alerts={placed.lead}
                       attention={attention}
@@ -1462,6 +1505,18 @@ export function ThreadRoom({
                             focused={focus === t.run.id}
                             key={t.run.id}
                             run={t.run}
+                            failureControls={
+                              folded.has(t.run.id) ? (
+                                <SessionAlerts
+                                  controls
+                                  alerts={folded.get(t.run.id)!}
+                                  attention={attention}
+                                  canWrite={!!alertAccess?.write}
+                                  agents={posts ? agents.map((a) => a.spec.name) : []}
+                                  onOpen={onOpenThread}
+                                />
+                              ) : undefined
+                            }
                             canStop={posts}
                             background={background.items}
                             onBackgroundChanged={background.refresh}

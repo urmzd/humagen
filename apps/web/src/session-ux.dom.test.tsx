@@ -457,7 +457,7 @@ test("session UX alerts read without resolving, offer governed fix review, and k
     );
   }
   render(<View />);
-  const card = await screen.findByRole("region", { name: "Alert: Review failed" });
+  const card = await screen.findByRole("region", { name: "Alert: Reviewer Review failed" });
   assert.equal(writes.length, 0);
   assert.equal(card.getAttribute("data-alert-message"), "r_failed");
   assert.equal(card.getAttribute("data-alert-state"), "open");
@@ -486,17 +486,21 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   // Done, it stays where it happened, muted, with nothing left to do on it there.
   await waitFor(() =>
     assert.equal(
-      screen.getByRole("region", { name: "Alert: Review failed" }).getAttribute("data-alert-state"),
+      screen
+        .getByRole("region", { name: "Alert: Reviewer Review failed" })
+        .getAttribute("data-alert-state"),
       "resolved",
     ),
   );
-  const done = screen.getByRole("region", { name: "Alert: Review failed" });
+  const done = screen.getByRole("region", { name: "Alert: Reviewer Review failed" });
   assert.ok(within(done).getByText("Done"));
   assert.equal(within(done).queryByRole("button", { name: "Mark Done" }), null);
   fireEvent.click(undo);
   await waitFor(() =>
     assert.equal(
-      screen.getByRole("region", { name: "Alert: Review failed" }).getAttribute("data-alert-state"),
+      screen
+        .getByRole("region", { name: "Alert: Reviewer Review failed" })
+        .getAttribute("data-alert-state"),
       "open",
     ),
   );
@@ -563,7 +567,7 @@ test("session UX an alert beside its own message keeps its actions and drops the
 });
 
 test("session UX a health alert is viewed on its answer and reviewed in a session of its own", async () => {
-  const { SessionAlerts, useSessionAlerts } = await import("./SessionAlerts.tsx");
+  const { SessionAlerts, alertSaid, useSessionAlerts } = await import("./SessionAlerts.tsx");
   const health = {
     id: "al-health",
     session: "s_origin",
@@ -612,7 +616,7 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
     );
   }
   const view = render(<View beside={false} />);
-  const above = await screen.findByRole("region", { name: `Alert: ${health.title}` });
+  const above = await screen.findByRole("region", { name: `Alert: ${alertSaid(health as never)}` });
   // A normal priority says nothing; there is one control for each job.
   assert.equal(within(above).queryByText("Normal"), null);
   assert.deepEqual(
@@ -625,7 +629,7 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
   fireEvent.click(within(above).getByRole("button", { name: "More alert actions" }));
   fireEvent.click(within(above).getByRole("menuitem", { name: "View" }));
   assert.equal(`${location.pathname}${location.search}`, "/messages/s_origin?message=r0b65");
-  const old = screen.getByRole("region", { name: `Alert: ${older.title}` });
+  const old = screen.getByRole("region", { name: `Alert: ${alertSaid(older as never)}` });
   fireEvent.click(within(old).getByRole("button", { name: "More alert actions" }));
   fireEvent.click(within(old).getByRole("menuitem", { name: "View" }));
   assert.equal(location.pathname, `/messages/${older.run_id}`);
@@ -646,7 +650,7 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
         busy: false,
         undo: undefined,
         refresh() {},
-        change: async () => {},
+        change: async () => false,
       }}
       canWrite
       agents={["humagen"]}
@@ -656,7 +660,9 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
       }}
     />,
   );
-  const line = await screen.findByRole("region", { name: `Alert: ${reviewed.title}` });
+  const line = await screen.findByRole("region", {
+    name: `Alert: ${alertSaid(reviewed as never)}`,
+  });
   assert.ok(line.hasAttribute("data-reviewed"));
   assert.deepEqual(
     within(line)
@@ -670,7 +676,7 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
 
   // Beside its answer, the card asks about it: Review opens the recap session.
   view.rerender(<View beside />);
-  const card = await screen.findByRole("region", { name: `Alert: ${health.title}` });
+  const card = await screen.findByRole("region", { name: `Alert: ${alertSaid(health as never)}` });
   assert.equal(within(card).queryByRole("link"), null);
   assert.equal(reviews.length, 0);
   fireEvent.click(within(card).getByRole("button", { name: "Review" }));

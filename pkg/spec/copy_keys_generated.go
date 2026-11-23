@@ -463,6 +463,7 @@ var copyKeyList = []string{
 	"attachedDocument.truncated",
 	"attachedDocument.unavailable",
 	"attachedFilesPrompt",
+	"attention.earlier",
 	"attention.empty.open",
 	"attention.empty.resolved",
 	"attention.empty.snoozed",
