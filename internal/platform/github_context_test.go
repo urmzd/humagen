@@ -322,3 +322,112 @@ func TestAGitHubPlaceOutsideTheGrantsIsNotRead(t *testing.T) {
 		t.Fatalf("a run reading a place outside the grants = %+v, %v", called, err)
 	}
 }
+
+// installedFake is the fake GitHub as an App installation that covers
+// repos, counting the context it is asked to read.
+type installedFake struct {
+	*github.Fake
+	repos []string
+	mu    sync.Mutex
+	read  int
+}
+
+func (f *installedFake) InstallationRepositories(context.Context, int) ([]string, error) {
+	return slices.Clone(f.repos), nil
+}
+
+func (f *installedFake) ReadContext(ctx context.Context, ref github.Ref, page int) (github.Context, error) {
+	f.mu.Lock()
+	f.read++
+	f.mu.Unlock()
+	return f.Fake.ReadContext(ctx, ref, page)
+}
+
+func (f *installedFake) reads() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.read
+}
+
+// A run on a repository whose owner its client no longer serves is told the
+// client is not granted it, and nothing is read, though the client's
+// installation still covers the repository: its connector reads only the
+// owners it serves.
+func TestARunOnAnOwnerItsClientNoLongerServesIsNotGrantedItsPlace(t *testing.T) {
+	f := &fakes{}
+	c := &cast{says: map[string][][]saigetypes.Delta{"reviewer": {say("Looked.")}}}
+	cfg := f.config()
+	fake := &installedFake{Fake: f.githubFor("token-acme-gh"), repos: []string{"acme/web"}}
+	cfg.GitHubAPI = func(token string) github.API {
+		if token == "token-acme-gh" {
+			return fake
+		}
+		return f.githubFor(token)
+	}
+	p := stage(t, c, cfg)
+	client := clients.Client{
+		ID: "acme-gh", Name: "acme-gh", Surface: clients.GitHub, Enabled: true,
+		Identity:     clients.Identity{Owners: []string{"acme"}, Installation: "101"},
+		DefaultAgent: "reviewer", Bots: map[string]string{"reviewer": "reviewer"},
+		GitHub: &clients.GitHubOptions{Login: "humagen-token"},
+	}
+	secrets := platform.ClientInput{Client: client, Token: clients.SecretInput{Value: "token-acme-gh"}, SigningSecret: clients.SecretInput{Value: "secret-acme-gh"}}
+	create(t, p, tenant, secrets)
+	pull := github.Context{Subject: github.ContextSubject{Number: 7, Title: "Retry the sink", State: "open", URL: "https://github.com/acme/web/pull/7"}}
+	pull.Subject.PullRequest = &struct {
+		URL string `json:"url"`
+	}{URL: "https://api.github.com/repos/acme/web/pulls/7"}
+	pull.Subject.Head.Ref, pull.Subject.Head.SHA = "retry", strings.Repeat("a", 40)
+	if err := fake.SeedContext(github.Ref{Owner: "acme", Repo: "web", Number: 7}, pull); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"action":"created","installation":{"id":101},"repository":{"name":"web","owner":{"login":"acme"}},` +
+		`"sender":{"login":"ana","type":"User"},"issue":{"number":7,"pull_request":{"url":"https://api.github.com/repos/acme/web/pulls/7"}},` +
+		`"comment":{"id":907,"body":"@humagen what does this change?","user":{"login":"ana"},"author_association":"MEMBER"}}`
+	mac := hmac.New(sha256.New, []byte("secret-acme-gh"))
+	mac.Write([]byte(body))
+	r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+	r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	r.Header.Set("X-GitHub-Event", "issue_comment")
+	r.Header.Set("X-GitHub-Delivery", "d-web")
+	w := httptest.NewRecorder()
+	p.IngressHandler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delivery answered %d: %s", w.Code, w.Body.String())
+	}
+	finalComment(t, fake.Fake, 7, "Looked.")
+	run, ok := runOf(p, tenant, "reviewer")
+	if !ok {
+		t.Fatal("no run of reviewer")
+	}
+	get, _ := p.SystemTool(platform.ToolGetContext)
+	read := func() string {
+		t.Helper()
+		out, err := get.Call(t.Context(), platform.SystemCall{Who: admin, Message: run.Thread + ":m", Run: run.ID}, []byte(`{"request":"what does it change?"}`))
+		if err != nil || out.IsError {
+			t.Fatalf("get_context = %+v, %v", out, err)
+		}
+		return out.Text
+	}
+	if got := read(); !strings.Contains(got, "Retry the sink") {
+		t.Fatalf("while its client serves acme, the run does not read its place: %s", got)
+	}
+
+	current, err := p.Clients.Get(tenant, "acme-gh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Identity.Owners, client.Version = []string{"other"}, current.Version
+	secrets.Client = client
+	if _, err := p.UpdateClient(t.Context(), tenant, "acme-gh", "test", secrets); err != nil {
+		t.Fatal(err)
+	}
+	before := fake.reads()
+	got := read()
+	if !strings.Contains(got, "acme/web may not be read here: the GitHub client that raised this run is not granted it.") || strings.Contains(got, "github-data") {
+		t.Fatalf("once its client serves only other, the run's get_context gave %s", got)
+	}
+	if n := fake.reads() - before; n != 0 {
+		t.Fatalf("once its client serves only other, %d reads of the place were made", n)
+	}
+}

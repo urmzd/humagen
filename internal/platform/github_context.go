@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,8 +17,8 @@ import (
 // get_context for a conversation that came from a GitHub issue or pull
 // request: the place is the issue or pull request it was asked on. A run
 // the GitHub client raised on that very place reads through that client,
-// and only when it is granted the repository (its owners, the repositories
-// it names, or its App installation). Any other run, and a person asking
+// and only while that client serves the repository's owner, as its
+// connector reads only the owners it serves. Any other run, and a person asking
 // from the console, reads through GitHubIssue, under the workspace's grants
 // and the repository's own setting.
 // What is read is untrusted: it goes in one data block whose markers carry
@@ -67,7 +66,7 @@ func (p *Platform) githubContext(ctx context.Context, req ContextRequest) (Conte
 	commentsCtx := github.ReadWhereNamed(ctx)
 	own := false
 	if req.Run != "" {
-		st, mine, granted := p.runPlaceReader(ctx, req, owner, name, kind, number)
+		st, mine, granted := p.runPlaceReader(req, owner, name, kind, number)
 		if mine && !granted {
 			return ContextResult{Note: fmt.Sprintf("%s may not be read here: the GitHub client that raised this run is not granted it.", repo)}, nil
 		}
@@ -164,9 +163,12 @@ func (p *Platform) githubLogins(tenant string) map[string]bool {
 // runPlaceReader is the seat of the GitHub client that raised the run
 // asking, whose context reader reads the place. own says the run was raised
 // by that client on this place: the session's root is the client's thread on
-// owner/name's issue or pull request number. granted says the client is enabled and
-// serves owner, names the repository, or covers it by its installation.
-func (p *Platform) runPlaceReader(ctx context.Context, req ContextRequest, owner, name, kind string, number int) (st *seat, own, granted bool) {
+// owner/name's issue or pull request number. granted says the client is
+// enabled and serves owner, both as its record now stands and as its
+// connector was built: the connector reads only the owners it serves
+// (Identity.Owners), so a repository its read grants or its installation
+// name under an owner it no longer serves is not granted here either.
+func (p *Platform) runPlaceReader(req ContextRequest, owner, name, kind string, number int) (st *seat, own, granted bool) {
 	run, err := p.runRecordOf(req.Tenant, req.Run)
 	if err != nil || run.Client == "" {
 		return nil, false, false
@@ -187,14 +189,7 @@ func (p *Platform) runPlaceReader(ctx context.Context, req ContextRequest, owner
 	if !enabled {
 		return nil, true, false
 	}
-	granted = c.Serves(owner)
-	if g := c.GitHub; !granted && g != nil {
-		granted = slices.ContainsFunc(g.ReadRepositories, func(r string) bool { return strings.EqualFold(r, owner+"/"+name) })
-	}
-	if !granted {
-		granted = st.installed.Covers(ctx, owner, name)
-	}
-	return st, true, granted
+	return st, true, c.Serves(owner) && st.client.Serves(owner)
 }
 
 // surfaceIsPlace reports whether sf is client's GitHub thread on owner/name's
