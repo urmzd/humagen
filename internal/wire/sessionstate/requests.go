@@ -26,6 +26,7 @@ const (
 	RequestChanged       = "entry changed while read"
 	ThreadLeft           = "thread left: a run has not ended"
 	RequestInLeftThread  = "request in a thread left"
+	TenantLeft           = "tenant left: a run cannot be read"
 )
 
 // AskedRequest is what RequestMigration.Request says of one run.
@@ -56,6 +57,14 @@ type RequestMigration struct {
 	// Busy are the threads that hold a run that has not ended, each to one
 	// such run. Their entries are left.
 	Busy map[thread.Key]string
+	// Recheck, when set, reads the threads that hold a run that has not
+	// ended again. With Apply it is called just before each entry is
+	// written: a thread it names is added to Busy and the rest of its
+	// entries are left. When unreadable is not empty, a run that has not
+	// ended and whose thread cannot be read may be in this tenant: the rest
+	// of the tenant is left, and the report lists it as TenantLeft with
+	// that run. An error stops the migration.
+	Recheck func(ctx context.Context) (busy map[thread.Key]string, unreadable string, err error)
 	// Request reads one run's request. An error stops the migration.
 	Request func(ctx context.Context, runID string) (AskedRequest, error)
 	// Page is how many entries are read at once; zero is 200.
@@ -102,8 +111,10 @@ func (r RequestReport) Changes() int { return r.Counts[RequestRewritten] + r.Cou
 // Every record of an entry (its place in the thread, and its index by run
 // and by surface message) is written together, each at the version read, so
 // an entry that changed while it was read is listed and left for the next
-// run. Assistant entries, and user entries no run journaled, are left. A
-// second run finds the first one's work and writes nothing.
+// run. Assistant entries, and user entries no run journaled, are left. So
+// are the entries of a thread in m.Busy, and with m.Apply the rest of a
+// thread m.Recheck names just before an entry of it is written. A second run
+// finds the first one's work and writes nothing.
 func (j *Journal) MigrateRequests(ctx context.Context, m RequestMigration) (RequestReport, error) {
 	rep := RequestReport{Tenant: m.Tenant, Apply: m.Apply, Counts: map[string]int{}}
 	if m.Tenant == "" || m.Request == nil {
@@ -115,11 +126,7 @@ func (j *Journal) MigrateRequests(ctx context.Context, m RequestMigration) (Requ
 	}
 	page = min(page, state.MaxList)
 	busy := map[string]string{}
-	for k, run := range m.Busy {
-		if k.Tenant == m.Tenant {
-			busy[journalKey(k)] = run
-		}
-	}
+	addBusy(busy, m.Tenant, m.Busy)
 	listed := map[string]bool{}
 	after := ""
 	for {
@@ -128,7 +135,13 @@ func (j *Journal) MigrateRequests(ctx context.Context, m RequestMigration) (Requ
 			return rep, err
 		}
 		for _, row := range rows {
-			if err := j.migrateRequest(ctx, m, row, busy, listed, &rep); err != nil {
+			err := j.migrateRequest(ctx, m, row, busy, listed, &rep)
+			var left tenantLeft
+			if errors.As(err, &left) {
+				rep.add(TenantLeft, m.Tenant, left.run, "found when checked again before writing")
+				return rep, nil
+			}
+			if err != nil {
 				return rep, err
 			}
 		}
@@ -137,6 +150,37 @@ func (j *Journal) MigrateRequests(ctx context.Context, m RequestMigration) (Requ
 		}
 		after = next
 	}
+}
+
+// addBusy adds to busy, by journal key, the threads of tenant in from that
+// it does not hold yet.
+func addBusy(busy map[string]string, tenant string, from map[thread.Key]string) {
+	for k, run := range from {
+		if k.Tenant != tenant {
+			continue
+		}
+		if _, ok := busy[journalKey(k)]; !ok {
+			busy[journalKey(k)] = run
+		}
+	}
+}
+
+// tenantLeft stops a tenant's migration: Recheck found a run that has not
+// ended whose thread cannot be read.
+type tenantLeft struct{ run string }
+
+func (t tenantLeft) Error() string {
+	return "sessionstate: a run that has not ended cannot be read: " + t.run
+}
+
+// leftThread counts an entry of a thread that holds a run that has not
+// ended, and lists the thread the first time.
+func leftThread(base, run, detail string, listed map[string]bool, rep *RequestReport) {
+	if !listed[base] {
+		listed[base] = true
+		rep.add(ThreadLeft, base, run, detail)
+	}
+	rep.Counts[RequestInLeftThread]++
 }
 
 // migrateRequest decides, and with m.Apply writes, one journal entry.
@@ -154,11 +198,7 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 	}
 	rep.Requests++
 	if run, ok := busy[base]; ok {
-		if !listed[base] {
-			listed[base] = true
-			rep.add(ThreadLeft, base, run, "")
-		}
-		rep.Counts[RequestInLeftThread]++
+		leftThread(base, run, "", listed, rep)
 		return nil
 	}
 	if e.RunID == "" {
@@ -180,7 +220,7 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 		rep.Counts[RequestAsAsked]++
 		return nil
 	}
-	to, kind, detail := "", RequestRewritten, ""
+	to, kind, detail, matched := "", RequestRewritten, "", false
 	switch {
 	case req.Missing != "":
 		detail = req.Missing
@@ -189,9 +229,9 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 	case strings.TrimSpace(req.Asked) == "" && len(e.Attachments) == 0:
 		detail = "the request as it was asked is empty"
 	default:
-		to = req.Asked
+		to, matched = req.Asked, true
 	}
-	if to == "" {
+	if !matched {
 		if !m.Replace {
 			rep.add(RequestNotMatched, row.Key, e.RunID, detail)
 			return nil
@@ -205,6 +245,20 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 	if differ {
 		rep.add(RequestNotMatched, row.Key, e.RunID, "its records differ")
 		return nil
+	}
+	if m.Apply && m.Recheck != nil {
+		now, unreadable, err := m.Recheck(ctx)
+		if err != nil {
+			return fmt.Errorf("sessionstate: entry %s: %w", row.Key, err)
+		}
+		if unreadable != "" {
+			return tenantLeft{run: unreadable}
+		}
+		addBusy(busy, m.Tenant, now)
+		if run, ok := busy[base]; ok {
+			leftThread(base, run, "found when checked again before writing", listed, rep)
+			return nil
+		}
 	}
 	if m.Apply {
 		if err := j.state.Write(ctx, namespace, ops...); errors.Is(err, state.ErrConflict) {

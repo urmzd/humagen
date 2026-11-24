@@ -314,8 +314,14 @@ func TestMigrateJournalReplacesAnUnmatchedRequestWhenAsked(t *testing.T) {
 // The command refuses the in-memory store and an unknown -unmatched.
 func TestMigrateJournalRefusesTheMemoryStore(t *testing.T) {
 	var out bytes.Buffer
-	if err := migrateJournal(t.Context(), []string{"-apply"}, &out, noEnv); !errors.Is(err, errNothingToMigrate) {
+	err := migrateJournal(t.Context(), []string{"-apply"}, &out, noEnv)
+	if !errors.Is(err, errNothingToMigrate) || !strings.HasPrefix(err.Error(), "migrate journal: nothing to migrate: ") {
 		t.Fatalf("the memory store was written: %v", err)
+	}
+	empty := platform.Backends{State: state.NewMemory()}
+	err = journalWith(t.Context(), empty, "postgres db/humagen", journalTarget{}, &out)
+	if !errors.Is(err, errNothingToMigrate) || strings.Contains(err.Error(), "sessions") || !strings.Contains(err.Error(), "postgres db/humagen holds no runs") {
+		t.Fatalf("a store with no runs was read: %v", err)
 	}
 	if err := migrateJournal(t.Context(), []string{"-unmatched", "drop", "-allow-empty-store"}, &out, noEnv); err == nil {
 		t.Fatal("an unknown -unmatched was accepted")
@@ -327,5 +333,107 @@ func TestMigrateJournalRefusesTheMemoryStore(t *testing.T) {
 	out.Reset()
 	if err := migrateJournal(t.Context(), []string{"-allow-empty-store"}, &out, noEnv); err != nil || !strings.Contains(out.String(), "would write 0 changes in 0 tenants") {
 		t.Fatalf("-allow-empty-store = %v\n%s", err, out.String())
+	}
+}
+
+// migration starts a journal migration on f's stores, as journalWith does.
+func (f *journalFixture) migration(t *testing.T) *platform.JournalMigration {
+	t.Helper()
+	p, err := platform.New(platform.Config{Backends: f.b, Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	m, err := p.StartJournalMigration(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// accept puts a turn that has not ended in the ledger, with input as its
+// input, and records it in tenant's run index when indexed.
+func (f *journalFixture) accept(t *testing.T, tenant, id string, input []byte, indexed bool) string {
+	t.Helper()
+	tag := wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Origin: "api", Agent: "docs", Text: "later", Actor: event.Actor{ID: "ada"}, At: time.Now()})
+	tag.Source = "slack://T1/C1?thread=100.1"
+	runID := runtime.RunID(tenant, id)
+	if input == nil {
+		raw, err := json.Marshal(runtime.Input{Trigger: tag, Subscriber: "docs", Run: runID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		input = raw
+	}
+	if indexed {
+		p, err := platform.New(platform.Config{Backends: f.b, Workspace: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.Runs.Record(runID, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+		_ = p.Close()
+	}
+	if err := f.ledger.Accept(t.Context(), drun.Run{ID: runID, Name: runtime.ActivityTurn, Input: input, Status: drun.StatusPending, MaxAttempts: 5, CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	return runID
+}
+
+// A turn that starts in a thread after the migration read the runs that
+// have not ended is found just before the thread is written, and the thread
+// is left.
+func TestMigrateJournalChecksAgainBeforeWriting(t *testing.T) {
+	f := newJournalFixture(t)
+	m := f.migration(t)
+	before, _ := f.request(t, "acme", "one-passages")
+	later := f.accept(t, "acme", "one-later", nil, true)
+
+	rep, err := m.Migrate(t.Context(), "acme", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line sessionstate.RequestLine
+	for _, l := range rep.Lines {
+		if l.Kind == sessionstate.ThreadLeft && l.Run == later {
+			line = l
+		}
+	}
+	if line.Kind == "" || line.Detail == "" {
+		t.Fatalf("the thread of the later turn is not listed: %+v", rep.Lines)
+	}
+	if texts, _ := f.request(t, "acme", "one-passages"); !reflect.DeepEqual(texts, before) {
+		t.Fatalf("a thread with a turn that started later was written: %q", texts)
+	}
+}
+
+// A run that has not ended and whose input cannot be read leaves the tenant
+// the run index holds it in, listed with the run, and the other tenants are
+// migrated. One the run index holds in no tenant leaves every tenant.
+func TestMigrateJournalLeavesTheTenantOfARunItCannotRead(t *testing.T) {
+	f := newJournalFixture(t)
+	unread := f.accept(t, "acme", "acme-unread", []byte("not a run input"), true)
+	got := f.migrate(t, journalTarget{apply: true})
+	for _, want := range []string{
+		"tenant acme: 0 requests read", "tenant left: a run cannot be read: acme run " + unread,
+		"wrote 1 changes in 2 tenants",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the apply did not say %q:\n%s", want, got)
+		}
+	}
+	if texts, _ := f.request(t, "other", "other-passages"); !allAre(texts, f.asked(t, "other", "other-passages")) {
+		t.Fatalf("the other tenant was not migrated: %q", texts)
+	}
+	if texts, _ := f.request(t, "acme", "one-plain"); allAre(texts, f.asked(t, "acme", "one-plain")) {
+		t.Fatal("the tenant of a run that cannot be read was written")
+	}
+
+	g := newJournalFixture(t)
+	g.accept(t, "acme", "nowhere-unread", []byte("not a run input"), false)
+	got = g.migrate(t, journalTarget{apply: true})
+	if !strings.Contains(got, "wrote 0 changes in 2 tenants") || strings.Count(got, "tenant left: a run cannot be read: ") != 2 {
+		t.Fatalf("a run held in no tenant did not leave every tenant:\n%s", got)
 	}
 }

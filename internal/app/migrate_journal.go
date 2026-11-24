@@ -45,7 +45,7 @@ func migrateJournal(ctx context.Context, args []string, out io.Writer, getenv fu
 	}
 	kind := strings.TrimSpace(*stateKind.kind)
 	if (kind == "" || kind == "memory") && !*allowEmpty {
-		return fmt.Errorf("%w: -state is memory, which holds nothing to migrate; set $%s and -state postgres to read the database", errNothingToMigrate, postgresURLEnv)
+		return fmt.Errorf("migrate journal: %w: -state is memory, which starts empty; set $%s and -state postgres to read the database", errNothingToMigrate, postgresURLEnv)
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	backends, release, _, err := openState(ctx, stateKind, getenv, log)
@@ -84,9 +84,13 @@ func journalWith(ctx context.Context, backends platform.Backends, store string, 
 		unmatched = "replace with " + sessionstate.UnkeptRequest
 	}
 	fmt.Fprintf(out, "humagen migrate journal (%s)\nstore: %s\nunmatched requests: %s\ntenants: %s\n", mode, store, unmatched, strings.Join(tenants, ", "))
+	m, err := p.StartJournalMigration(ctx)
+	if err != nil {
+		return err
+	}
 	total := 0
 	for _, t := range tenants {
-		rep, err := p.MigrateJournalRequests(ctx, t, at.apply, at.replace)
+		rep, err := m.Migrate(ctx, t, at.apply, at.replace)
 		if err != nil {
 			return fmt.Errorf("tenant %s: %w", t, err)
 		}

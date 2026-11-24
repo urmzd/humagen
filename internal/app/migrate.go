@@ -54,11 +54,15 @@ journal   rewrites each journaled request to the request as it was asked,
           run the ledger does not hold, or whose text is neither, is listed
           and left, or with -unmatched replace set to "` + sessionstate.UnkeptRequest + `".
           Answers are left. A thread that holds a run that has not ended is
-          listed and left, so a running turn is not changed: run the
-          command again once it has ended. It reads one tenant at a time, a
-          page at a time, and writes every record of an entry together, at
-          the version it read. It prints counts and record keys, never the
-          text of an entry.`
+          listed and left: run the command again once it has ended. It
+          reads the runs that have not ended once, and with -apply again
+          just before it writes each entry, and leaves the rest of a thread
+          where a turn started meanwhile. A run that has not ended and
+          cannot be read leaves its tenant, or every tenant when the run
+          index holds it in none. Apply it once every server runs this
+          release. It reads one tenant at a time, a page at a time, and
+          writes every record of an entry together, at the version it read.
+          It prints counts and record keys, never the text of an entry.`
 
 // migrateCmd runs humagen migrate.
 func migrateCmd(args []string, out io.Writer) error {
@@ -76,9 +80,9 @@ func migrateCmd(args []string, out io.Writer) error {
 	return fmt.Errorf("unknown migration %q", args[0])
 }
 
-// errNothingToMigrate refuses a store that cannot hold what the migration
-// is for.
-var errNothingToMigrate = errors.New("migrate sessions")
+// errNothingToMigrate refuses a store that cannot hold what a migration is
+// for. Every migration wraps it, after its own name where it has one.
+var errNothingToMigrate = errors.New("nothing to migrate")
 
 // migrateSessions is humagen migrate sessions.
 func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv func(string) string) error {
@@ -97,7 +101,7 @@ func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv f
 	}
 	kind := strings.TrimSpace(*stateKind.kind)
 	if (kind == "" || kind == "memory") && !*allowEmpty {
-		return fmt.Errorf("%w: -state is memory, which holds nothing to migrate; set $%s and -state postgres to read the database", errNothingToMigrate, postgresURLEnv)
+		return fmt.Errorf("migrate sessions: %w: -state is memory, which starts empty; set $%s and -state postgres to read the database", errNothingToMigrate, postgresURLEnv)
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	backends, release, _, err := openState(ctx, stateKind, getenv, log)

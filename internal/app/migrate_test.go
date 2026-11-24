@@ -22,7 +22,7 @@ import (
 func TestMigrateSessionsRefusesAStoreWithNothingInIt(t *testing.T) {
 	var out bytes.Buffer
 	noURL := func(string) string { return "" }
-	if err := migrateSessions(t.Context(), nil, &out, noURL); !errors.Is(err, errNothingToMigrate) {
+	if err := migrateSessions(t.Context(), nil, &out, noURL); !errors.Is(err, errNothingToMigrate) || !strings.HasPrefix(err.Error(), "migrate sessions: nothing to migrate: ") {
 		t.Fatalf("the memory store was read: %v\n%s", err, out.String())
 	}
 	if err := migrateSessions(t.Context(), []string{"-apply"}, &out, noURL); !errors.Is(err, errNothingToMigrate) {
