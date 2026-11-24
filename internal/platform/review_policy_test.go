@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	ghconnector "github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/reposettings"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 	"github.com/urmzd/saige/flow/event"
@@ -40,6 +41,12 @@ type approvalCase struct {
 	verdict  string
 	finding  string // a finding's severity, "" for none
 	summary  string
+}
+
+// githubID is the GitHub user ID of each login in these tests. A renamed
+// login keeps its ID.
+func githubID(login string) int64 {
+	return map[string]int64{"octocat": 583231, "ada": 1001, "ada-new": 1001, "mallory": 666, "humagen[bot]": 9000, "stranger": 4242}[login]
 }
 
 const approvalSHA = "abababababababababababababababababababab"
@@ -93,7 +100,7 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	target := address.MustParse("github://acme/site/pull/7?head_sha=" + approvalSHA)
 	var tag event.Envelope
 	if c.asker == "" {
-		req := clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author}
+		req := clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author, AuthorID: githubID(c.author)}
 		if _, _, _, err := p.planAutoReview(client, req); err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +137,7 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer, err := ghconnector.New(ghconnector.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1,
+	peer, err := ghconnector.New(ghconnector.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
 		ReviewPolicy: func(ctx context.Context, v transport.View) (ghconnector.ReviewGrant, error) {
 			return p.reviewGrant(ctx, client, v)
@@ -157,28 +164,29 @@ func TestTheReviewEventFollowsThePolicyAndTheChecks(t *testing.T) {
 		mutate func(*approvalCase)
 		want   string
 	}{
-		"green checks and a clean report": {want: "APPROVE"},
-		"a mapped asker":                  {mutate: func(c *approvalCase) { c.asker = "ada" }, want: "APPROVE"},
+		"green checks and a clean report":                  {want: "APPROVE"},
+		"a mapped asker, whose comment carries no user ID": {mutate: func(c *approvalCase) { c.asker = "ada" }, want: "COMMENT"},
 		"a failing check": {mutate: func(c *approvalCase) {
 			c.checks = append(c.checks, transport.CommitCheck{Kind: transport.CheckKindRun, Name: "build", Status: "completed", Conclusion: "failure"})
 		}, want: "COMMENT"},
 		"a pending check": {mutate: func(c *approvalCase) {
 			c.checks = append(c.checks, transport.CommitCheck{Kind: transport.CheckKindStatus, Name: "ci", Status: "pending"})
 		}, want: "COMMENT"},
-		"no checks at all":                      {mutate: func(c *approvalCase) { c.checks = nil }, want: "COMMENT"},
-		"a must-fix finding":                    {mutate: func(c *approvalCase) { c.finding = "error" }, want: "REQUEST_CHANGES"},
-		"a should-fix finding under error":      {mutate: func(c *approvalCase) { c.finding = "warning" }, want: "APPROVE"},
-		"block_on warning":                      {mutate: func(c *approvalCase) { c.finding, c.review.BlockOn = "warning", "warning" }, want: "REQUEST_CHANGES"},
-		"approve never":                         {mutate: func(c *approvalCase) { c.review.Approve = wire.ReviewApproveNever }, want: "COMMENT"},
-		"no review policy":                      {mutate: func(c *approvalCase) { c.review = wire.Review{} }, want: "COMMENT"},
-		"the repository says never":             {mutate: func(c *approvalCase) { c.repoNever = true }, want: "COMMENT"},
-		"the app's own pull request":            {mutate: func(c *approvalCase) { c.author = "humagen[bot]" }, want: "COMMENT"},
-		"an unknown author":                     {mutate: func(c *approvalCase) { c.author = "" }, want: "COMMENT"},
-		"an unmapped asker":                     {mutate: func(c *approvalCase) { c.asker = "stranger" }, want: "COMMENT"},
-		"a review request by a stranger":        {mutate: func(c *approvalCase) { c.asker, c.requested = "stranger", true }, want: "COMMENT"},
-		"a review request by a mapped person":   {mutate: func(c *approvalCase) { c.asker, c.requested = "ada", true }, want: "APPROVE"},
-		"the author, mapped, requests a review": {mutate: func(c *approvalCase) { c.asker, c.requested, c.author = "ada", true, "ada" }, want: "COMMENT"},
-		"the author, mapped, comments":          {mutate: func(c *approvalCase) { c.asker, c.author = "ada", "ada" }, want: "COMMENT"},
+		"no checks at all":                 {mutate: func(c *approvalCase) { c.checks = nil }, want: "COMMENT"},
+		"a must-fix finding":               {mutate: func(c *approvalCase) { c.finding = "error" }, want: "REQUEST_CHANGES"},
+		"a should-fix finding under error": {mutate: func(c *approvalCase) { c.finding = "warning" }, want: "APPROVE"},
+		"block_on warning":                 {mutate: func(c *approvalCase) { c.finding, c.review.BlockOn = "warning", "warning" }, want: "REQUEST_CHANGES"},
+		"approve never":                    {mutate: func(c *approvalCase) { c.review.Approve = wire.ReviewApproveNever }, want: "COMMENT"},
+		"no review policy":                 {mutate: func(c *approvalCase) { c.review = wire.Review{} }, want: "COMMENT"},
+		"the repository says never":        {mutate: func(c *approvalCase) { c.repoNever = true }, want: "COMMENT"},
+		"the app's own pull request":       {mutate: func(c *approvalCase) { c.author = "humagen[bot]" }, want: "COMMENT"},
+		"an author with no user ID":        {mutate: func(c *approvalCase) { c.author = "nobody-known" }, want: "COMMENT"},
+		"an unknown author":                {mutate: func(c *approvalCase) { c.author = "" }, want: "COMMENT"},
+		"an unmapped asker":                {mutate: func(c *approvalCase) { c.asker = "stranger" }, want: "COMMENT"},
+		"a review request by a stranger":   {mutate: func(c *approvalCase) { c.asker, c.requested = "stranger", true }, want: "COMMENT"},
+		"a mapped person's review request, which carries no user ID": {mutate: func(c *approvalCase) { c.asker, c.requested = "ada", true }, want: "COMMENT"},
+		"the author, mapped, requests a review":                      {mutate: func(c *approvalCase) { c.asker, c.requested, c.author = "ada", true, "ada" }, want: "COMMENT"},
+		"the author, mapped, comments":                               {mutate: func(c *approvalCase) { c.asker, c.author = "ada", "ada" }, want: "COMMENT"},
 		"every check skipped or neutral": {mutate: func(c *approvalCase) {
 			c.checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "skipped"}, {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "neutral"}}
 		}, want: "COMMENT"},

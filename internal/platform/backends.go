@@ -364,6 +364,7 @@ func (p *Platform) openStores(cfg Config) error {
 		reviews = state.NewMemory()
 	}
 	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
+	p.approvalClaims = reviews
 	p.RepoSettings = reposettings.Open(perRequest)
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth

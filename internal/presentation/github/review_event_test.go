@@ -22,7 +22,7 @@ func cleanReport() ReviewReport {
 }
 
 func cleanFacts() ReviewFacts {
-	return ReviewFacts{ChecksRead: true, Checks: []transport.CommitCheck{passed("test"), {Kind: transport.CheckKindStatus, Name: "lint", Status: "completed", Conclusion: "neutral"}}, Author: "octocat", App: "humagen[bot]", Trusted: true}
+	return ReviewFacts{ChecksRead: true, Checks: []transport.CommitCheck{passed("test"), {Kind: transport.CheckKindStatus, Name: "lint", Status: "completed", Conclusion: "neutral"}}, Author: "octocat", AuthorID: 583231, App: "humagen[bot]", Trusted: true}
 }
 
 // Approval needs every guard at once; each one alone keeps it a comment or
@@ -96,8 +96,13 @@ func TestReviewEventApprovesOnlyWhenEveryGuardHolds(t *testing.T) {
 			other.App, other.Status, other.Conclusion = "someone-else", "completed", "success"
 			f.Checks = []transport.CommitCheck{other}
 		}, want: "APPROVE"},
-		"the asker wrote the pull request":     {facts: func(f *ReviewFacts) { f.Asker = "Octocat" }, want: "COMMENT"},
-		"a mapped asker other than the author": {facts: func(f *ReviewFacts) { f.Asker = "ada" }, want: "APPROVE"},
+		"the asker wrote the pull request":     {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "Octocat", 583231, true }, want: "COMMENT"},
+		"the author renamed, the same ID":      {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "octocat-renamed", 583231, true }, want: "COMMENT"},
+		"an asker with no ID":                  {facts: func(f *ReviewFacts) { f.Asker, f.CommitsRead = "ada", true }, want: "COMMENT"},
+		"an author with no ID":                 {facts: func(f *ReviewFacts) { f.AuthorID = 0 }, want: "COMMENT"},
+		"commits not read":                     {facts: func(f *ReviewFacts) { f.Asker, f.AskerID = "ada", 7 }, want: "COMMENT"},
+		"the asker committed":                  {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead, f.AskerCommitted = "ada", 7, true, true }, want: "COMMENT"},
+		"a mapped asker other than the author": {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "ada", 7, true }, want: "APPROVE"},
 		"must-fix and failed check":            {report: func(r *ReviewReport) { r.Findings[0].Severity = "error" }, facts: func(f *ReviewFacts) { *f = failed("failure") }, want: "REQUEST_CHANGES"},
 		"never and untrusted and no checks":    {policy: ReviewPolicy{Approve: "never"}, facts: func(f *ReviewFacts) { f.Trusted, f.Checks = false, nil }, want: "COMMENT"},
 		"request_changes under never":          {report: func(r *ReviewReport) { r.Verdict = "request_changes" }, policy: ReviewPolicy{Approve: "never"}, want: "REQUEST_CHANGES"},
@@ -145,5 +150,46 @@ func TestNativeReviewCarriesTheChosenEvent(t *testing.T) {
 	review, err = NativeReview(cleanReport(), files, Target{}, ReviewPolicy{Approve: "never"}, cleanFacts())
 	if err != nil || review.Event != "COMMENT" {
 		t.Fatalf("never = %+v %v", review, err)
+	}
+}
+
+// Skipped checks beside one success approve; the app's own success beside
+// skipped checks is no CI.
+func TestOneSuccessAmongSkippedChecksIsCI(t *testing.T) {
+	f := cleanFacts()
+	f.Checks = []transport.CommitCheck{
+		{Kind: transport.CheckKindRun, Name: "a", Status: "completed", Conclusion: "skipped"},
+		{Kind: transport.CheckKindStatus, Name: "c", Status: "completed", Conclusion: "skipped"},
+		passed("test"),
+	}
+	if got := ReviewEvent(cleanReport(), ReviewPolicy{Approve: ApproveWhenClean}, f); got != "APPROVE" {
+		t.Fatalf("skipped checks and one success = %s", got)
+	}
+	own := ownCheck()
+	own.Status, own.Conclusion, own.ExternalID = "completed", "success", "earlier"
+	f.Checks = append(f.Checks[:2], own)
+	if got := ReviewEvent(cleanReport(), ReviewPolicy{Approve: ApproveWhenClean}, f); got != "COMMENT" {
+		t.Fatalf("skipped checks and the app's own success = %s", got)
+	}
+}
+
+// People are told apart by GitHub user ID: a login that changed, in any
+// case or spelling, is still its owner.
+func TestPeopleAreToldApartByID(t *testing.T) {
+	for asker, c := range map[string]struct {
+		id   int64
+		want string
+	}{
+		"OCTOCAT":         {583231, "COMMENT"},
+		"octocat-renamed": {583231, "COMMENT"},
+		" octocat ":       {0, "COMMENT"},
+		"ada":             {1001, "APPROVE"},
+		"ada-unknown":     {0, "COMMENT"},
+	} {
+		f := cleanFacts()
+		f.Asker, f.AskerID, f.CommitsRead = asker, c.id, true
+		if got := ReviewEvent(cleanReport(), ReviewPolicy{Approve: ApproveWhenClean}, f); got != c.want {
+			t.Errorf("asker %q (%d): %s, want %s", asker, c.id, got, c.want)
+		}
 	}
 }

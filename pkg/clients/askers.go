@@ -79,3 +79,28 @@ func cmpOr(a, b string) string {
 	}
 	return b
 }
+
+// GitHubAskerID is the GitHub user ID of who asks through a
+// signature-verified comment or review payload, as GitHubAsker reads their
+// login: 0 for any other payload, or one that names no ID.
+func GitHubAskerID(kind string, body []byte) int64 {
+	type user struct {
+		User struct {
+			ID int64 `json:"id"`
+		} `json:"user"`
+	}
+	var p struct {
+		Comment user `json:"comment"`
+		Review  user `json:"review"`
+	}
+	if json.Unmarshal(body, &p) != nil {
+		return 0
+	}
+	switch kind {
+	case "issue_comment", "pull_request_review_comment":
+		return p.Comment.User.ID
+	case "pull_request_review":
+		return p.Review.User.ID
+	}
+	return 0
+}

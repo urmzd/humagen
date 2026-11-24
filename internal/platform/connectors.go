@@ -675,16 +675,19 @@ func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest,
 		Channel: channel.String(),
 		Text:    autoReviewText(req, from),
 		At:      time.Now().UTC(),
-		Context: autoReviewContext(kind, owner, repo, req.Author),
+		Context: autoReviewContext(kind, owner, repo, req.Author, req.AuthorID),
 	})
 }
 
 // autoReviewContext is what an automatic review's tag says of where it came
 // from, with the pull request's author when the payload named one.
-func autoReviewContext(kind, owner, repo, author string) map[string]string {
+func autoReviewContext(kind, owner, repo, author string, authorID int64) map[string]string {
 	m := map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo, wire.MetaAnswerShape: wire.ShapeReview}
 	if author != "" {
 		m[wire.MetaGitHubAuthor] = author
+	}
+	if authorID > 0 {
+		m[wire.MetaGitHubAuthorID] = strconv.FormatInt(authorID, 10)
 	}
 	return m
 }
@@ -759,7 +762,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 				}
 				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
 					by, _, _ := current.GitHubAsker(kind, body)
-					if err := s.p.resumeAutoReview(current, repo, number, by); err != nil {
+					if err := s.p.resumeAutoReview(current, repo, number, by, clients.GitHubAskerID(kind, body)); err != nil {
 						http.Error(w, "automatic review could not resume", http.StatusServiceUnavailable)
 						return
 					}

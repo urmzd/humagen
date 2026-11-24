@@ -20,17 +20,22 @@ type layouts struct {
 	store deliverystate.Store
 	scope string
 	mu    sync.Mutex
-	local map[deliverystate.Key]bool
+	local map[deliverystate.Key]string
 }
 
-// proseLayout is the value a run's record holds.
-const proseLayout = "prose"
+// The layouts a run's record names: prose, and prose with the agent's mark
+// (presentation.AgentMark), which reviews carry since stale reviews are
+// dismissed. A record with neither is from before reviews read as prose.
+const (
+	proseLayout  = "prose"
+	markedLayout = "prose+agent"
+)
 
 // newLayouts keeps the records in cfg's delivery store. A record names its
 // tenant, run and channel, which no other connector instance shares, so it
 // is not kept per instance: it outlives a receipt kept under another scope.
 func newLayouts(cfg Config) *layouts {
-	return &layouts{store: cfg.DeliveryState, scope: "review-layout", local: map[deliverystate.Key]bool{}}
+	return &layouts{store: cfg.DeliveryState, scope: "review-layout", local: map[deliverystate.Key]string{}}
 }
 
 func (l *layouts) key(v transport.View) deliverystate.Key {
@@ -41,22 +46,27 @@ func (l *layouts) key(v transport.View) deliverystate.Key {
 	return deliverystate.Key{Tenant: tenant, Scope: l.scope, Run: v.RunID, Channel: v.Channel, Target: "review"}
 }
 
-// mark records that v's review is posted in the current layout.
-func (l *layouts) mark(v transport.View) error {
+// mark records that v's review is posted in the current layout, with the
+// agent's mark.
+func (l *layouts) mark(v transport.View) error { return l.record(v, markedLayout) }
+
+// record records that v's review is posted in layout.
+func (l *layouts) record(v transport.View, layout string) error {
 	key := l.key(v)
 	if l.store == nil {
 		l.mu.Lock()
 		defer l.mu.Unlock()
-		l.local[key] = true
+		l.local[key] = layout
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return l.store.Update(ctx, key, func([]byte) ([]byte, bool, error) { return []byte(proseLayout), false, nil })
+	return l.store.Update(ctx, key, func([]byte) ([]byte, bool, error) { return []byte(layout), false, nil })
 }
 
-// posted reports whether v's review was posted in the current layout.
-func (l *layouts) posted(v transport.View) (bool, error) {
+// posted reports the layout v's review was posted in: markedLayout,
+// proseLayout, or "" for the layout from before reviews read as prose.
+func (l *layouts) posted(v transport.View) (string, error) {
 	key := l.key(v)
 	if l.store == nil {
 		l.mu.Lock()
@@ -65,10 +75,12 @@ func (l *layouts) posted(v transport.View) (bool, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	current := false
+	layout := ""
 	err := l.store.Update(ctx, key, func(old []byte) ([]byte, bool, error) {
-		current = string(old) == proseLayout
+		if s := string(old); s == proseLayout || s == markedLayout {
+			layout = s
+		}
 		return old, false, nil
 	})
-	return current, err
+	return layout, err
 }

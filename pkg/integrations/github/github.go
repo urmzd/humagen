@@ -5,12 +5,14 @@ package github
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connector"
 	"github.com/urmzd/saige/flow/connectors"
@@ -41,6 +43,14 @@ type Config struct {
 	// transport's MayApprove hook before an approval posts. An error is
 	// retried. Nil approves nothing.
 	ReviewPolicy func(context.Context, transport.View) (ReviewGrant, error)
+	// ApprovalClaims is where one approval of each commit is claimed, in a
+	// store every replica shares, so two runs or two replicas never both
+	// approve a commit. Nil approves nothing.
+	ApprovalClaims state.Store
+	// Log is where a review's side work that fails without stopping it,
+	// such as a stale review that could not be dismissed, is told. Nil is
+	// slog's default.
+	Log *slog.Logger
 	// SessionLink is the console's address of the session a run answers
 	// in, linked under its comment. Nil, or "", links nothing.
 	SessionLink        func(transport.View) string
@@ -99,6 +109,19 @@ type Config struct {
 	// legacyPosts posts reviews in the layout from before reviews read as
 	// prose, as a deploy of that code did. Tests only.
 	legacyPosts bool
+	// unmarkedPosts posts reviews in the prose layout without the agent's
+	// mark, as a deploy from before stale reviews were dismissed did. Tests
+	// only.
+	unmarkedPosts bool
+}
+
+// agentMark is the hidden line naming the agent that wrote v's review, on
+// a line of its own.
+func agentMark(v transport.View) string {
+	if mark := presentation.AgentMark(v.Agent); mark != "" {
+		return "\n\n" + mark
+	}
+	return ""
 }
 
 // reviewDecisionTimeout bounds the reads a review's event is decided on.
@@ -194,22 +217,27 @@ func New(cfg Config) (*Connector, error) {
 					if review.Event == "APPROVE" {
 						pending.plan(v, report)
 					}
-					// The app's earlier reviews this one replaces are dismissed:
-					// an approval of another head unless this one approves (the
-					// hook dismisses it if it then says no), and a change request
-					// unless this one blocks.
+					// The agent's earlier reviews this one replaces are
+					// dismissed: an approval of another head unless this one
+					// approves (the hook dismisses it if it then says no), and a
+					// change request unless this one blocks. A dismissal that
+					// fails is logged and never stops this review.
 					if owner, repo, number, ok := pullOf(v.Channel); ok {
-						ref := transport.Ref{Owner: owner, Repo: repo, Number: number}
-						if err := dismissStale(ctx, cfg, c.Connector, ref, review.CommitID, review.Event, review.Event == "REQUEST_CHANGES"); err != nil {
-							return transport.Review{}, true, err
-						}
+						dismissStale(ctx, cfg, c.Connector, transport.Ref{Owner: owner, Repo: repo, Number: number}, v.Agent, review.CommitID, review.Event, review.Event == "REQUEST_CHANGES")
 					}
 					// Say which layout this review is posted in before posting it,
 					// so its recovery reproduces it.
+					if cfg.unmarkedPosts {
+						if err := layouts.record(v, proseLayout); err != nil {
+							return transport.Review{}, true, err
+						}
+						review.Body += presentation.SessionFooter(sessionLink(cfg, v))
+						return review, true, nil
+					}
 					if err := layouts.mark(v); err != nil {
 						return transport.Review{}, true, err
 					}
-					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
+					review.Body += agentMark(v) + presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, nil
 				}
 				// The transport calls this only after verifying an existing app-authored
@@ -222,15 +250,18 @@ func New(cfg Config) (*Connector, error) {
 					if !ok || err != nil {
 						return transport.Review{}, err != nil, err
 					}
-					current, err := layouts.posted(v)
+					layout, err := layouts.posted(v)
 					if err != nil {
 						return transport.Review{}, true, err
 					}
-					if !current {
+					if layout == "" {
 						review, err := presentation.LegacyRecoveredReview(report, files, disposition)
 						return review, true, err
 					}
 					review, err := presentation.RecoveredReview(report, files, presentation.TargetOf(v.Channel), disposition)
+					if layout == markedLayout {
+						review.Body += agentMark(v)
+					}
 					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, err
 				}

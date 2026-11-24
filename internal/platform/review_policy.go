@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
@@ -53,8 +54,9 @@ func (p *Platform) reviewGrant(ctx context.Context, c clients.Client, v transpor
 	if settings, read := p.repoSettingsOf(current, repo); !read || settings.NeverApproves() {
 		policy.Approve = wire.ReviewApproveNever
 	}
-	trusted, asker := p.trustedReviewRun(current, run, repo, number)
-	return github.ReviewGrant{Policy: policy, Trusted: trusted, Asker: asker, Author: wire.SurfaceOf(tag).GitHubAuthor}, nil
+	trusted, asker, askerID := p.trustedReviewRun(current, run, repo, number)
+	authorID, _ := strconv.ParseInt(wire.Meta(tag)[wire.MetaGitHubAuthorID], 10, 64)
+	return github.ReviewGrant{Policy: policy, Trusted: trusted, Asker: asker, AskerID: askerID, Author: wire.SurfaceOf(tag).GitHubAuthor, AuthorID: authorID}, nil
 }
 
 // reviewPolicy is an agent's review policy as the presentation reads it.
@@ -85,35 +87,36 @@ func stricterReview(a, b presentation.ReviewPolicy) presentation.ReviewPolicy {
 }
 
 // trustedReviewRun reports whether a signal that may approve started run,
-// and the login of the person who asked, if one did. An automatic review is
-// trusted unless a person the client does not map resumed it last. A
-// comment and a review request are trusted when the person who asked is
-// one the client maps (its people, or its askers). A run another run
-// called, a rule's run, and a stranger's are not trusted, whatever they
-// say. ReviewEvent also refuses an asker who wrote the pull request.
-func (p *Platform) trustedReviewRun(c clients.Client, run runs.Run, repo string, number int) (bool, string) {
+// and the login and GitHub user ID of the person who asked, if one did. An
+// automatic review is trusted unless a person the client does not map
+// resumed it last. A comment and a review request are trusted when the
+// person who asked is one the client maps (its people, or its askers); the
+// events saige raises for them carry no user ID, so ReviewEvent approves
+// neither yet. A run another run called, a rule's run, and a stranger's are
+// not trusted, whatever they say.
+func (p *Platform) trustedReviewRun(c clients.Client, run runs.Run, repo string, number int) (bool, string, int64) {
 	if run.Parent != "" || run.Origin != "github" || c.GitHub == nil {
-		return false, ""
+		return false, "", 0
 	}
 	tag := run.Tag()
 	if strings.HasPrefix(run.TagID, "autoreview/"+url.PathEscape(c.ID)+"/") && run.Actor.ID == "" && wire.ShapeOf(tag) == wire.ShapeReview {
 		state, ok := p.PullReviewOf(c.Tenant, c.ID, repo, number)
 		if !ok {
-			return false, ""
+			return false, "", 0
 		}
 		if state.ResumedBy == "" {
-			return true, ""
+			return true, "", 0
 		}
-		return mappedAsker(c, state.ResumedBy), state.ResumedBy
+		return mappedAsker(c, state.ResumedBy), state.ResumedBy, state.ResumedByID
 	}
 	login := strings.TrimSpace(run.Actor.ID)
 	if b, requested := tag.Data.(event.GitHubReviewRequested); requested && login == "" {
 		login = strings.TrimSpace(b.Sender)
 	}
 	if run.Actor.Bot || login == "" {
-		return false, ""
+		return false, "", 0
 	}
-	return mappedAsker(c, login), login
+	return mappedAsker(c, login), login, 0
 }
 
 // mappedAsker reports whether login is a person the client maps: one in

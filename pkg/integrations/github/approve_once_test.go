@@ -8,6 +8,7 @@ import (
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 	"github.com/urmzd/saige/flow/deliverystate"
@@ -30,8 +31,8 @@ func TestTwoRunsOnOneCommitApproveOnce(t *testing.T) {
 	if err := fake.SeedCommitCheck("acme", "repo", sha, transport.CommitCheck{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "success"}); err != nil {
 		t.Fatal(err)
 	}
-	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat"}
-	conn, err := github.New(github.Config{API: fake, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
+	conn, err := github.New(github.Config{API: fake, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +40,7 @@ func TestTwoRunsOnOneCommitApproveOnce(t *testing.T) {
 	target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", sha)
 	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[]}`, sha)
 	for _, run := range []string{"run-a", "run-b"} {
-		env := event.Envelope{Tenant: "tenant", Run: run, Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
+		env := event.Envelope{Tenant: "tenant", Agent: "gatekeeper", Run: run, Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
 		if err := conn.Deliver(t.Context(), target, env); err != nil {
 			t.Fatal(err)
 		}
@@ -93,8 +94,8 @@ func TestALaterReviewDismissesTheAppsStaleReviews(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat"}
-			conn, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+			clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
+			conn, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 				ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 			if err != nil {
 				t.Fatal(err)
@@ -102,7 +103,7 @@ func TestALaterReviewDismissesTheAppsStaleReviews(t *testing.T) {
 			for i, step := range []struct{ sha, verdict, sev string }{{old, c.first, c.firstSev}, {head, c.then, c.thenSev}} {
 				seed(step.sha)
 				target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", step.sha)
-				env := event.Envelope{Tenant: "tenant", Run: fmt.Sprint("run-", i), Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: report(step.sha, step.verdict, step.sev)}}
+				env := event.Envelope{Tenant: "tenant", Agent: "gatekeeper", Run: fmt.Sprint("run-", i), Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: report(step.sha, step.verdict, step.sev)}}
 				if err := conn.Deliver(t.Context(), target, env); err != nil {
 					t.Fatal(err)
 				}

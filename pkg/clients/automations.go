@@ -165,8 +165,10 @@ type AutoReviewRequest struct {
 	// Push is a push to the pull request; otherwise it opened, reopened or
 	// left draft, and is reviewed whole.
 	Push bool
-	// Author is the pull request's author, as the signed payload names it.
-	Author string
+	// Author is the pull request's author, and AuthorID their GitHub user
+	// ID, as the signed payload names them.
+	Author   string
+	AuthorID int64
 }
 
 // MatchAutoReview reads a signature-verified pull_request payload and reports
@@ -187,6 +189,7 @@ func (c Client) MatchAutoReview(kind string, body []byte) (AutoReviewRequest, bo
 			State string `json:"state"`
 			User  struct {
 				Login string `json:"login"`
+				ID    int64  `json:"id"`
 			} `json:"user"`
 			Head struct {
 				SHA string `json:"sha"`
@@ -212,7 +215,7 @@ func (c Client) MatchAutoReview(kind string, body []byte) (AutoReviewRequest, bo
 	if !c.GitHub.AutoReview.Reviews(repo) {
 		return AutoReviewRequest{}, false
 	}
-	return AutoReviewRequest{Repository: repo, Number: p.Number, SHA: strings.ToLower(p.PullRequest.Head.SHA), Push: p.Action == "synchronize", Author: p.PullRequest.User.Login}, true
+	return AutoReviewRequest{Repository: repo, Number: p.Number, SHA: strings.ToLower(p.PullRequest.Head.SHA), Push: p.Action == "synchronize", Author: p.PullRequest.User.Login, AuthorID: p.PullRequest.User.ID}, true
 }
 
 func fullSHA(s string) bool {

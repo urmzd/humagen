@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	ghconnector "github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/reposettings"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 	"github.com/urmzd/saige/flow/event"
@@ -28,6 +29,19 @@ type hookedCase struct {
 	between func(t *testing.T, p *Platform, n int)
 	// before runs after the run is recorded and before delivery.
 	before func(t *testing.T, p *Platform)
+	// commits, when set, are the pull request's commits as the API reads
+	// them; left out, the API cannot read them.
+	commits []ghconnector.PullCommit
+}
+
+// withCommits is a GitHub API that also reads a pull request's commits.
+type withCommits struct {
+	*transport.Fake
+	commits []ghconnector.PullCommit
+}
+
+func (w withCommits) PullCommits(context.Context, transport.Ref) ([]ghconnector.PullCommit, error) {
+	return w.commits, nil
 }
 
 func hookedEvent(t *testing.T, c hookedCase) (string, error) {
@@ -50,7 +64,7 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	target := address.MustParse("github://acme/site/pull/7?head_sha=" + approvalSHA)
 	var tag event.Envelope
 	if c.asker == "" {
-		req := clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author}
+		req := clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author, AuthorID: githubID(c.author)}
 		if _, _, _, err := p.planAutoReview(client, req); err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +103,11 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	}
 	text, _ := json.Marshal(report)
 	n := 0
-	peer, err := ghconnector.New(ghconnector.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1,
+	var gh transport.API = api
+	if c.commits != nil {
+		gh = withCommits{Fake: api, commits: c.commits}
+	}
+	peer, err := ghconnector.New(ghconnector.Config{API: gh, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
 		ReviewPolicy: func(ctx context.Context, v transport.View) (ghconnector.ReviewGrant, error) {
 			n++
@@ -270,26 +288,54 @@ func TestNeverAgentWithUnreadableGrantStillPosts(t *testing.T) {
 }
 
 // An automatic review a person resumed approves only when the client maps
-// that person and they did not write the pull request.
-func TestAResumedAutomaticReviewApprovesOnlyForAMappedPerson(t *testing.T) {
-	for by, want := range map[string]string{"": "APPROVE", "ada": "APPROVE", "stranger": "COMMENT", "octocat": "COMMENT"} {
-		c := hookedCase{approvalCase: cleanApproval()}
-		if by == "octocat" {
-			c.author = "octocat"
-		}
-		c.before = func(t *testing.T, p *Platform) {
-			if by == "" {
-				return
+// that person, they are known by GitHub user ID, they are not the author
+// under any login, and the host read the commits and they wrote none.
+func TestAResumedAutomaticReviewApprovesOnlyForASecondPerson(t *testing.T) {
+	clean := []ghconnector.PullCommit{{AuthorID: 583231, CommitterID: 583231}}
+	for name, c := range map[string]struct {
+		by      string
+		byID    int64
+		author  string
+		commits []ghconnector.PullCommit
+		want    string
+	}{
+		"nobody resumed it":                         {author: "octocat", want: "APPROVE"},
+		"a mapped person, commits read":             {by: "ada", byID: 1001, author: "octocat", commits: clean, want: "APPROVE"},
+		"a mapped person, commits unread":           {by: "ada", byID: 1001, author: "octocat", want: "COMMENT"},
+		"a mapped person with no user ID":           {by: "ada", author: "octocat", commits: clean, want: "COMMENT"},
+		"a mapped person who pushed a commit":       {by: "ada", byID: 1001, author: "octocat", commits: append(clean, ghconnector.PullCommit{AuthorID: 1001}), want: "COMMENT"},
+		"a mapped person who committed one":         {by: "ada", byID: 1001, author: "octocat", commits: append(clean, ghconnector.PullCommit{AuthorID: 583231, CommitterID: 1001}), want: "COMMENT"},
+		"a stranger":                                {by: "stranger", byID: 4242, author: "octocat", commits: clean, want: "COMMENT"},
+		"the author, renamed since they resumed it": {by: "ada", byID: 1001, author: "ada-new", commits: clean, want: "COMMENT"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			hc := hookedCase{approvalCase: cleanApproval(), commits: c.commits}
+			hc.author = c.author
+			hc.before = func(t *testing.T, p *Platform) {
+				if c.by == "" {
+					return
+				}
+				if _, err := p.pullReviews.Update("t", pullReviewKey("gh", "acme/site", 7), func(v PullReview, _ bool) (PullReview, error) {
+					v.ResumedBy, v.ResumedByID = c.by, c.byID
+					return v, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if _, err := p.pullReviews.Update("t", pullReviewKey("gh", "acme/site", 7), func(v PullReview, _ bool) (PullReview, error) {
-				v.ResumedBy = by
-				return v, nil
-			}); err != nil {
-				t.Fatal(err)
+			if got, err := hookedEvent(t, hc); err != nil || got != c.want {
+				t.Fatalf("%s %v, want %s", got, err, c.want)
 			}
-		}
-		if got, err := hookedEvent(t, c); err != nil || got != want {
-			t.Errorf("resumed by %q: %s %v, want %s", by, got, err, want)
-		}
+		})
+	}
+}
+
+// A mapped person who pushed to someone else's pull request and asks for a
+// review approves nothing: the comment carries no user ID, and the commits
+// would be read against it.
+func TestAMappedCoAuthorWhoAsksApprovesNothing(t *testing.T) {
+	c := hookedCase{approvalCase: cleanApproval(), commits: []ghconnector.PullCommit{{AuthorID: 1001}}}
+	c.asker = "ada"
+	if got, err := hookedEvent(t, c); err != nil || got == "APPROVE" {
+		t.Fatalf("a co-author asked: %s %v", got, err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connectors"
 	transport "github.com/urmzd/saige/flow/connectors/github"
@@ -44,7 +45,7 @@ func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T
 		}
 		return nil
 	}}
-	env := event.Envelope{Tenant: "tenant", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
+	env := event.Envelope{Tenant: "tenant", Agent: "gatekeeper", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
 	// Each delivery is a connector whose receipt was lost: a fresh scope in
 	// the same durable store, which keeps the review's layout record.
 	cfg.DeliveryState = deliverystate.NewMemory()
@@ -98,11 +99,11 @@ func TestARecoveredApprovalStaysOneApproval(t *testing.T) {
 	}
 	target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", sha)
 	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[]}`, sha)
-	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: deliverystate.NewMemory(),
+	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(),
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) {
-			return github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat"}, nil
+			return github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}, nil
 		}}
-	env := event.Envelope{Tenant: "tenant", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
+	env := event.Envelope{Tenant: "tenant", Agent: "gatekeeper", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
 	for i := range 2 {
 		cfg.DeliveryScope = fmt.Sprint("lost-receipt-", i)
 		c, err := github.New(cfg)

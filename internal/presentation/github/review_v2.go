@@ -236,6 +236,19 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 	return r, nil
 }
 
+// agentName is an agent's name as a review's mark carries it.
+var agentName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// AgentMark is the hidden line a native review carries to name the agent
+// that wrote it, so the host dismisses only that agent's stale reviews. It is
+// "" for a name that is not an agent's.
+func AgentMark(agent string) string {
+	if !agentName.MatchString(agent) {
+		return ""
+	}
+	return "<!-- humagen.review.agent " + agent + " -->"
+}
+
 // ApproveWhenClean is the one review policy that may approve. Any other
 // value, "never" and "" among them, approves nothing.
 const ApproveWhenClean = "when_clean"
@@ -268,11 +281,20 @@ type ReviewFacts struct {
 	// Draft is a pull request still in draft, which is never approved.
 	Author, App string
 	Draft       bool
+	// AuthorID is the pull request author's GitHub user ID. People are
+	// told apart by ID, never by login, which its owner may change: 0 is
+	// unknown and approves nothing.
+	AuthorID int64
 	// Trusted says the run was an automatic review, or asked by a person
-	// the client maps, and Asker is that person's login, "" for an
-	// automatic review no person resumed. The asker must not be the author.
+	// the client maps. Asker is that person's login, "" for an automatic
+	// review no person resumed, and AskerID their GitHub user ID.
 	Trusted bool
 	Asker   string
+	AskerID int64
+	// CommitsRead says the host read the pull request's commits, and
+	// AskerCommitted that the asker authored or committed one of them.
+	CommitsRead    bool
+	AskerCommitted bool
 }
 
 // checksPassed reports whether the host read the commit's checks and they
@@ -300,11 +322,18 @@ func loginOf(s string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "[bot]"))
 }
 
-// askerNotAuthor reports whether the person whose ask started the run, if
-// any, is someone other than the pull request's author: an approval is a
-// second pair of eyes, never the author's own.
-func (f ReviewFacts) askerNotAuthor() bool {
-	return f.Asker == "" || loginOf(f.Asker) != loginOf(f.Author)
+// peopleKnown reports whether the people an approval depends on are told
+// apart by GitHub user ID, and the asker, if any, is a second pair of eyes:
+// not the pull request's author, under any login, and the author or
+// committer of none of its commits, as the host read them.
+func (f ReviewFacts) peopleKnown() bool {
+	if f.AuthorID <= 0 {
+		return false
+	}
+	if f.Asker == "" && f.AskerID == 0 {
+		return true
+	}
+	return f.AskerID > 0 && f.AskerID != f.AuthorID && loginOf(f.Asker) != loginOf(f.Author) && f.CommitsRead && !f.AskerCommitted
 }
 
 // authorNotApp reports whether the pull request's author is known and is
@@ -335,7 +364,8 @@ func (p ReviewPolicy) blocks(f ReviewFinding) bool {
 // verdict approves, no finding is at or above the policy's severity, the
 // host read checks from CI and all passed, at least one with success, the
 // author is not the app, the pull request is not a draft, and the run was
-// trusted to approve and not asked by the author. REQUEST_CHANGES is a verdict that
+// trusted to approve, with the author known by ID and any asker neither the
+// author nor a writer of the pull request's commits. REQUEST_CHANGES is a verdict that
 // requests changes, or any finding at or above the severity. Anything else
 // is COMMENT.
 func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) string {
@@ -346,7 +376,7 @@ func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) st
 	switch {
 	case blocked:
 		return "REQUEST_CHANGES"
-	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && !facts.Draft && facts.Trusted && facts.askerNotAuthor():
+	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && !facts.Draft && facts.Trusted && facts.peopleKnown():
 		return "APPROVE"
 	}
 	return "COMMENT"

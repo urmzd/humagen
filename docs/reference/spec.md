@@ -997,9 +997,12 @@ A review approves only when all of these hold:
    skipped), and at least one concluded success. The app's own checks never
    count.
 4. The pull request is open and not a draft, and its author is not the app.
-5. The run was an automatic review, or asked by a person the GitHub client
-   maps (`github.people` or `github.askers`) who did not write the pull
-   request. The app has not approved the commit already.
+5. The run was an automatic review, or asked or resumed by a person the
+   GitHub client maps (`github.people` or `github.askers`) who is known by
+   GitHub user ID and wrote neither the pull request nor any of its commits.
+   The app has not approved the commit already
+   ([GitHub](github.md#native-reviews-and-feedback) says which runs carry
+   user IDs today).
 
 A verdict of `request_changes`, or any finding at or above `block_on`,
 requests changes. Anything else is a comment. The example above has
