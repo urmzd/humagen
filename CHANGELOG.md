@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.200.6 (2026-11-24)
+
+### Bug Fixes
+
+- **github**: match a run's place read to its connector, and name redirects plainly ([0249e61](https://github.com/urmzd/humagen/commit/0249e615ac589933f3f3dedcde975a9db2489e37))
+
+### Misc
+
+- **platform**: pin how a GitHub session record without a conversation is reached ([44c1cd4](https://github.com/urmzd/humagen/commit/44c1cd4ad1cc251513a3b4f7e280c356fce87f37))
+- **skillfiles**: check the modes Write sets, and the OS refusal only where it applies ([5943485](https://github.com/urmzd/humagen/commit/594348592df23201a1c32ccb7b44d3aad090d254))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.5...v0.200.6)
+
+
 ## 0.200.5 (2026-11-24)
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.4...v0.200.5)
