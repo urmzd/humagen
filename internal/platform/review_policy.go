@@ -36,9 +36,11 @@ func (p *Platform) reviewGrant(ctx context.Context, c clients.Client, v transpor
 	if at, atKind, atNumber, atOK := channelRepository(v.Channel); !ok || kind != "pull" || !atOK || !strings.EqualFold(at, repo) || atKind != kind || atNumber != number {
 		return github.ReviewGrant{}, nil
 	}
+	// An agent no longer readable, such as one deleted while its run
+	// worked, approves nothing; its review still posts.
 	pinned, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil {
-		return github.ReviewGrant{}, errors.New("review policy is not available")
+		return github.ReviewGrant{}, nil
 	}
 	policy := reviewPolicy(pinned.Spec.Review)
 	// An agent changed since the run started is held to the stricter of
@@ -51,7 +53,8 @@ func (p *Platform) reviewGrant(ctx context.Context, c clients.Client, v transpor
 	if settings, read := p.repoSettingsOf(current, repo); !read || settings.NeverApproves() {
 		policy.Approve = wire.ReviewApproveNever
 	}
-	return github.ReviewGrant{Policy: policy, Trusted: trustedReviewRun(current, run), Author: wire.SurfaceOf(tag).GitHubAuthor}, nil
+	trusted, asker := p.trustedReviewRun(current, run, repo, number)
+	return github.ReviewGrant{Policy: policy, Trusted: trusted, Asker: asker, Author: wire.SurfaceOf(tag).GitHubAuthor}, nil
 }
 
 // reviewPolicy is an agent's review policy as the presentation reads it.
@@ -81,23 +84,42 @@ func stricterReview(a, b presentation.ReviewPolicy) presentation.ReviewPolicy {
 	return a
 }
 
-// trustedReviewRun reports whether a signal that may approve started run:
-// the client's automatic review, a review requested of the app, or a person
-// the client maps (its people, or its askers). A run another run called, a
-// rule's run, and a stranger's are not trusted, whatever they say.
-func trustedReviewRun(c clients.Client, run runs.Run) bool {
+// trustedReviewRun reports whether a signal that may approve started run,
+// and the login of the person who asked, if one did. An automatic review is
+// trusted unless a person the client does not map resumed it last. A
+// comment and a review request are trusted when the person who asked is
+// one the client maps (its people, or its askers). A run another run
+// called, a rule's run, and a stranger's are not trusted, whatever they
+// say. ReviewEvent also refuses an asker who wrote the pull request.
+func (p *Platform) trustedReviewRun(c clients.Client, run runs.Run, repo string, number int) (bool, string) {
 	if run.Parent != "" || run.Origin != "github" || c.GitHub == nil {
-		return false
+		return false, ""
 	}
 	tag := run.Tag()
 	if strings.HasPrefix(run.TagID, "autoreview/"+url.PathEscape(c.ID)+"/") && run.Actor.ID == "" && wire.ShapeOf(tag) == wire.ShapeReview {
-		return true
-	}
-	if _, requested := tag.Data.(event.GitHubReviewRequested); requested {
-		return true
+		state, ok := p.PullReviewOf(c.Tenant, c.ID, repo, number)
+		if !ok {
+			return false, ""
+		}
+		if state.ResumedBy == "" {
+			return true, ""
+		}
+		return mappedAsker(c, state.ResumedBy), state.ResumedBy
 	}
 	login := strings.TrimSpace(run.Actor.ID)
+	if b, requested := tag.Data.(event.GitHubReviewRequested); requested && login == "" {
+		login = strings.TrimSpace(b.Sender)
+	}
 	if run.Actor.Bot || login == "" {
+		return false, ""
+	}
+	return mappedAsker(c, login), login
+}
+
+// mappedAsker reports whether login is a person the client maps: one in
+// its people, or one of its askers.
+func mappedAsker(c clients.Client, login string) bool {
+	if c.GitHub == nil || login == "" {
 		return false
 	}
 	return c.GitHub.People[login] != "" || slices.ContainsFunc(c.GitHub.Askers, func(a string) bool { return strings.EqualFold(a, login) })

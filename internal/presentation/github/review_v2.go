@@ -262,32 +262,54 @@ type ReviewFacts struct {
 	// them, into Checks.
 	ChecksRead bool
 	Checks     []transport.CommitCheck
-	// Own reports the connector's own check for the run under review,
-	// still in progress while the review is decided, which is skipped.
-	// Nil skips nothing.
-	Own func(transport.CommitCheck) bool
 	// Author is the pull request's author and App the app's own login. Both
 	// must be known and differ: the app never approves its own pull request.
 	// Draft is a pull request still in draft, which is never approved.
 	Author, App string
 	Draft       bool
-	// Trusted says the run was an automatic review, a review request, or
-	// started by a person the client maps.
+	// Trusted says the run was an automatic review, or asked by a person
+	// the client maps, and Asker is that person's login, "" for an
+	// automatic review no person resumed. The asker must not be the author.
 	Trusted bool
+	Asker   string
 }
 
-// checksPassed reports whether the host read the commit's checks and
-// saige's AllPassed accepts them: at least one check that Own does not
-// skip, every such check passed, and fewer than the read's bound.
+// checksPassed reports whether the host read the commit's checks and they
+// show CI that passed: every check another app reported passed, at least one
+// of them concluded success, and saige's AllPassed accepts the list (fewer
+// than the read's bound). The app's own checks, from this run or an earlier
+// one, are never CI: they say only that a review ran.
 func (f ReviewFacts) checksPassed() bool {
-	return f.ChecksRead && transport.AllPassed(f.Checks, f.Own)
+	app := loginOf(f.App)
+	own := func(c transport.CommitCheck) bool { return app != "" && loginOf(c.App) == app }
+	if !f.ChecksRead || !transport.AllPassed(f.Checks, own) {
+		return false
+	}
+	for _, c := range f.Checks {
+		if !own(c) && c.Conclusion == "success" {
+			return true
+		}
+	}
+	return false
+}
+
+// loginOf is a login or app slug in one form: "Humagen[bot]" and "humagen"
+// are both "humagen".
+func loginOf(s string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "[bot]"))
+}
+
+// askerNotAuthor reports whether the person whose ask started the run, if
+// any, is someone other than the pull request's author: an approval is a
+// second pair of eyes, never the author's own.
+func (f ReviewFacts) askerNotAuthor() bool {
+	return f.Asker == "" || loginOf(f.Asker) != loginOf(f.Author)
 }
 
 // authorNotApp reports whether the pull request's author is known and is
 // not the app.
 func (f ReviewFacts) authorNotApp() bool {
-	login := func(s string) string { return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "[bot]")) }
-	return login(f.Author) != "" && login(f.App) != "" && login(f.Author) != login(f.App)
+	return loginOf(f.Author) != "" && loginOf(f.App) != "" && loginOf(f.Author) != loginOf(f.App)
 }
 
 // blocks reports whether a finding is at or above the policy's severity.
@@ -310,8 +332,9 @@ func (p ReviewPolicy) blocks(f ReviewFinding) bool {
 //
 // APPROVE needs every guard at once: the policy is ApproveWhenClean, the
 // verdict approves, no finding is at or above the policy's severity, the
-// host read at least one check and all passed, the author is not the app,
-// the pull request is not a draft, and the run was trusted to approve. REQUEST_CHANGES is a verdict that
+// host read checks from CI and all passed, at least one with success, the
+// author is not the app, the pull request is not a draft, and the run was
+// trusted to approve and not asked by the author. REQUEST_CHANGES is a verdict that
 // requests changes, or any finding at or above the severity. Anything else
 // is COMMENT.
 func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) string {
@@ -322,7 +345,7 @@ func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) st
 	switch {
 	case blocked:
 		return "REQUEST_CHANGES"
-	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && !facts.Draft && facts.Trusted:
+	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && !facts.Draft && facts.Trusted && facts.askerNotAuthor():
 		return "APPROVE"
 	}
 	return "COMMENT"

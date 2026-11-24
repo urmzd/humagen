@@ -23,6 +23,10 @@ type PullReview struct {
 	Pushes int `json:"pushes"`
 	// Paused is set by the push that found the count spent.
 	Paused bool `json:"paused,omitempty"`
+	// ResumedBy is the login that last resumed review, until the pull
+	// request opens again. A review it resumed approves only when the
+	// client maps that person.
+	ResumedBy string `json:"resumed_by,omitempty"`
 }
 
 func pullReviewKey(client, repo string, number int) string {
@@ -67,13 +71,14 @@ func (p *Platform) planAutoReview(c clients.Client, req clients.AutoReviewReques
 }
 
 // resumeAutoReview starts the count afresh after a person addressed the app
-// or an agent on the pull request; the next push is reviewed.
-func (p *Platform) resumeAutoReview(c clients.Client, repo string, number int) error {
+// or an agent on the pull request; the next push is reviewed. by is that
+// person's login.
+func (p *Platform) resumeAutoReview(c clients.Client, repo string, number int, by string) error {
 	_, err := p.pullReviews.Update(c.Tenant, pullReviewKey(c.ID, repo, number), func(v PullReview, ok bool) (PullReview, error) {
 		if !ok || !v.Paused && v.Pushes == 0 {
 			return v, state.ErrUnchanged
 		}
-		v.Pushes, v.Paused = 0, false
+		v.Pushes, v.Paused, v.ResumedBy = 0, false, by
 		return v, nil
 	})
 	return err

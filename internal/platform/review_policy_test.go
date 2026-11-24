@@ -93,7 +93,11 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	target := address.MustParse("github://acme/site/pull/7?head_sha=" + approvalSHA)
 	var tag event.Envelope
 	if c.asker == "" {
-		tag = autoReviewTag(client, "pull_request", clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author}, "")
+		req := clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author}
+		if _, _, _, err := p.planAutoReview(client, req); err != nil {
+			t.Fatal(err)
+		}
+		tag = autoReviewTag(client, "pull_request", req, "")
 	} else {
 		ref := event.GitHubRef{Owner: "acme", Repo: "site", Number: 7, Pull: true, Sender: c.asker, Author: c.author, HeadSHA: approvalSHA}
 		var body event.Body = event.GitHubIssueCommentCreated{Request: event.Request{Actor: event.Actor{ID: c.asker}, Text: "@humagen review"}, GitHubRef: ref}
@@ -161,21 +165,27 @@ func TestTheReviewEventFollowsThePolicyAndTheChecks(t *testing.T) {
 		"a pending check": {mutate: func(c *approvalCase) {
 			c.checks = append(c.checks, transport.CommitCheck{Kind: transport.CheckKindStatus, Name: "ci", Status: "pending"})
 		}, want: "COMMENT"},
-		"no checks at all":                 {mutate: func(c *approvalCase) { c.checks = nil }, want: "COMMENT"},
-		"a must-fix finding":               {mutate: func(c *approvalCase) { c.finding = "error" }, want: "REQUEST_CHANGES"},
-		"a should-fix finding under error": {mutate: func(c *approvalCase) { c.finding = "warning" }, want: "APPROVE"},
-		"block_on warning":                 {mutate: func(c *approvalCase) { c.finding, c.review.BlockOn = "warning", "warning" }, want: "REQUEST_CHANGES"},
-		"approve never":                    {mutate: func(c *approvalCase) { c.review.Approve = wire.ReviewApproveNever }, want: "COMMENT"},
-		"no review policy":                 {mutate: func(c *approvalCase) { c.review = wire.Review{} }, want: "COMMENT"},
-		"the repository says never":        {mutate: func(c *approvalCase) { c.repoNever = true }, want: "COMMENT"},
-		"the app's own pull request":       {mutate: func(c *approvalCase) { c.author = "humagen[bot]" }, want: "COMMENT"},
-		"an unknown author":                {mutate: func(c *approvalCase) { c.author = "" }, want: "COMMENT"},
-		"an unmapped asker":                {mutate: func(c *approvalCase) { c.asker = "stranger" }, want: "COMMENT"},
-		"a review request":                 {mutate: func(c *approvalCase) { c.asker, c.requested = "stranger", true }, want: "APPROVE"},
-		"GitHub says the app opened it":    {mutate: func(c *approvalCase) { c.githubAuthor = "humagen[bot]" }, want: "COMMENT"},
-		"a draft":                          {mutate: func(c *approvalCase) { c.draft = true }, want: "COMMENT"},
-		"the run's own check in progress":  {mutate: func(c *approvalCase) { c.ownCheck = true }, want: "APPROVE"},
-		"only the run's own check":         {mutate: func(c *approvalCase) { c.checks, c.ownCheck = nil, true }, want: "COMMENT"},
+		"no checks at all":                      {mutate: func(c *approvalCase) { c.checks = nil }, want: "COMMENT"},
+		"a must-fix finding":                    {mutate: func(c *approvalCase) { c.finding = "error" }, want: "REQUEST_CHANGES"},
+		"a should-fix finding under error":      {mutate: func(c *approvalCase) { c.finding = "warning" }, want: "APPROVE"},
+		"block_on warning":                      {mutate: func(c *approvalCase) { c.finding, c.review.BlockOn = "warning", "warning" }, want: "REQUEST_CHANGES"},
+		"approve never":                         {mutate: func(c *approvalCase) { c.review.Approve = wire.ReviewApproveNever }, want: "COMMENT"},
+		"no review policy":                      {mutate: func(c *approvalCase) { c.review = wire.Review{} }, want: "COMMENT"},
+		"the repository says never":             {mutate: func(c *approvalCase) { c.repoNever = true }, want: "COMMENT"},
+		"the app's own pull request":            {mutate: func(c *approvalCase) { c.author = "humagen[bot]" }, want: "COMMENT"},
+		"an unknown author":                     {mutate: func(c *approvalCase) { c.author = "" }, want: "COMMENT"},
+		"an unmapped asker":                     {mutate: func(c *approvalCase) { c.asker = "stranger" }, want: "COMMENT"},
+		"a review request by a stranger":        {mutate: func(c *approvalCase) { c.asker, c.requested = "stranger", true }, want: "COMMENT"},
+		"a review request by a mapped person":   {mutate: func(c *approvalCase) { c.asker, c.requested = "ada", true }, want: "APPROVE"},
+		"the author, mapped, requests a review": {mutate: func(c *approvalCase) { c.asker, c.requested, c.author = "ada", true, "ada" }, want: "COMMENT"},
+		"the author, mapped, comments":          {mutate: func(c *approvalCase) { c.asker, c.author = "ada", "ada" }, want: "COMMENT"},
+		"every check skipped or neutral": {mutate: func(c *approvalCase) {
+			c.checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "skipped"}, {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "neutral"}}
+		}, want: "COMMENT"},
+		"GitHub says the app opened it":   {mutate: func(c *approvalCase) { c.githubAuthor = "humagen[bot]" }, want: "COMMENT"},
+		"a draft":                         {mutate: func(c *approvalCase) { c.draft = true }, want: "COMMENT"},
+		"the run's own check in progress": {mutate: func(c *approvalCase) { c.ownCheck = true }, want: "APPROVE"},
+		"only the run's own check":        {mutate: func(c *approvalCase) { c.checks, c.ownCheck = nil, true }, want: "COMMENT"},
 		"only the app's own check": {mutate: func(c *approvalCase) {
 			c.checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "fiber/gatekeeper", Status: "in_progress", App: "humagen", ExternalID: "any-run"}}
 		}, want: "COMMENT"},

@@ -181,8 +181,8 @@ func New(cfg Config) (*Connector, error) {
 					// The transport gives this no context; the decision's reads
 					// are bounded on their own.
 					ctx, cancel := context.WithTimeout(context.Background(), reviewDecisionTimeout)
+					defer cancel()
 					policy, facts, err := reviewDecision(ctx, cfg, v, report)
-					cancel()
 					if err != nil {
 						return transport.Review{}, true, err
 					}
@@ -192,6 +192,16 @@ func New(cfg Config) (*Connector, error) {
 					}
 					if review.Event == "APPROVE" {
 						pending.plan(v, report)
+					}
+					// The app's earlier reviews this one replaces are dismissed:
+					// an approval of another head unless this one approves (the
+					// hook dismisses it if it then says no), and a change request
+					// unless this one blocks.
+					if owner, repo, number, ok := pullOf(v.Channel); ok {
+						ref := transport.Ref{Owner: owner, Repo: repo, Number: number}
+						if err := dismissStale(ctx, cfg, ref, review.CommitID, review.Event, review.Event == "REQUEST_CHANGES"); err != nil {
+							return transport.Review{}, true, err
+						}
 					}
 					// Say which layout this review is posted in before posting it,
 					// so its recovery reproduces it.

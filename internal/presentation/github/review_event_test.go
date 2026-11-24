@@ -14,10 +14,6 @@ func ownCheck() transport.CommitCheck {
 	return transport.CommitCheck{Kind: transport.CheckKindRun, Name: "fiber/gatekeeper", Status: "in_progress", App: "humagen", ExternalID: "run-1"}
 }
 
-func isOwn(c transport.CommitCheck) bool {
-	return transport.ApprovalRequest{RunID: "run-1", App: "humagen"}.OwnCheck(c)
-}
-
 func cleanReport() ReviewReport {
 	r := reviewV2()
 	r.Verdict = "approve"
@@ -81,21 +77,31 @@ func TestReviewEventApprovesOnlyWhenEveryGuardHolds(t *testing.T) {
 		"app unknown":            {facts: func(f *ReviewFacts) { f.App = "" }, want: "COMMENT"},
 		"not trusted":            {facts: func(f *ReviewFacts) { f.Trusted = false }, want: "COMMENT"},
 		"a draft":                {facts: func(f *ReviewFacts) { f.Draft = true }, want: "COMMENT"},
-		"only the run's own check": {facts: func(f *ReviewFacts) {
-			f.Checks, f.Own = []transport.CommitCheck{ownCheck()}, isOwn
+		"only the app's own check": {facts: func(f *ReviewFacts) {
+			f.Checks = []transport.CommitCheck{ownCheck()}
 		}, want: "COMMENT"},
-		"the run's own check in progress beside green ones": {facts: func(f *ReviewFacts) {
-			f.Checks, f.Own = append(f.Checks, ownCheck()), isOwn
+		"the app's own check in progress beside green ones": {facts: func(f *ReviewFacts) {
+			f.Checks = append(f.Checks, ownCheck())
 		}, want: "APPROVE"},
-		"another run's check in progress": {facts: func(f *ReviewFacts) {
-			other := ownCheck()
-			other.ExternalID = "another-run"
-			f.Checks, f.Own = append(f.Checks, other), isOwn
+		"an earlier run's finished check is the only success": {facts: func(f *ReviewFacts) {
+			earlier := ownCheck()
+			earlier.ExternalID, earlier.Status, earlier.Conclusion = "earlier-run", "completed", "success"
+			f.Checks = []transport.CommitCheck{earlier, ownCheck(), {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "skipped"}}
 		}, want: "COMMENT"},
-		"must-fix and failed check":         {report: func(r *ReviewReport) { r.Findings[0].Severity = "error" }, facts: func(f *ReviewFacts) { *f = failed("failure") }, want: "REQUEST_CHANGES"},
-		"never and untrusted and no checks": {policy: ReviewPolicy{Approve: "never"}, facts: func(f *ReviewFacts) { f.Trusted, f.Checks = false, nil }, want: "COMMENT"},
-		"request_changes under never":       {report: func(r *ReviewReport) { r.Verdict = "request_changes" }, policy: ReviewPolicy{Approve: "never"}, want: "REQUEST_CHANGES"},
-		"zero facts":                        {facts: func(f *ReviewFacts) { *f = ReviewFacts{} }, want: "COMMENT"},
+		"every check skipped or neutral": {facts: func(f *ReviewFacts) {
+			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "skipped"}, {Kind: transport.CheckKindStatus, Name: "lint", Status: "completed", Conclusion: "neutral"}}
+		}, want: "COMMENT"},
+		"another app's fiber check is CI": {facts: func(f *ReviewFacts) {
+			other := ownCheck()
+			other.App, other.Status, other.Conclusion = "someone-else", "completed", "success"
+			f.Checks = []transport.CommitCheck{other}
+		}, want: "APPROVE"},
+		"the asker wrote the pull request":     {facts: func(f *ReviewFacts) { f.Asker = "Octocat" }, want: "COMMENT"},
+		"a mapped asker other than the author": {facts: func(f *ReviewFacts) { f.Asker = "ada" }, want: "APPROVE"},
+		"must-fix and failed check":            {report: func(r *ReviewReport) { r.Findings[0].Severity = "error" }, facts: func(f *ReviewFacts) { *f = failed("failure") }, want: "REQUEST_CHANGES"},
+		"never and untrusted and no checks":    {policy: ReviewPolicy{Approve: "never"}, facts: func(f *ReviewFacts) { f.Trusted, f.Checks = false, nil }, want: "COMMENT"},
+		"request_changes under never":          {report: func(r *ReviewReport) { r.Verdict = "request_changes" }, policy: ReviewPolicy{Approve: "never"}, want: "REQUEST_CHANGES"},
+		"zero facts":                           {facts: func(f *ReviewFacts) { *f = ReviewFacts{} }, want: "COMMENT"},
 	}
 	for name, c := range cases {
 		r, f := cleanReport(), cleanFacts()

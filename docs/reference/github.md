@@ -825,19 +825,29 @@ and what it reads itself, and nothing the model or the pull request wrote:
 
 | Event | When |
 | :--- | :--- |
-| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found at least one besides the app's own `fiber/<agent>` check for this run, fewer than 1,000, and every one passed (success, neutral or skipped); the pull request is open and not a draft, and its author, as GitHub reports it, is not the app; and the run was an automatic review, a review requested from the app, or asked by a person the client maps (`github.people` or `github.askers`) |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found fewer than 1,000, and every check another app reported passed (success, neutral or skipped), with at least one success; the pull request is open and not a draft, and its author, as GitHub reports it, is not the app; the app has not approved this commit already; and the run was an automatic review, or asked by a person the client maps (`github.people` or `github.askers`) who did not write the pull request, by a comment or a review request |
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 
 An approval posts only through the transport's approval hook. The hook
 decides again, reading the policy, the repository's settings and the checks
 as they are then, and the author and draft state GitHub reports. It refuses
-by default: two runs approving one commit at once, or a check that failed
-meanwhile, posts the review as a comment. A policy it cannot read posts
-nothing, and the delivery is retried. The transport then reads the pull request again and
-posts the approval only while its head is still the reviewed commit. The
-model has no tool that approves. A rule's run, a run another agent started,
-and a run a stranger asked for never approve.
+by default: a check that failed meanwhile, or an approval of the same commit
+the app already posted or is posting for another run, posts the review as a
+comment. A policy it cannot read posts nothing, and the delivery is retried.
+The transport then reads the pull request again and posts the approval only
+while its head is still the reviewed commit. The model has no tool that
+approves. The app's own checks, from any run, never count as CI. A rule's
+run, a run another agent started, and a run a stranger asked for never
+approve. An automatic review that a person resumed after it paused approves
+only when the client maps that person and they did not write the pull
+request.
+
+A new review replaces the app's earlier ones on the pull request: an
+approval of an earlier head is dismissed when the new review does not
+approve, and a change request is dismissed when nothing in the new review
+blocks. This waits on saige's host-only review dismissal; until a release
+provides it, nothing is dismissed.
 Review recovery uses an app-owned marker and the durable delivery store to
 avoid duplicate reviews. Before it posts, the host records in the delivery
 store that the review is in the current layout. A review with no record was

@@ -758,7 +758,8 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 					}
 				}
 				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
-					if err := s.p.resumeAutoReview(current, repo, number); err != nil {
+					by, _, _ := current.GitHubAsker(kind, body)
+					if err := s.p.resumeAutoReview(current, repo, number, by); err != nil {
 						http.Error(w, "automatic review could not resume", http.StatusServiceUnavailable)
 						return
 					}

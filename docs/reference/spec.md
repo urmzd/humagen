@@ -978,13 +978,14 @@ A review approves only when all of these hold:
    the agent's current one, and the repository's settings do not say
    `approve: never`.
 2. The verdict is `approve`, and no finding is at or above `block_on`.
-3. The host read every check on the reviewed commit itself. It found at
-   least one besides the app's own `fiber/<agent>` check for this run, and fewer
-   than 1,000, and each passed: success, neutral or skipped.
+3. The host read every check on the reviewed commit itself, fewer than
+   1,000. Every check another app reported passed (success, neutral or
+   skipped), and at least one concluded success. The app's own checks never
+   count.
 4. The pull request is open and not a draft, and its author is not the app.
-5. The run was an automatic review, a review requested from the app, or
-   asked by a person the GitHub client maps (`github.people` or
-   `github.askers`).
+5. The run was an automatic review, or asked by a person the GitHub client
+   maps (`github.people` or `github.askers`) who did not write the pull
+   request. The app has not approved the commit already.
 
 A verdict of `request_changes`, or any finding at or above `block_on`,
 requests changes. Anything else is a comment. The example above has
