@@ -142,25 +142,40 @@ func TestAMentionOnAPullRequestIsFound(t *testing.T) {
 	}
 }
 
+// withAfter is a pull_request payload with the after commit a push names.
+func withAfter(body []byte, after string) []byte {
+	var m map[string]any
+	_ = json.Unmarshal(body, &m)
+	m["after"] = after
+	b, _ := json.Marshal(m)
+	return b
+}
+
 // A push to a pull request the client serves is reported whatever its
-// automatic review says, with the new head in lower case.
+// automatic review says, with the new head in lower case, when the push's
+// after commit is the pull request's head.
 func TestPullPushedReportsANewHead(t *testing.T) {
 	sha := strings.Repeat("A", 40)
 	gh := githubOf("gh", "acme")
 	gh.GitHub = &GitHubOptions{}
+	push := func(repo string, number int, head string, draft bool) []byte {
+		return withAfter(pullEvent("synchronize", repo, number, head, draft, "open"), strings.ToLower(head))
+	}
 	for _, tc := range []struct {
 		name string
 		kind string
 		body []byte
 		want bool
 	}{
-		{"push", "pull_request", pullEvent("synchronize", "acme/site", 7, sha, false, "open"), true},
-		{"push to a draft", "pull_request", pullEvent("synchronize", "acme/site", 7, sha, true, "open"), true},
-		{"opened", "pull_request", pullEvent("opened", "acme/site", 7, sha, false, "open"), false},
-		{"another account", "pull_request", pullEvent("synchronize", "globex/site", 7, sha, false, "open"), false},
-		{"short commit", "pull_request", pullEvent("synchronize", "acme/site", 7, "abc123", false, "open"), false},
-		{"no number", "pull_request", pullEvent("synchronize", "acme/site", 0, sha, false, "open"), false},
-		{"another event", "issues", pullEvent("synchronize", "acme/site", 7, sha, false, "open"), false},
+		{"push", "pull_request", push("acme/site", 7, sha, false), true},
+		{"push to a draft", "pull_request", push("acme/site", 7, sha, true), true},
+		{"a push whose after is not the head", "pull_request", withAfter(pullEvent("synchronize", "acme/site", 7, sha, false, "open"), strings.Repeat("b", 40)), false},
+		{"a push that names no after", "pull_request", pullEvent("synchronize", "acme/site", 7, sha, false, "open"), false},
+		{"opened", "pull_request", withAfter(pullEvent("opened", "acme/site", 7, sha, false, "open"), sha), false},
+		{"another account", "pull_request", push("globex/site", 7, sha, false), false},
+		{"short commit", "pull_request", push("acme/site", 7, "abc123", false), false},
+		{"no number", "pull_request", push("acme/site", 0, sha, false), false},
+		{"another event", "issues", push("acme/site", 7, sha, false), false},
 		{"not json", "pull_request", []byte("{"), false},
 	} {
 		repo, number, head, ok := gh.PullPushed(tc.kind, tc.body)
@@ -173,7 +188,7 @@ func TestPullPushedReportsANewHead(t *testing.T) {
 		}
 	}
 	slack := slackOf("s", "A1", "T1")
-	if _, _, _, ok := slack.PullPushed("pull_request", pullEvent("synchronize", "acme/site", 7, sha, false, "open")); ok {
+	if _, _, _, ok := slack.PullPushed("pull_request", push("acme/site", 7, sha, false)); ok {
 		t.Error("a Slack client reported a push")
 	}
 }

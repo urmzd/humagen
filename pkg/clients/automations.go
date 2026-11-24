@@ -295,7 +295,8 @@ func (c Client) Triggers() []string {
 
 // PullPushed reads a signature-verified pull_request payload and reports a
 // push to an open pull request the client serves: its repository, number
-// and new head. The app's approvals of an earlier head are dismissed there.
+// and new head, which the payload's after and the pull request's head both
+// name. The app's approvals of an earlier head are dismissed there.
 func (c Client) PullPushed(kind string, body []byte) (repo string, number int, head string, ok bool) {
 	if c.Surface != GitHub || !c.Enabled || c.GitHub == nil || kind != "pull_request" {
 		return "", 0, "", false
@@ -303,6 +304,7 @@ func (c Client) PullPushed(kind string, body []byte) (repo string, number int, h
 	var p struct {
 		Action      string `json:"action"`
 		Number      int    `json:"number"`
+		After       string `json:"after"`
 		PullRequest struct {
 			Head struct {
 				SHA string `json:"sha"`
@@ -312,7 +314,7 @@ func (c Client) PullPushed(kind string, body []byte) (repo string, number int, h
 			FullName string `json:"full_name"`
 		} `json:"repository"`
 	}
-	if json.Unmarshal(body, &p) != nil || p.Action != "synchronize" {
+	if json.Unmarshal(body, &p) != nil || p.Action != "synchronize" || !strings.EqualFold(p.After, p.PullRequest.Head.SHA) {
 		return "", 0, "", false
 	}
 	repo = p.Repository.FullName
