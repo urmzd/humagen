@@ -13,37 +13,59 @@ import (
 	"strings"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/clients"
-	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
 const migrateUsage = `usage: humagen migrate sessions -state postgres [-tenant NAME] [-server-tenant NAME] [-apply]
+       humagen migrate journal -state postgres [-tenant NAME] [-unmatched leave|replace] [-apply]
 
-Files past work into sessions once, so it is listed in Recent and Sessions
-as work from now on is. It reads the stores -state names (postgres reads
-$HUMAGEN_POSTGRES_URL) and writes through them, never with SQL.
+Each migration runs once, after the release that needs it. It reads the
+stores -state names (postgres reads $HUMAGEN_POSTGRES_URL) and writes
+through them, never with SQL. It writes nothing unless -apply is given:
+without it, it prints what it would do. A second -apply finds the first
+one's work and writes nothing. It refuses the in-memory store, and a store
+that holds no runs, which have nothing to migrate: a dry run there would
+report nothing to do.
 
-sessions  files each GitHub run from before GitHub sessions in the session
-          of its pull request or issue, the one a mention there opens now,
-          private to the people the client maps the askers to, and dated
-          from its runs: started when the first was asked, last active
-          when the latest run or message was. A session found, whose
-          record was created after the first run filed in it had ended,
-          is dated from its runs too, archived or not. A session whose
-          first run has not ended is left: when that run is not the
-          mention that opened it, it is listed as not dated. A deleted
-          session is left. A
-          conversation from before sessions that names one agent becomes
-          that agent's session under the id it has, read by the people
-          who read it before; any other is listed and left as it is.
+sessions  files past work into sessions, so it is listed in Recent and
+          Sessions as work from now on is. It files each GitHub run from
+          before GitHub sessions in the session of its pull request or
+          issue, the one a mention there opens now, private to the people
+          the client maps the askers to, and dated from its runs: started
+          when the first was asked, last active when the latest run or
+          message was. A session found, whose record was created after the
+          first run filed in it had ended, is dated from its runs too,
+          archived or not. A session whose first run has not ended is left:
+          when that run is not the mention that opened it, it is listed as
+          not dated. A deleted session is left. A conversation from before
+          sessions that names one agent becomes that agent's session under
+          the id it has, read by the people who read it before; any other
+          is listed and left as it is. The clients the server's environment
+          configures are built from this process's environment, as serve
+          builds them, in -server-tenant: run it where the server's
+          environment is.
 
-It writes nothing unless -apply is given: without it, it prints what it
-would do. A second -apply finds the first one's work and writes nothing.
-The clients the server's environment configures are built from this
-process's environment, as serve builds them, in -server-tenant: run it
-where the server's environment is. It refuses the in-memory store, and a store that holds no runs, which have
-nothing to migrate: a dry run there would report nothing to do.`
+journal   rewrites each journaled request to the request as it was asked,
+          as every turn journals it now. A request journaled with the
+          passages its turn retrieved before it is set to the request as it
+          was asked; one already as it was asked is left. A request whose
+          run the ledger does not hold, or whose text is neither, is listed
+          and left, or with -unmatched replace set to "` + sessionstate.UnkeptRequest + `"
+          when its text may hold passages: one that is the request as it
+          was asked (read from the run index when the ledger cannot give
+          it), or whose text has no blank line, is left.
+          Answers are left. A thread that holds a run that has not ended is
+          listed and left: run the command again once it has ended. It
+          reads the runs that have not ended once, and with -apply again
+          just before it writes each entry, and leaves the rest of a thread
+          where a turn started meanwhile. A run that has not ended and
+          cannot be read leaves its tenant, or every tenant when the run
+          index holds it in none. Apply it once every server runs this
+          release. It reads one tenant at a time, a page at a time, and
+          writes every record of an entry together, at the version it read.
+          It prints counts and record keys, never the text of an entry.`
 
 // migrateCmd runs humagen migrate.
 func migrateCmd(args []string, out io.Writer) error {
@@ -51,16 +73,19 @@ func migrateCmd(args []string, out io.Writer) error {
 		fmt.Fprintln(out, migrateUsage)
 		return nil
 	}
-	if args[0] != "sessions" {
-		fmt.Fprintln(out, migrateUsage)
-		return fmt.Errorf("unknown migration %q", args[0])
+	switch args[0] {
+	case "sessions":
+		return migrateSessions(context.Background(), args[1:], out, os.Getenv)
+	case "journal":
+		return migrateJournal(context.Background(), args[1:], out, os.Getenv)
 	}
-	return migrateSessions(context.Background(), args[1:], out, os.Getenv)
+	fmt.Fprintln(out, migrateUsage)
+	return fmt.Errorf("unknown migration %q", args[0])
 }
 
-// errNothingToMigrate refuses a store that cannot hold what the migration
-// is for.
-var errNothingToMigrate = errors.New("migrate sessions")
+// errNothingToMigrate refuses a store that cannot hold what a migration is
+// for. Every migration wraps it, after its own name where it has one.
+var errNothingToMigrate = errors.New("nothing to migrate")
 
 // migrateSessions is humagen migrate sessions.
 func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv func(string) string) error {
@@ -79,7 +104,7 @@ func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv f
 	}
 	kind := strings.TrimSpace(*stateKind.kind)
 	if (kind == "" || kind == "memory") && !*allowEmpty {
-		return fmt.Errorf("%w: -state is memory, which holds nothing to migrate; set $%s and -state postgres to read the database", errNothingToMigrate, postgresURLEnv)
+		return fmt.Errorf("migrate sessions: %w: -state is memory, which starts empty; set $%s and -state postgres to read the database", errNothingToMigrate, postgresURLEnv)
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	backends, release, _, err := openState(ctx, stateKind, getenv, log)
@@ -162,28 +187,11 @@ func migrateWith(ctx context.Context, backends platform.Backends, store string, 
 
 // backfill runs the sessions backfill over one tenant, or every tenant, and
 // prints what it did or would do. A store, or a tenant, that holds no runs
-// is refused unless allowEmpty.
+// is refused unless allowEmpty (migrationTenants).
 func backfill(ctx context.Context, p *platform.Platform, store, envClients, tenant string, apply, allowEmpty bool, out io.Writer) error {
-	var tenants []string
-	if err := p.Runs.EachTenant(func(t string) error { tenants = append(tenants, t); return nil }); err != nil {
+	tenants, err := migrationTenants(p, store, tenant, allowEmpty)
+	if err != nil {
 		return err
-	}
-	if tenant != "" {
-		held := false
-		if err := p.Runs.Each(tenant, func(runs.Run) bool { held = true; return false }); err != nil {
-			return err
-		}
-		tenants = nil
-		if held {
-			tenants = []string{tenant}
-		}
-	}
-	if len(tenants) == 0 && !allowEmpty {
-		where := "the store"
-		if tenant != "" {
-			where = "tenant " + tenant
-		}
-		return fmt.Errorf("%w: %s on %s holds no runs; check $%s and -tenant", errNothingToMigrate, where, store, postgresURLEnv)
 	}
 	mode := "dry run: nothing is written; run again with -apply to write"
 	if apply {
