@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.200.3 (2026-11-24)
+
+### Bug Fixes
+
+- **slack**: record the surface of Slack roots a built-in surface starts ([fc0b58a](https://github.com/urmzd/humagen/commit/fc0b58a0126175ff5cea8bc92bd6e0c1576ccf66))
+- **slack**: keep a team's surface root to the client that started it ([b65e954](https://github.com/urmzd/humagen/commit/b65e954579bb0fda616382c729dc64c5b5e60669))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.2...v0.200.3)
+
+
 ## 0.200.2 (2026-11-23)
 
 ### Bug Fixes
