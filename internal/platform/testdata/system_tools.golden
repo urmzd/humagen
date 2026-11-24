@@ -63,6 +63,7 @@ artifact_list | runs | read_context | idempotent,parallel,read-only | policy
 record_outcome | runs | other |  | policy
 start_review | runs | other |  | policy
 shell | runs | write_files | destructive | policy
+use_skill | runs | call_agents | parallel | policy
 web_search | runs | read_context | idempotent,parallel,read-only | policy
 web_fetch | runs | read_context | idempotent,parallel,read-only | policy
 runs_summary | runs | read_context | idempotent,parallel,read-only | policy

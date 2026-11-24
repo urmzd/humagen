@@ -907,6 +907,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err != nil {
 		return runs.Run{}, err
 	}
+	// The one other way a child is told a skill: the host's own use_skill
+	// call (use_skill.go).
+	if tag, err = p.pinLoadedSkill(ctx, tag, edge); err != nil {
+		return runs.Run{}, err
+	}
 	if tag, err = p.pinRunContext(tag, edge, project, within); err != nil {
 		return runs.Run{}, err
 	}
@@ -1102,7 +1107,15 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if why := p.NotInstalled(ctx, tenant, req.Agent); why != "" {
 		return runs.Run{}, fmt.Errorf("%w: %s", ErrNotAvailable, why)
 	}
-	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
+	// A skill the host loads (use_skill.go) is the caller's spec's
+	// skills.loadable to allow, not its spawn allowlist: the call is to
+	// skill-runner, keyed as the load said, for a skill the pinned spec
+	// still names.
+	if l, loads := loadingOf(ctx); loads {
+		if req.Agent != BuiltinSkillRunner || l.tag != call.TagID(parent.Tag().ID, req.Key) || !rev.Spec.Loads(l.loaded.Name) {
+			return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not load %q", ErrForbidden, parent.Agent, l.loaded.Name)
+		}
+	} else if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
 	if err := p.entryMayCall(tenant, rev, parent, req.Agent); err != nil {
