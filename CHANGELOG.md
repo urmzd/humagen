@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.203.0 (2026-11-24)
+
+### Features
+
+- **github**: decide approvals with saige v0.53.0's approval request ([c255da6](https://github.com/urmzd/humagen/commit/c255da6fd050b64313d7109d9151cd599cc11900))
+- **github**: dismiss the app's approvals of earlier commits on a push ([3a3a73d](https://github.com/urmzd/humagen/commit/3a3a73dfef4c3bd8c786c7f30033f8182cf98628))
+- **api**: describe the user IDs and requested reviewer on GitHub events ([5fe6f2d](https://github.com/urmzd/humagen/commit/5fe6f2daf12f3c37c2c8fc8cb2f511ef99397450))
+- **github**: approve asked reviews only for a second person known by user ID ([ac8ec0e](https://github.com/urmzd/humagen/commit/ac8ec0e289edacfb463e52ec955de7387512d2f2))
+- **github**: decide checks on the host and name a review's agent by the host's mark ([bc492ce](https://github.com/urmzd/humagen/commit/bc492ceff79296b02e47937724898ae6a4230657))
+- **github**: dismiss stale reviews and approve a commit once through saige's own-review calls (saige b3f9558) ([0515189](https://github.com/urmzd/humagen/commit/05151896699be5a3784cc30b8316962f38682045))
+- **github**: find the run by the hook's RunID and skip only its own check (saige e1f622e) ([8c2214c](https://github.com/urmzd/humagen/commit/8c2214c5e4ad8cab7c435007b079df9bec668bac))
+- **github**: repin saige at the final approval hook; use AllPassed and GitHub's author and draft state ([8d5e551](https://github.com/urmzd/humagen/commit/8d5e551157affab1fd5cadcd4a57ce7bba6ac433))
+- **github**: choose the review event from the report, policy and host facts ([41b7935](https://github.com/urmzd/humagen/commit/41b79353e16aec9b6796a4773ad0a0b5fe1595c5))
+
+### Bug Fixes
+
+- **github**: approve only as an App client whose login GitHub names ([cffe493](https://github.com/urmzd/humagen/commit/cffe493a3ed0fb923cefc6b985d8c5de538dba4a))
+- **github**: approve only as a GitHub App, and read shared and login-only co-author addresses strictly ([230575f](https://github.com/urmzd/humagen/commit/230575f1802de51f11d11beb884286b49a90644f))
+- **github**: dismiss approvals on a push only while its commit is the head ([e8127c4](https://github.com/urmzd/humagen/commit/e8127c4e643cb963c7f6de6c0e3c3fb52cde926f))
+- **github**: name a review's agent only from reviews the sink posted, and dismiss after posting ([990aa3d](https://github.com/urmzd/humagen/commit/990aa3d53ed59970907730f7d24fe6e62b754b71))
+- **github**: keep a repository's approve setting when a save leaves it out ([9098011](https://github.com/urmzd/humagen/commit/909801167e6b58333ad10db1e7bc8616a37f5f04))
+- **github**: give the dialed connector the approval claim store ([47dfd34](https://github.com/urmzd/humagen/commit/47dfd34fc681f0dac8509c4bf901e842a8fc108f))
+- **github**: durable approval claim, people by user ID, commit writers, same-agent dismissal that never blocks (saige dc9fab8) ([e8161b7](https://github.com/urmzd/humagen/commit/e8161b793cd3f9389c7695de0115efb78f0ec12d))
+- **github**: count only other apps' checks, require a mapped asker who is not the author, approve a commit once, dismiss stale reviews ([ff2f921](https://github.com/urmzd/humagen/commit/ff2f92113a76c848cdc87e5896716f4053621dc8))
+
+### Misc
+
+- **client**: regenerate the client ([23f7edf](https://github.com/urmzd/humagen/commit/23f7edf5146cefa500ebd776a7f35279424a0e52))
+- **github**: neutral names in review policy test data ([d77acc2](https://github.com/urmzd/humagen/commit/d77acc2f5a6496e293d5a754047e4d7f89abf550))
+- **github**: a review request may approve ([baf42df](https://github.com/urmzd/humagen/commit/baf42df17a9d06aea001d555e5185e9e5a2f63f6))
+- **github**: review event through the platform, the approval hook and recovery ([d513ded](https://github.com/urmzd/humagen/commit/d513ded592b328f59d630349efe7a2b74083e5af))
+- gofmt ([9a72a68](https://github.com/urmzd/humagen/commit/9a72a683e746ac346261c9e9c270d18b52e98f01))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.202.0...v0.203.0)
+
+
 ## 0.202.0 (2026-11-24)
 
 ### Features
