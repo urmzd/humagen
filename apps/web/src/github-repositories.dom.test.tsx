@@ -204,6 +204,41 @@ test("a repository's settings are saved with the version read, and reset to the 
   }
 });
 
+test("a save keeps a repository's approve setting, which the form does not show", async () => {
+  const kept = repo("acme/site", {
+    version: 3,
+    settings: { repository: "acme/site", approve: "never", updated_at: "2026-11-22T00:00:00Z" },
+  });
+  const net = stubFetch({
+    "GET /api/clients/gh/repositories": () => ({
+      repositories: [kept],
+      defaults: { auto_review: off },
+      listed: true,
+    }),
+    "GET /api/clients/gh/repositories/acme/site": () => kept,
+    "PUT /api/clients/gh/repositories/acme/site": () => ({ ...kept, version: 4 }),
+    "GET /api/clients": () => ({
+      clients: [{ id: "gh", name: "GitHub", surface: "github", agents: ["*"] }],
+      caps: { max: 10, max_per_surface: 10 },
+    }),
+    "GET /api/agents": () => ({ agents: [] }),
+  });
+  try {
+    render(
+      <WebSurface>
+        <GitHubRepositories client="gh" repo="acme/site" canWrite onNavigate={() => {}} />
+      </WebSurface>,
+    );
+    const form = await screen.findByRole("form", { name: "acme/site" });
+    fireEvent.click(within(form).getByRole("button", { name: words.form.save }));
+    await waitFor(() => assert.ok(net.seen.some((s) => s.method === "PUT")));
+    const put = net.seen.find((s) => s.method === "PUT");
+    assert.equal((put?.body as { approve?: string }).approve, "never");
+  } finally {
+    net.restore();
+  }
+});
+
 test("a write over a change made since is not lost: the person is told to reload", async () => {
   const { net, repos } = server();
   try {

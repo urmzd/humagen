@@ -4897,8 +4897,8 @@ export interface GitHubRepoSettings {
   reads?: ("pull_diff" | "linked_issues")[];
   /** False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable. */
   cross_surface_reads?: boolean;
-  /** `never` keeps every agent's reviews here from approving. Left out, each agent's review policy applies. */
-  approve: "never";
+  /** `never`, its one value, keeps every agent's reviews here from approving. Left out, each agent's review policy applies, and a save that leaves it out keeps what was set. */
+  approve?: string;
   updated_at: string;
   updated_by?: string;
 }

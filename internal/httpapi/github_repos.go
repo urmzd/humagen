@@ -29,8 +29,9 @@ type githubRepoBody struct {
 	Instructions      string                   `json:"instructions"`
 	Reads             []string                 `json:"reads"`
 	CrossSurfaceReads *bool                    `json:"cross_surface_reads"`
-	Approve           string                   `json:"approve"`
-	Version           int64                    `json:"version"`
+	// Approve left out keeps what was set; "" removes it.
+	Approve *string `json:"approve"`
+	Version int64   `json:"version"`
 }
 
 func repoPath(r *http.Request) string { return r.PathValue("owner") + "/" + r.PathValue("repo") }
@@ -58,7 +59,10 @@ func (s *Server) putGitHubRepository(w http.ResponseWriter, r *http.Request, who
 	if !decode(w, r, &body) {
 		return
 	}
-	in := reposettings.Settings{AutoReview: body.AutoReview, Agent: body.Agent, Instructions: body.Instructions, Reads: body.Reads, CrossSurfaceReads: body.CrossSurfaceReads, Approve: body.Approve}
+	in := reposettings.Settings{AutoReview: body.AutoReview, Agent: body.Agent, Instructions: body.Instructions, Reads: body.Reads, CrossSurfaceReads: body.CrossSurfaceReads}
+	if body.Approve != nil {
+		in.Approve, in.ClearApprove = *body.Approve, *body.Approve == ""
+	}
 	out, err := s.P.SetGitHubRepository(r.Context(), who, r.PathValue("id"), repoPath(r), in, body.Version)
 	if err != nil {
 		s.problem(w, err)

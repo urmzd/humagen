@@ -19369,7 +19369,7 @@ components:
           description: What the platform reads before a run here starts.
           items: {type: string, enum: [pull_diff, linked_issues]}
         cross_surface_reads: {type: boolean, description: "False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable."}
-        approve: {type: string, enum: [never], description: "`never` keeps every agent's reviews here from approving. Left out, each agent's review policy applies."}
+        approve: {type: string, pattern: '^never$', description: "`never`, its one value, keeps every agent's reviews here from approving. Left out, each agent's review policy applies, and a save that leaves it out keeps what was set."}
         updated_at: {type: string, format: date-time}
         updated_by: {type: string}
     GitHubRepository:
@@ -19422,7 +19422,7 @@ components:
           maxItems: 2
           items: {type: string, enum: [pull_diff, linked_issues]}
         cross_surface_reads: {type: boolean, description: "False keeps the repository to its own runs. Absent or true leaves it readable."}
-        approve: {type: string, enum: ["", never], description: "`never` keeps reviews here from approving. Absent or empty leaves each agent's review policy."}
+        approve: {type: string, enum: ["", never], description: "`never` keeps reviews here from approving, and empty removes it so each agent's review policy applies. Absent keeps what was set."}
         version: {type: integer, minimum: 0}
     GitHubOptions:
       type: object

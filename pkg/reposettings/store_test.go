@@ -196,3 +196,28 @@ func TestSettingsAreBounded(t *testing.T) {
 		t.Fatalf("removing one client removed another's: %d", len(list))
 	}
 }
+
+// A save that does not name approve keeps it, as the console's save of the
+// fields it shows does; only ClearApprove removes it.
+func TestASaveThatLeavesApproveOutKeepsIt(t *testing.T) {
+	s := Open(nil)
+	kept, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Approve: ApproveNever}, 0, "admin", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Instructions: "Prefer small changes."}, kept.Version, "member", now)
+	if err != nil || !again.NeverApproves() || again.Instructions != "Prefer small changes." {
+		t.Fatalf("a save without approve = %+v %v", again, err)
+	}
+	if _, err := s.Put("acme", "gh", Settings{Repository: "acme/site"}, kept.Version, "member", now); !errors.Is(err, ErrVersion) {
+		t.Fatalf("a save at a version read before: %v, want ErrVersion", err)
+	}
+	cleared, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Instructions: "Prefer small changes.", ClearApprove: true}, again.Version, "admin", now)
+	if err != nil || cleared.NeverApproves() || cleared.Instructions != "Prefer small changes." {
+		t.Fatalf("clearing approve = %+v %v", cleared, err)
+	}
+	stored, err := s.Get("acme", "gh", "acme/site")
+	if err != nil || stored.NeverApproves() || stored.ClearApprove {
+		t.Fatalf("stored after clearing = %+v %v", stored, err)
+	}
+}

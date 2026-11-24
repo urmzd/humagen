@@ -304,6 +304,8 @@ function RepositorySettings({
           instructions,
           reads: reads as ("pull_diff" | "linked_issues")[],
           cross_surface_reads: crossSurface,
+          // Not shown here, so saved as it was read.
+          approve: view.settings?.approve === "never" ? "never" : undefined,
         }),
       words.form.saved,
     );
