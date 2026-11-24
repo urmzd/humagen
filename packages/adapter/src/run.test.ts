@@ -392,6 +392,28 @@ test("the engine's stop after failed steps is said in plain words, with Retry", 
 const NO_PROVIDER =
   'durable: max attempts exhausted: runtime: run r1: agent "github-reviewer" version 1.0.0: platform: model provider: @github-reviewer needs a model provider its models name (anthropic); an administrator enables one in Settings, under Model providers';
 
+// The platform's error when a run's workspace settings could not be read
+// while its model was chosen (internal/platform/models.go, pinned in
+// TestARunWhoseSettingsCannotBeReadIsRetried), the last attempt's as the
+// ledger wraps it, and one whose read failed with no word for its cause.
+const SETTINGS_UNREAD =
+  `durable: max attempts exhausted: runtime: run r1: agent "writer" version 1.0.0: platform: @writer: the workspace's settings could not be read to choose a model: platform: read settings: settings store unavailable`;
+const SETTINGS_UNREAD_PLAIN =
+  `durable: max attempts exhausted: runtime: run r1: agent "writer" version 1.0.0: platform: @writer: the workspace's settings could not be read to choose a model: platform: read settings: pq: relation is locked`;
+
+test("settings that could not be read while a model was chosen are not said as a provider to enable, and offer Retry", () => {
+  const unavailable = failureOf(SETTINGS_UNREAD, "r");
+  assert.equal(unavailable.cause, "unavailable");
+  assert.equal(unavailable.kind, "unavailable");
+  assert.equal(isRetryable(unavailable), true);
+  const plain = failureOf(SETTINGS_UNREAD_PLAIN, "r");
+  assert.equal(plain.cause, "max_attempts");
+  assert.equal(plain.kind, "internal");
+  assert.equal(isRetryable(plain), true);
+  for (const failure of [unavailable, plain])
+    assert.notEqual(failure.message, defaultCopy.runFailure.because.no_model_provider);
+});
+
 test("each runtime error is read as its cause, the specific cause before the retry wrapper", () => {
   const cases: [string, FailureCause][] = [
     [NO_PROVIDER, "no_model_provider"],

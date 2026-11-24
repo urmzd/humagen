@@ -142,6 +142,11 @@ func TestARunWhoseSettingsCannotBeReadIsRetried(t *testing.T) {
 	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "writer", Provider: "team", Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
 		t.Fatal(err)
 	}
+	stream, err := p.Subscribe(ctx, tenant, platform.EventFilter{Agent: "writer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stream.Close() }()
 	store.armed.Store(true)
 	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-unread", Agent: "writer", Text: "hello"})
 	if err != nil {
@@ -153,5 +158,23 @@ func TestARunWhoseSettingsCannotBeReadIsRetried(t *testing.T) {
 	}
 	if store.armed.Load() {
 		t.Fatal("no settings read failed while the turn chose its model")
+	}
+	var failed []event.Failed
+	for {
+		recvCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		e, err := stream.Recv(recvCtx)
+		cancel()
+		if err != nil {
+			break
+		}
+		if f, ok := e.Data.(event.Failed); ok && e.Run == r.ID {
+			failed = append(failed, f)
+		}
+	}
+	// The console reads this sentence (packages/adapter/src/run.ts): it names
+	// the read, never a provider to enable.
+	want := `runtime: run ` + r.ID + `: agent "writer" version 1.0.0: platform: @writer: the workspace's settings could not be read to choose a model: platform: read settings: settings store unavailable`
+	if len(failed) != 1 || failed[0].Terminal || failed[0].Error != want {
+		t.Fatalf("run.failed events = %+v, want one retried failure %q", failed, want)
 	}
 }
