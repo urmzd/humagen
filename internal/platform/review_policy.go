@@ -57,8 +57,8 @@ func (p *Platform) reviewGrant(ctx context.Context, c clients.Client, v transpor
 	trusted, asker, askerID := p.trustedReviewRun(current, run, repo, number)
 	authorID, _ := strconv.ParseInt(wire.Meta(tag)[wire.MetaGitHubAuthorID], 10, 64)
 	grant := github.ReviewGrant{Policy: policy, Trusted: trusted, Asker: asker, AskerID: askerID, Author: wire.SurfaceOf(tag).GitHubAuthor, AuthorID: authorID}
-	if email := current.GitHub.People[asker]; asker != "" && email != "" {
-		grant.AskerEmails = []string{email}
+	if asker != "" {
+		grant.People = current.GitHub.People
 	}
 	return grant, nil
 }

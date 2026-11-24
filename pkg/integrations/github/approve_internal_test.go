@@ -24,16 +24,18 @@ func TestCommitsAreReadWholeOrNotAtAll(t *testing.T) {
 		asker           int64
 		read, committed bool
 	}{
-		"another person's commits":    {commits: []transport.PRCommit{theirs}, asker: 1001, read: true},
-		"the asker authored one":      {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 1001, CommitterID: 583231}}, asker: 1001, read: true, committed: true},
-		"the asker committed one":     {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231, CommitterID: 1001}}, asker: 1001, read: true, committed: true},
-		"web-flow committed a merge":  {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231, CommitterID: 19864447, CommitterLogin: "web-flow"}}, asker: 1001, read: true},
-		"an author with no account":   {commits: []transport.PRCommit{theirs, {SHA: other, CommitterID: 583231}}, asker: 1001},
-		"a committer with no account": {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231}}, asker: 1001},
-		"no commits":                  {asker: 1001},
-		"at the bound":                {commits: many, asker: 1001},
-		"the reviewed commit absent":  {commits: []transport.PRCommit{{SHA: other, AuthorID: 583231, CommitterID: 583231}}, asker: 1001},
-		"an asker with no ID":         {commits: []transport.PRCommit{theirs}},
+		"another person's commits":          {commits: []transport.PRCommit{theirs}, asker: 1001, read: true},
+		"the asker authored one":            {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 1001, CommitterID: 583231}}, asker: 1001, read: true, committed: true},
+		"the asker committed one":           {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231, CommitterID: 1001}}, asker: 1001, read: true, committed: true},
+		"web-flow committed a merge":        {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231, CommitterID: 19864447, CommitterLogin: "web-flow"}}, asker: 1001, read: true},
+		"the asker's commit, by web-flow":   {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 1001, CommitterID: transport.WebFlowID, CommitterLogin: transport.WebFlowLogin}}, asker: 1001, read: true, committed: true},
+		"web-flow's ID under another login": {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231, CommitterID: transport.WebFlowID, CommitterLogin: "someone"}}, asker: transport.WebFlowID, read: true, committed: true},
+		"an author with no account":         {commits: []transport.PRCommit{theirs, {SHA: other, CommitterID: 583231}}, asker: 1001},
+		"a committer with no account":       {commits: []transport.PRCommit{theirs, {SHA: other, AuthorID: 583231}}, asker: 1001},
+		"no commits":                        {asker: 1001},
+		"at the bound":                      {commits: many, asker: 1001},
+		"the reviewed commit absent":        {commits: []transport.PRCommit{{SHA: other, AuthorID: 583231, CommitterID: 583231}}, asker: 1001},
+		"an asker with no ID":               {commits: []transport.PRCommit{theirs}},
 	} {
 		read, committed := commitsRead(c.commits, head, c.asker)
 		if read != c.read || committed != c.committed {
@@ -42,24 +44,49 @@ func TestCommitsAreReadWholeOrNotAtAll(t *testing.T) {
 	}
 }
 
-// A Co-authored-by address names the asker when it is one the client maps
-// them to or their GitHub no-reply address, in any case.
-func TestACoAuthorAddressNamesTheAsker(t *testing.T) {
-	grant := ReviewGrant{Asker: "Ada", AskerID: 1001, AskerEmails: []string{"ada@acme.example"}}
-	for email, want := range map[string]bool{
-		"ADA@acme.example":                   true,
-		" 1001+ada@users.noreply.github.com": true,
-		"ada@users.noreply.github.com":       true,
-		"1002+ada@users.noreply.github.com":  false,
-		"octocat@acme.example":               false,
-		"":                                   false,
+// A co-author is read only when the host can name them, by an address the
+// client maps a person by or a GitHub no-reply address; one who is the
+// asker, by login or user ID, is reported.
+func TestCoAuthorsAreReadOnlyWhenEachIsKnown(t *testing.T) {
+	grant := ReviewGrant{Asker: "Ada", AskerID: 1001, People: map[string]string{"ada": "ada@acme.example", "octocat": "octo@acme.example"}}
+	head := strings.Repeat("a", 40)
+	with := func(co ...transport.CoAuthor) []transport.PRCommit {
+		return []transport.PRCommit{{SHA: head, AuthorID: 583231, CommitterID: 583231, CoAuthors: co}}
+	}
+	for name, c := range map[string]struct {
+		commits         []transport.PRCommit
+		read, coAuthors bool
+	}{
+		"no co-authors":                      {commits: with(), read: true},
+		"a mapped person":                    {commits: with(transport.CoAuthor{Name: "Octo", Email: "Octo@Acme.example"}), read: true},
+		"another account's no-reply address": {commits: with(transport.CoAuthor{Email: "583231+octocat@users.noreply.github.com"}), read: true},
+		"the asker's mapped address":         {commits: with(transport.CoAuthor{Email: "ADA@acme.example"}), read: true, coAuthors: true},
+		"the asker's no-reply address":       {commits: with(transport.CoAuthor{Email: "1001+ada@users.noreply.github.com"}), read: true, coAuthors: true},
+		"the asker's older no-reply address": {commits: with(transport.CoAuthor{Email: "ada@users.noreply.github.com"}), read: true, coAuthors: true},
+		"the asker's ID under another login": {commits: with(transport.CoAuthor{Email: "1001+ada-renamed@users.noreply.github.com"}), read: true, coAuthors: true},
+		"an address nobody is known by":      {commits: with(transport.CoAuthor{Email: "someone@elsewhere.example"})},
+		"no address":                         {commits: with(transport.CoAuthor{Name: "Someone"})},
 	} {
-		if got := coAuthored([]string{"someone@acme.example", email}, grant); got != want {
-			t.Errorf("%q: %v, want %v", email, got, want)
+		read, coAuthored := coAuthorsRead(c.commits, grant)
+		if read != c.read || coAuthored != c.coAuthors {
+			t.Errorf("%s: read %v co-authored %v, want %v %v", name, read, coAuthored, c.read, c.coAuthors)
 		}
 	}
-	if coAuthored([]string{"@users.noreply.github.com"}, ReviewGrant{}) {
-		t.Error("an asker with no login matched an empty no-reply address")
+	if read, _ := coAuthorsRead(with(), ReviewGrant{}); read {
+		t.Error("co-authors were read for no asker")
+	}
+}
+
+// A delivery marker names its digest; anything else names none.
+func TestMarkerKeyIsTheMarkersDigest(t *testing.T) {
+	marker := transport.ReviewMarker("t", "run", strings.Repeat("a", 40))
+	if key := markerKey(marker); len(key) != 64 || !strings.Contains(marker, key) {
+		t.Fatalf("markerKey(%q) = %q", marker, key)
+	}
+	for _, m := range []string{"", "<!-- humagen-review:xyz -->", "<!-- humagen-review-payload:" + strings.Repeat("b", 64) + " -->"} {
+		if key := markerKey(m); key != "" {
+			t.Errorf("markerKey(%q) = %q, want none", m, key)
+		}
 	}
 }
 

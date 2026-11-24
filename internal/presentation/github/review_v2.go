@@ -342,6 +342,9 @@ type ReviewFacts struct {
 	// Draft is a pull request still in draft, which is never approved.
 	Author, App string
 	Draft       bool
+	// AppID is the numeric ID of the app, 0 when unknown: its checks are
+	// then told apart by App alone.
+	AppID int64
 	// AuthorID is the pull request author's GitHub user ID. People are
 	// told apart by ID, never by login, which its owner may change: 0 is
 	// unknown and approves nothing.
@@ -363,34 +366,15 @@ type ReviewFacts struct {
 	AskerCoAuthored bool
 }
 
-// checksPassed reports whether the host read the commit's checks and they
-// show CI that passed. The app's own check runs, from this run or an
-// earlier one and whatever their name, are left out: they say only that a
-// review ran. Of the rest, none may be pending or failed (only success,
-// neutral and skipped pass), at least one must have concluded success, and
-// the read must be below saige's bound.
+// checksPassed reports whether the host read the commit's checks and
+// saige's ChecksAllow accepts them for the app named by App and AppID: the
+// app's own checks left out, whatever their run or name, at least one other
+// that concluded success, and none pending or failed.
 func (f ReviewFacts) checksPassed() bool {
-	app := loginOf(f.App)
-	if !f.ChecksRead || app == "" || len(f.Checks) >= transport.MaxCommitChecks {
+	if !f.ChecksRead {
 		return false
 	}
-	success := false
-	for _, c := range f.Checks {
-		if loginOf(c.App) == app {
-			continue
-		}
-		if c.Status != "completed" {
-			return false
-		}
-		switch c.Conclusion {
-		case "success":
-			success = true
-		case "neutral", "skipped":
-		default:
-			return false
-		}
-	}
-	return success
+	return transport.ApprovalRequest{App: loginOf(f.App), AppID: f.AppID}.ChecksAllow(f.Checks)
 }
 
 // loginOf is a login or app slug in one form: "Humagen[bot]" and "humagen"

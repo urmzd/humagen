@@ -35,12 +35,9 @@ type hookedCase struct {
 	// read fail.
 	commits     []transport.PRCommit
 	commitsFail bool
-	// coAuthors are the addresses the commits' Co-authored-by trailers
-	// name; coAuthorsFail makes their read fail, and noCoAuthors leaves the
-	// API without the read.
-	coAuthors     []string
-	coAuthorsFail bool
-	noCoAuthors   bool
+	// coAuthors are the addresses the Co-authored-by trailers of the
+	// first commit name.
+	coAuthors []string
 	// stampedBy, when set, is the client the trigger's ingress stamp names
 	// in place of the client that raised it; "" is none.
 	stampedBy *string
@@ -59,23 +56,6 @@ func (w withCommits) PullRequestCommits(ctx context.Context, owner, repo string,
 	}
 	return w.Fake.PullRequestCommits(ctx, owner, repo, number)
 }
-
-// withCoAuthors is a GitHub API that also reads the Co-authored-by
-// trailers of a pull request's commits.
-type withCoAuthors struct {
-	withCommits
-	emails []string
-	fail   bool
-}
-
-func (w withCoAuthors) PullRequestCoAuthors(context.Context, string, string, int) ([]string, error) {
-	if w.fail {
-		return nil, errors.New("github: 502 reading commits")
-	}
-	return w.emails, nil
-}
-
-var _ ghconnector.CoAuthorsAPI = withCoAuthors{}
 
 func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	t.Helper()
@@ -144,13 +124,16 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	}
 	text, _ := json.Marshal(report)
 	n := 0
-	if err := api.SeedPullRequestCommits(ref, c.commits); err != nil {
+	commits := append([]transport.PRCommit(nil), c.commits...)
+	if len(commits) > 0 && c.coAuthors != nil {
+		for _, email := range c.coAuthors {
+			commits[0].CoAuthors = append(commits[0].CoAuthors, transport.CoAuthor{Email: email})
+		}
+	}
+	if err := api.SeedPullRequestCommits(ref, commits); err != nil {
 		t.Fatal(err)
 	}
-	var gh transport.API = withCoAuthors{withCommits: withCommits{Fake: api, fail: c.commitsFail}, emails: c.coAuthors, fail: c.coAuthorsFail}
-	if c.noCoAuthors {
-		gh = withCommits{Fake: api, fail: c.commitsFail}
-	}
+	var gh transport.API = withCommits{Fake: api, fail: c.commitsFail}
 	peer, err := ghconnector.New(ghconnector.Config{API: gh, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
 		ReviewPolicy: func(ctx context.Context, v transport.View) (ghconnector.ReviewGrant, error) {
@@ -390,15 +373,13 @@ func TestAnAskerApprovesOnlyWhenTheyWroteNoneOfIt(t *testing.T) {
 		return append(append([]transport.PRCommit(nil), theirs...), c)
 	}
 	for name, c := range map[string]struct {
-		requested     bool
-		commits       []transport.PRCommit
-		commitsFail   bool
-		coAuthors     []string
-		coAuthorsFail bool
-		noCoAuthors   bool
-		want          string
+		requested   bool
+		commits     []transport.PRCommit
+		commitsFail bool
+		coAuthors   []string
+		want        string
 	}{
-		"a comment":                                 {commits: theirs, coAuthors: []string{"someone@acme.example"}, want: "APPROVE"},
+		"a comment":                                 {commits: theirs, coAuthors: []string{"583231+octocat@users.noreply.github.com"}, want: "APPROVE"},
 		"a review request":                          {requested: true, commits: theirs, want: "APPROVE"},
 		"an author of a commit":                     {commits: plus(transport.PRCommit{SHA: approvalSHA, AuthorID: 1001, CommitterID: 583231}), want: "COMMENT"},
 		"a committer of a commit":                   {requested: true, commits: plus(transport.PRCommit{SHA: approvalSHA, AuthorID: 583231, CommitterID: 1001}), want: "COMMENT"},
@@ -412,12 +393,11 @@ func TestAnAskerApprovesOnlyWhenTheyWroteNoneOfIt(t *testing.T) {
 		"a co-author by the mapped address":         {commits: theirs, coAuthors: []string{"Ada@Acme.example"}, want: "COMMENT"},
 		"a co-author by the no-reply address":       {commits: theirs, coAuthors: []string{"1001+ada@users.noreply.github.com"}, want: "COMMENT"},
 		"a co-author by the older no-reply address": {requested: true, commits: theirs, coAuthors: []string{"ada@users.noreply.github.com"}, want: "COMMENT"},
-		"co-authors that cannot be read":            {commits: theirs, coAuthorsFail: true, want: "COMMENT"},
-		"an API that does not read co-authors":      {commits: theirs, noCoAuthors: true, want: "COMMENT"},
-		"a review request, co-authors not readable": {requested: true, commits: theirs, noCoAuthors: true, want: "COMMENT"},
+		"a co-author nobody is known by":            {commits: theirs, coAuthors: []string{"someone@elsewhere.example"}, want: "COMMENT"},
+		"a co-author with no address":               {requested: true, commits: theirs, coAuthors: []string{""}, want: "COMMENT"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			hc := hookedCase{approvalCase: cleanApproval(), commits: c.commits, commitsFail: c.commitsFail, coAuthors: c.coAuthors, coAuthorsFail: c.coAuthorsFail, noCoAuthors: c.noCoAuthors}
+			hc := hookedCase{approvalCase: cleanApproval(), commits: c.commits, commitsFail: c.commitsFail, coAuthors: c.coAuthors}
 			hc.asker, hc.requested = "ada", c.requested
 			if got, err := hookedEvent(t, hc); err != nil || got != c.want {
 				t.Fatalf("%s %v, want %s", got, err, c.want)

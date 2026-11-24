@@ -432,8 +432,8 @@ func TestDeliveringTheSameEventsTwiceKeepsOneEditedComment(t *testing.T) {
 	events := []event.Envelope{
 		runEvent(1, event.TypeAccepted, ""),
 		textEvent(2, "The retry path posts twice "),
-		textEvent(3, "because the handle was lost."),
-		runEvent(4, event.TypeCitation, `{"source":{"document_title":"sink.go","source_uri":"https://github.com/urmzd/fiber/blob/main/sink.go"}}`),
+		textEvent(3, "because the handle was lost. See [1]."),
+		runEvent(4, event.TypeCitation, `{"label":"[1]","source":{"document_title":"sink.go","source_uri":"https://github.com/urmzd/fiber/blob/main/sink.go"}}`),
 		runEvent(5, event.TypeCompleted, ""),
 	}
 	for range 2 {

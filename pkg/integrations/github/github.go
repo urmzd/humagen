@@ -78,6 +78,10 @@ type Config struct {
 	ReadRefused func(ctx context.Context, owner, repo string) bool
 	Bots        map[string]string
 	Agents      mention.Set
+	// AppID is the numeric ID of the GitHub App the connector acts as, 0
+	// for a connector that is no app. Checks of the app's own are told
+	// apart by it, and by Login.
+	AppID int64
 	// Login is the app's own login, which it comments as. With Triggers
 	// set, it asks as a trigger does; without them, a comment that mentions
 	// it and names no agent is raised naming none, and the host chooses who
@@ -147,7 +151,7 @@ func New(cfg Config) (*Connector, error) {
 			return nil, fmt.Errorf("github: mutations need the tenant the connector's runs belong to")
 		}
 	}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, MayRead: cfg.MayRead, ReadRefused: cfg.ReadRefused, Bots: cfg.Bots, Agents: triggerAware(cfg.Agents, cfg.Triggers), Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, MayRead: cfg.MayRead, ReadRefused: cfg.ReadRefused, Bots: cfg.Bots, Agents: triggerAware(cfg.Agents, cfg.Triggers), Login: cfg.Login, AppID: cfg.AppID, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.FixPullRequests, base.AuthorizeFixPull = cfg.FixPullRequests, cfg.AuthorizeFixPull
 	base.FixPullContext = cfg.FixPullContext
@@ -171,7 +175,10 @@ func New(cfg Config) (*Connector, error) {
 				layouts := newLayouts(cfg)
 				pending := newApprovals(cfg.Clock)
 				pending.host = func() reviewHost { return c.Connector }
-				if cfg.ReviewPolicy != nil {
+				// The transport asks the hook only of an API that can also
+				// dismiss reviews; without one nothing approves.
+				_, dismisses := cfg.API.(transport.ReviewDismissAPI)
+				if cfg.ReviewPolicy != nil && dismisses {
 					base.MayApprove = pending.mayApprove(cfg)
 				}
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
@@ -202,6 +209,9 @@ func New(cfg Config) (*Connector, error) {
 					if err != nil {
 						return transport.Review{}, true, err
 					}
+					if base.MayApprove == nil {
+						policy.Approve = "never"
+					}
 					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel), policy, facts)
 					if err != nil {
 						return transport.Review{}, true, err
@@ -227,6 +237,11 @@ func New(cfg Config) (*Connector, error) {
 						return review, true, nil
 					}
 					if err := layouts.mark(v); err != nil {
+						return transport.Review{}, true, err
+					}
+					// Which agent wrote it is kept before it posts, by the
+					// marker the sink posts it with.
+					if err := recordReviewAgent(ctx, cfg, v, review.CommitID); err != nil {
 						return transport.Review{}, true, err
 					}
 					review.Body = presentation.WithAgentMark(review.Body, v.Agent) + presentation.SessionFooter(sessionLink(cfg, v))

@@ -259,3 +259,29 @@ func TestAChangeRequestStaysUntilItsReplacementPosts(t *testing.T) {
 		t.Fatalf("posted %+v, want the change request dismissed once a review posted", reviews)
 	}
 }
+
+// A change request is the agent's only as the host recorded it when it
+// posted: one the host holds no record of, though its agent's own, holds
+// the approval.
+func TestAChangeRequestWithNoRecordHoldsTheApproval(t *testing.T) {
+	old, head := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	b := newRuleBench(t, 583231)
+	b.head(t, old)
+	b.review(t, "run-1", "gatekeeper", old, "request_changes", true)
+	// Another store, as after the records were lost.
+	other := newRuleBench(t, 583231)
+	other.fake = b.fake
+	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
+	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.conn = conn
+	other.head(t, head)
+	other.review(t, "run-2", "gatekeeper", head, "approve", false)
+	reviews := b.fake.SubmittedReviews()
+	if len(reviews) != 2 || reviews[1].Review.Event != "COMMENT" {
+		t.Fatalf("posted %+v, want the clean review as a comment", reviews)
+	}
+}

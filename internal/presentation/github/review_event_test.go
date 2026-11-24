@@ -22,7 +22,7 @@ func cleanReport() ReviewReport {
 }
 
 func cleanFacts() ReviewFacts {
-	return ReviewFacts{ChecksRead: true, Checks: []transport.CommitCheck{passed("test"), {Kind: transport.CheckKindStatus, Name: "lint", Status: "completed", Conclusion: "neutral"}}, Author: "octocat", AuthorID: 583231, App: "humagen[bot]", Trusted: true}
+	return ReviewFacts{ChecksRead: true, Checks: []transport.CommitCheck{passed("test"), {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "neutral"}, {Kind: transport.CheckKindStatus, Name: "ci", Status: "completed", Conclusion: "success"}}, Author: "octocat", AuthorID: 583231, App: "humagen[bot]", Trusted: true}
 }
 
 // Approval needs every guard at once; each one alone keeps it a comment or
@@ -105,8 +105,22 @@ func TestReviewEventApprovesOnlyWhenEveryGuardHolds(t *testing.T) {
 		"a status with an unknown state": {facts: func(f *ReviewFacts) {
 			f.Checks = append(f.Checks, transport.CommitCheck{Kind: transport.CheckKindStatus, Name: "ci", Status: "completed", Conclusion: "error"})
 		}, want: "COMMENT"},
+		"a status the app set is its own": {facts: func(f *ReviewFacts) {
+			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindStatus, Name: "ci", Status: "completed", Conclusion: "success", Creator: "humagen[bot]"}}
+		}, want: "COMMENT"},
+		"a check suite still running": {facts: func(f *ReviewFacts) {
+			f.Checks = append(f.Checks, transport.CommitCheck{Kind: transport.CheckKindSuite, Name: "suite", Status: "in_progress"})
+		}, want: "COMMENT"},
+		"a check of the app's ID is its own": {facts: func(f *ReviewFacts) {
+			f.AppID = 42
+			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "build", Status: "completed", Conclusion: "success", AppID: 42}}
+		}, want: "COMMENT"},
+		"a check whose app ID and slug disagree": {facts: func(f *ReviewFacts) {
+			f.AppID = 42
+			f.Checks = append(f.Checks, transport.CommitCheck{Kind: transport.CheckKindRun, Name: "build", Status: "completed", Conclusion: "success", AppID: 42, App: "another"})
+		}, want: "COMMENT"},
 		"every check skipped or neutral": {facts: func(f *ReviewFacts) {
-			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "skipped"}, {Kind: transport.CheckKindStatus, Name: "lint", Status: "completed", Conclusion: "neutral"}}
+			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "skipped"}, {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "neutral"}}
 		}, want: "COMMENT"},
 		"another app's fiber check is CI": {facts: func(f *ReviewFacts) {
 			other := ownCheck()
@@ -182,7 +196,7 @@ func TestOneSuccessAmongSkippedChecksIsCI(t *testing.T) {
 	f := cleanFacts()
 	f.Checks = []transport.CommitCheck{
 		{Kind: transport.CheckKindRun, Name: "a", Status: "completed", Conclusion: "skipped"},
-		{Kind: transport.CheckKindStatus, Name: "c", Status: "completed", Conclusion: "skipped"},
+		{Kind: transport.CheckKindRun, Name: "c", Status: "completed", Conclusion: "neutral"},
 		passed("test"),
 	}
 	if got := ReviewEvent(cleanReport(), ReviewPolicy{Approve: ApproveWhenClean}, f); got != "APPROVE" {
