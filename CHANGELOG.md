@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.200.4 (2026-11-24)
+
+### Bug Fixes
+
+- **platform**: name an unread settings read when a run chooses its model ([649d960](https://github.com/urmzd/humagen/commit/649d96042ba9c92f3337cf9ba308ea28177e9c5d))
+- **platform**: retry a run whose settings could not be read ([fd702bb](https://github.com/urmzd/humagen/commit/fd702bb277ca17a88ee145c4274595cf5c6f961c))
+- **platform**: fail a run without a model provider on its first attempt ([87e563c](https://github.com/urmzd/humagen/commit/87e563cb5f185235318a38c81517c59618f790d6))
+
+### Misc
+
+- **slack**: run the retried-failure server tests on an unreachable model ([0a60751](https://github.com/urmzd/humagen/commit/0a6075146dde85bb2840daea332a44d94769cfb0))
+- **deps**: bump github.com/urmzd/saige to v0.52.0 ([5f699b6](https://github.com/urmzd/humagen/commit/5f699b618ff053a592c55d0ffe1fc8fd9dd3ba25))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.3...v0.200.4)
+
+
 ## 0.200.3 (2026-11-24)
 
 ### Bug Fixes
