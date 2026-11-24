@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.202.0 (2026-11-24)
+
+### Features
+
+- **migrate**: rewrite each journaled request to the request as it was asked ([3474008](https://github.com/urmzd/humagen/commit/3474008dfaae9b3c474a751581d20a9e29530a77))
+
+### Bug Fixes
+
+- **migrate**: replace only journal requests that may hold passages ([b606278](https://github.com/urmzd/humagen/commit/b60627840c2059cc45e671aac704af7006c0f94e))
+- **migrate**: check runs again before each journal write ([b188213](https://github.com/urmzd/humagen/commit/b188213bb910723b99f1c10e05c4ecb0b42521c8))
+
+### Misc
+
+- **deps**: bump github.com/urmzd/saige to v0.52.1 ([f185f5d](https://github.com/urmzd/humagen/commit/f185f5df6d68c8797cc9c5cb8a44205c6eda7930))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.201.0...v0.202.0)
+
+
 ## 0.201.0 (2026-11-24)
 
 ### Features
