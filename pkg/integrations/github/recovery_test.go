@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connectors"
@@ -15,7 +16,7 @@ import (
 	"github.com/urmzd/saige/flow/event"
 )
 
-// An approve verdict is posted as a comment (agents never approve), and a
+// With no review policy an approve verdict is posted as a comment, and a
 // retried delivery recovers that review instead of posting another.
 func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T) {
 	api := github.NewFake()
@@ -74,5 +75,41 @@ func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T
 	}
 	if len(api.SubmittedReviews()) != 1 || findings != 2 {
 		t.Fatal("failed recovery changed native review")
+	}
+}
+
+// An approval the host posted is recovered as an approval: a retried
+// delivery matches it and posts nothing more.
+func TestARecoveredApprovalStaysOneApproval(t *testing.T) {
+	api := github.NewFake()
+	ref := transport.Ref{Owner: "acme", Repo: "repo", Number: 7}
+	sha := strings.Repeat("a", 40)
+	snapshot := transport.Context{Files: []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1 +1 @@\n-old\n+new"}}}
+	snapshot.Subject.Head.SHA = sha
+	if err := api.SeedContext(ref, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.SeedCommitCheck("acme", "repo", sha, transport.CommitCheck{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", sha)
+	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[]}`, sha)
+	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: deliverystate.NewMemory(),
+		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) {
+			return github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat"}, nil
+		}}
+	env := event.Envelope{Tenant: "tenant", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
+	for i := range 2 {
+		cfg.DeliveryScope = fmt.Sprint("lost-receipt-", i)
+		c, err := github.New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Deliver(t.Context(), target, env); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reviews := api.SubmittedReviews(); len(reviews) != 1 || reviews[0].Review.Event != "APPROVE" {
+		t.Fatalf("recovery duplicated or changed the approval: %+v", reviews)
 	}
 }
