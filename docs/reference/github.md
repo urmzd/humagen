@@ -285,9 +285,13 @@ workspace that may route to its agent.
 A read of another repository is answered by that repository or not at all:
 when GitHub answers it with a redirect, as it does for a renamed repository
 or a transferred issue, the redirect is not followed and the read fails. A
-read of the run's own repository follows a redirect within it, and one to
-another repository only when that repository passes the same grants as a read
-of it by name. The console's reads, and the labels it shows, follow no
+read of the run's own repository follows a redirect only when the redirect
+names a repository by owner and name (`/repos/<owner>/<repo>/...`) and that
+repository is the run's own or passes the same grants as a read of it by
+name. A redirect that names a repository any other way is not followed,
+including the ones GitHub gives for a renamed or transferred repository,
+which name it by id (`/repositories/<id>/...`): read a renamed repository by
+its current name. The console's reads, and the labels it shows, follow no
 redirect.
 
 `read_repositories` adds exact repository names to that. It is optional. Use

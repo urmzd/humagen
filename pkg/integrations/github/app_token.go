@@ -165,6 +165,28 @@ func NewAppTokenSource(base string, cfg AppConfig) (*AppTokenSource, error) {
 
 func refuseAppRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
+// appReads is the App client's transport for its API calls: a read GitHub
+// answers with a redirect fails with ErrReadRedirected, as a read the
+// connector does not follow does, and the response is dropped, so where it
+// pointed reaches neither the caller nor an error. The App client follows
+// no redirect (refuseAppRedirect), so this is its answer to every redirected
+// read, including one the connector's redirect check would allow. A write
+// keeps GitHub's answer.
+type appReads struct{ next http.RoundTripper }
+
+func (t appReads) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.next.RoundTrip(req)
+	if err != nil || (req.Method != http.MethodGet && req.Method != http.MethodHead) {
+		return resp, err
+	}
+	switch resp.StatusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		_ = resp.Body.Close()
+		return nil, ErrReadRedirected
+	}
+	return resp, nil
+}
+
 // owns fences credentials before even minting a token. Escaped or cleaned-up
 // paths cannot escape an enterprise API prefix or smuggle another authority.
 func (s *AppTokenSource) owns(u *url.URL) bool {
@@ -303,7 +325,7 @@ func NewAppHTTPAPIAt(base string, cfg AppConfig) (*HTTPAPI, error) {
 	}
 	authed := &http.Client{
 		Timeout:       timeout,
-		Transport:     authenticated,
+		Transport:     appReads{next: authenticated},
 		CheckRedirect: refuseAppRedirect,
 	}
 	base = source.base

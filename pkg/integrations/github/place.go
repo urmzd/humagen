@@ -10,10 +10,12 @@ import (
 
 // PlaceReader reads an issue or pull request as a run on it reads its own
 // repository: through the transport's github_read_context, bound to the
-// issue or pull request itself. A redirect within the repository is
-// followed; a redirect to another repository is followed only when that
-// repository passes the read grants (Config.Owners, ReadRefused,
-// ReadRepositories, MayRead), as the transport decides for a run's own read.
+// issue or pull request itself. A redirect is followed only when it names
+// a repository by owner and name and that repository is this one or passes
+// the read grants (Config.Owners, ReadRefused, ReadRepositories, MayRead),
+// as the transport decides for a run's own read. A redirect that names a
+// repository by id, as GitHub's for a renamed or transferred repository do,
+// is not followed.
 // It is for the reads the host makes for a run on that place; whether the
 // place is readable at all is the caller's to decide.
 func (c *Connector) PlaceReader() ContextAPI { return placeReader{c: c} }
