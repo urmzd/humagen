@@ -250,3 +250,21 @@ func CleanTitle(answer string) string { return cleanTitle(answer) }
 
 // ThinTitle is thinTitle, for tests.
 func ThinTitle(text string) bool { return thinTitle(text) }
+
+// ClientAction calls a client's connector action from source, as a run's
+// tool call reaches it, and returns the action's summary.
+func (p *Platform) ClientAction(ctx context.Context, tenant, client, name string, source address.Address, args string) (string, error) {
+	for _, s := range p.surfaces {
+		st := s.seat(tenant, client)
+		if st == nil {
+			continue
+		}
+		for _, a := range st.peer.Actions() {
+			if a.Name == name {
+				r, err := a.Invoke(ctx, source, []byte(args))
+				return r.Summary, err
+			}
+		}
+	}
+	return "", os.ErrNotExist
+}

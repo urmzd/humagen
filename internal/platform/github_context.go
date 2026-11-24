@@ -12,6 +12,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/saige/flow/address"
 )
 
 // get_context for a conversation that came from a GitHub issue or pull
@@ -59,25 +60,33 @@ func (p *Platform) githubContext(ctx context.Context, req ContextRequest) (Conte
 		issue, err := p.GitHubIssue(ctx, req.Tenant, repo, number, page)
 		return issue.Context, err
 	}
-	var reader any
+	// The latest comments are read through the same client's connector. A
+	// run's own place is read as the run's own repository; any other read
+	// follows no redirect, as GitHubIssue's does.
+	var comments commentReader
+	commentsCtx := github.ReadWhereNamed(ctx)
+	own := false
 	if req.Run != "" {
-		api, own, granted := p.runPlaceReader(ctx, req, owner, name, kind, number)
-		if own && !granted {
+		st, mine, granted := p.runPlaceReader(ctx, req, owner, name, kind, number)
+		if mine && !granted {
 			return ContextResult{Note: fmt.Sprintf("%s may not be read here: the GitHub client that raised this run is not granted it.", repo)}, nil
 		}
-		if own {
-			readPage = func(page int) (github.Context, error) { return api.ReadContext(ctx, ref, page) }
-			reader = api
+		if mine {
+			own = true
+			readPage = func(page int) (github.Context, error) { return st.context.ReadContext(ctx, ref, page) }
+			comments, commentsCtx = st.comments, ctx
 		}
 	}
 	read, err := readPage(1)
-	if err == nil && reader == nil {
+	if err == nil && !own {
 		// GitHubIssue read through this client, under the same grants.
-		reader = p.sourceReader(ctx, req.Tenant, owner, name)
+		if st := p.sourceSeat(ctx, req.Tenant, owner, name); st != nil {
+			comments = st.comments
+		}
 	}
 	partial := false
 	if err == nil {
-		read.Comments, partial = p.latestComments(ctx, reader, ref, read.Comments, isPerson(p.githubLogins(req.Tenant)))
+		read.Comments, partial = p.latestComments(commentsCtx, comments, ref, kind, read.Comments, isPerson(p.githubLogins(req.Tenant)))
 	}
 	if errors.Is(err, ErrSourceNotFound) || errors.Is(err, ErrSourceInvalid) {
 		return ContextResult{Note: fmt.Sprintf("%s #%d may not be read here: no GitHub client of this workspace is granted %s, or it does not exist.", placeNoun(kind), number, repo)}, nil
@@ -96,20 +105,27 @@ func (p *Platform) githubContext(ctx context.Context, req ContextRequest) (Conte
 	}, nil
 }
 
+// commentReader reads the latest comments of the issue or pull request
+// source names, or of the one reference names, through a GitHub client's
+// connector, under its read grants (github.Connector.ReadComments).
+type commentReader interface {
+	ReadComments(ctx context.Context, source address.Address, reference string, want int, keep func(github.ContextComment) bool) ([]github.ContextComment, error)
+}
+
 // latestComments are an issue's latest comments: page 1's when they are all
-// there are, else the last pages, read by reader's CommentsAPI in at most
-// three requests (GitHub lists comments oldest first, so page 1 is the
-// oldest). partial says the latest may be missing: page 1 was full and the
-// later pages could not be read.
-func (p *Platform) latestComments(ctx context.Context, reader any, ref github.Ref, first []github.ContextComment, person func(github.ContextComment) bool) ([]github.ContextComment, bool) {
+// there are, else the last pages, read by reader in at most three requests
+// (GitHub lists comments oldest first, so page 1 is the oldest). partial
+// says the latest may be missing: page 1 was full and the later pages could
+// not be read.
+func (p *Platform) latestComments(ctx context.Context, reader commentReader, ref github.Ref, kind string, first []github.ContextComment, person func(github.ContextComment) bool) ([]github.ContextComment, bool) {
 	if len(first) < placeCommentPage {
 		return first, false
 	}
-	api, ok := reader.(github.CommentsAPI)
-	if !ok {
+	if reader == nil {
 		return first, true
 	}
-	latest, err := api.LatestComments(ctx, ref, placeReadComments, person)
+	place := address.Address{Connector: github.Name, Workspace: ref.Owner, Path: []string{ref.Repo, kind, strconv.Itoa(ref.Number)}}
+	latest, err := reader.ReadComments(ctx, place, "", placeReadComments, person)
 	if err != nil {
 		p.log.Warn("platform: the latest comments of a GitHub place could not be read for get_context", "repository", ref.Owner+"/"+ref.Repo, "number", ref.Number, "error", err)
 		return first, true
@@ -145,12 +161,12 @@ func (p *Platform) githubLogins(tenant string) map[string]bool {
 	return out
 }
 
-// runPlaceReader is the issue and pull request reader of the GitHub client
-// that raised the run asking. own says the run was raised by that client on
-// this place: the session's root is the client's thread on owner/name's
-// issue or pull request number. granted says the client is enabled and
+// runPlaceReader is the seat of the GitHub client that raised the run
+// asking, whose context reader reads the place. own says the run was raised
+// by that client on this place: the session's root is the client's thread on
+// owner/name's issue or pull request number. granted says the client is enabled and
 // serves owner, names the repository, or covers it by its installation.
-func (p *Platform) runPlaceReader(ctx context.Context, req ContextRequest, owner, name, kind string, number int) (api github.ContextAPI, own, granted bool) {
+func (p *Platform) runPlaceReader(ctx context.Context, req ContextRequest, owner, name, kind string, number int) (st *seat, own, granted bool) {
 	run, err := p.runRecordOf(req.Tenant, req.Run)
 	if err != nil || run.Client == "" {
 		return nil, false, false
@@ -163,7 +179,7 @@ func (p *Platform) runPlaceReader(ctx context.Context, req ContextRequest, owner
 	if s == nil {
 		return nil, true, false
 	}
-	st := s.seat(req.Tenant, run.Client)
+	st = s.seat(req.Tenant, run.Client)
 	if st == nil || st.context == nil {
 		return nil, true, false
 	}
@@ -178,7 +194,7 @@ func (p *Platform) runPlaceReader(ctx context.Context, req ContextRequest, owner
 	if !granted {
 		granted = st.installed.Covers(ctx, owner, name)
 	}
-	return st.context, true, granted
+	return st, true, granted
 }
 
 // surfaceIsPlace reports whether sf is client's GitHub thread on owner/name's

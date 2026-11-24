@@ -282,6 +282,14 @@ installation covers (see
 A run from another surface reads through the oldest GitHub client in its
 workspace that may route to its agent.
 
+A read of another repository is answered by that repository or not at all:
+when GitHub answers it with a redirect, as it does for a renamed repository
+or a transferred issue, the redirect is not followed and the read fails. A
+read of the run's own repository follows a redirect within it, and one to
+another repository only when that repository passes the same grants as a read
+of it by name. The console's reads, and the labels it shows, follow no
+redirect.
+
 `read_repositories` adds exact repository names to that. It is optional. Use
 it for a client that signs in with a personal token, which has no installation
 to list:
@@ -530,8 +538,10 @@ token reaches nothing else, so Humagen grants nothing else.
   GitHub client of the workspace covers, plus any its `read_repositories` or
   `action_repositories` name, deduplicated and sorted. The picker shows the
   first 100. A session may choose any of them.
-- **Reads.** `github_read_context`, `github_read_file` and
-  `github_workflow_status` from another surface, and the console's source,
+- **Reads.** `github_read_context`, `github_read_file`,
+  `github_workflow_status` and, with `fix_pull_requests`, `github_fix_base`
+  from another surface, the latest comments `get_context` reads, and the
+  console's source,
   issue and pull request reads, reach any repository the installation covers,
   unless its [settings](#repository-settings) keep it to its own runs.
   The read tools check the client's `owners` first, so they refuse an
@@ -582,7 +592,7 @@ even one of an account the client serves, answers 404.
 | Answers `@humagen` when no agent is named | `agent` | the client's `default_agent` | That agent answers `@humagen` with no agent named, ahead of the client's default and the entry agent, and does automatic reviews. It must be one the client routes to. |
 | Instructions for runs here | `instructions` | none | Pinned on every run the client raises on the repository, as the last instruction layer, after the workspace's and the projects'. At most 4,000 characters. |
 | Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`), within 24,000 characters and 3 seconds. A read that fails or runs out of time is named, not left out. |
-| Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file` and `github_workflow_status`, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. Every client's view shows the workspace's answer, with the clients that keep it in `kept_by`. |
+| Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file`, `github_workflow_status` and `github_fix_base`, and a read of another repository that GitHub redirects to it is not followed, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. Every client's view shows the workspace's answer, with the clients that keep it in `kept_by`. |
 
 What is read before a run is untrusted: anyone who can open a pull request
 writes its description and its patch. It is added to the run's text in one

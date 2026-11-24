@@ -127,7 +127,7 @@ func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *latestFake,
 	return p, c, fake, post
 }
 
-// latestFake is the fake GitHub with CommentsAPI, as the HTTP API has it:
+// latestFake is the fake GitHub with LatestCommentsAPI, as the HTTP API has it:
 // the last page of comments, and the one before it. It records the pages
 // of context read and the comment reads, so a test can tell the comments
 // read alone from every page of context read again.

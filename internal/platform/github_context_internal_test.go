@@ -11,17 +11,18 @@ import (
 
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/saige/flow/address"
 )
 
-// commentsStub is a CommentsAPI over n comments by ana, oldest first, that
-// counts its calls.
+// commentsStub is a commentReader over n comments by ana, oldest first,
+// that counts its calls.
 type commentsStub struct {
 	n     int
 	calls int
 	err   error
 }
 
-func (s *commentsStub) LatestComments(_ context.Context, _ github.Ref, want int, _ func(github.ContextComment) bool) ([]github.ContextComment, error) {
+func (s *commentsStub) ReadComments(_ context.Context, _ address.Address, _ string, want int, _ func(github.ContextComment) bool) ([]github.ContextComment, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, s.err
@@ -43,17 +44,17 @@ func notes(from, to int) []github.ContextComment {
 func quietPlatform() *Platform { return &Platform{log: slog.New(slog.NewTextHandler(io.Discard, nil))} }
 
 // Page 1 holds every comment when it is not full: nothing more is read. A
-// full page 1 is the oldest, so the latest are read through CommentsAPI,
+// full page 1 is the oldest, so the latest are read through the connector,
 // once, and those are the ones given.
-func TestTheLatestCommentsAreReadThroughCommentsAPI(t *testing.T) {
+func TestTheLatestCommentsAreReadThroughTheConnector(t *testing.T) {
 	p := quietPlatform()
 	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 7}
 	person := isPerson(nil)
 	stub := &commentsStub{n: 300}
-	if got, partial := p.latestComments(context.Background(), stub, ref, notes(1, 12), person); len(got) != 12 || partial || stub.calls != 0 {
+	if got, partial := p.latestComments(context.Background(), stub, ref, "issues", notes(1, 12), person); len(got) != 12 || partial || stub.calls != 0 {
 		t.Fatalf("a short page 1 gave %d comments, partial %v, %d reads", len(got), partial, stub.calls)
 	}
-	got, partial := p.latestComments(context.Background(), stub, ref, notes(1, 30), person)
+	got, partial := p.latestComments(context.Background(), stub, ref, "issues", notes(1, 30), person)
 	if partial || stub.calls != 1 || got[len(got)-1].ID != 300 {
 		t.Fatalf("a full page 1 gave up to %d, partial %v, %d reads", got[len(got)-1].ID, partial, stub.calls)
 	}
@@ -68,13 +69,13 @@ func TestTheLatestCommentsAreReadThroughCommentsAPI(t *testing.T) {
 	}
 }
 
-// Without CommentsAPI, or when it fails, a full page 1 says the latest may
+// Without a comment reader, or when it fails, a full page 1 says the latest may
 // be missing.
 func TestUnreadLatestCommentsSaySo(t *testing.T) {
 	p := quietPlatform()
 	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 7}
-	for name, reader := range map[string]any{"no CommentsAPI": nil, "a failed read": &commentsStub{err: errors.New("status 502")}, "comments deleted meanwhile": &commentsStub{err: github.ErrCommentsChanged}} {
-		got, partial := p.latestComments(context.Background(), reader, ref, notes(1, 30), isPerson(nil))
+	for name, reader := range map[string]commentReader{"no comment reader": nil, "a failed read": &commentsStub{err: errors.New("status 502")}, "comments deleted meanwhile": &commentsStub{err: github.ErrCommentsChanged}} {
+		got, partial := p.latestComments(context.Background(), reader, ref, "issues", notes(1, 30), isPerson(nil))
 		if !partial || len(got) != 30 {
 			t.Fatalf("%s: partial %v, %d comments", name, partial, len(got))
 		}

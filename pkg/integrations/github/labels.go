@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	transport "github.com/urmzd/saige/flow/connectors/github"
 	"io"
 	"net/http"
+
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // LabelAPI supplements the upstream context reader with issue labels.
@@ -30,6 +31,11 @@ func NewHTTPAPI(token string, client *http.Client) *HTTPAPI {
 	}
 	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPI(token, client), base: transport.GitHubBaseURL, token: token, http: client}
 }
+
+// IssueLabels reads an issue's labels. It is read for the repository the
+// caller names, and, as the transport's cross-source reads do, it follows no
+// redirect: a renamed or transferred repository answers ErrReadRedirected,
+// so the labels are only ever the named repository's.
 func (a *HTTPAPI) IssueLabels(ctx context.Context, ref Ref) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels?per_page=100", a.base, ref.Owner, ref.Repo, ref.Number), nil)
 	if err != nil {
@@ -40,7 +46,9 @@ func (a *HTTPAPI) IssueLabels(ctx context.Context, ref Ref) ([]string, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := a.http.Do(req)
+	client := *a.http
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return ErrReadRedirected }
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

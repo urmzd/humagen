@@ -116,6 +116,7 @@ func (p *Platform) GitHubSource(ctx context.Context, tenant string, req SourceRe
 	if reader == nil {
 		return SourceExcerpt{}, ErrSourceNotFound
 	}
+	ctx = github.ReadWhereNamed(ctx)
 	key := strings.ToLower(req.Repo) + "@" + strings.ToLower(req.SHA) + ":" + req.Path
 	content, ok := p.surfaces["github"].sources.get(key)
 	if !ok {
@@ -152,6 +153,19 @@ func (p *Platform) GitHubSource(ctx context.Context, tenant string, req SourceRe
 // that may read owner/repo, or nil. The installation's token reaches only the
 // repositories it covers, so what it covers is what it may read.
 func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string) sourceReader {
+	if st := p.sourceSeat(ctx, tenant, owner, repo); st != nil {
+		return st.files
+	}
+	return nil
+}
+
+// sourceSeat is the seat of the tenant's first enabled GitHub client that may
+// read owner/repo for the console or a run elsewhere, or nil (sourceReader).
+// The repository is the caller's choice, so what is read through it is read
+// with a context marked github.ReadWhereNamed: a renamed or transferred
+// repository's redirect is not followed, and the read is answered by the
+// repository that was granted or not at all.
+func (p *Platform) sourceSeat(ctx context.Context, tenant, owner, repo string) *seat {
 	s := p.surfaces["github"]
 	if s == nil {
 		return nil
@@ -174,7 +188,7 @@ func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string)
 			granted = st.installed.Covers(ctx, owner, repo)
 		}
 		if granted {
-			return st.files
+			return st
 		}
 	}
 	return nil
