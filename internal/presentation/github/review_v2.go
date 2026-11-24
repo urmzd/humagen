@@ -265,19 +265,34 @@ func WithAgentMark(body, agent string) string {
 	if mark == "" {
 		return body
 	}
-	return strings.ReplaceAll(body, agentMarkOpen, "&lt;"+agentMarkOpen[1:]) + "\n\n" + mark
+	return WithoutMarks(body) + "\n\n" + mark
 }
 
-// postedTail is what may follow the host's mark in a posted review: the
-// session footer, then the two markers the transport adds when it posts a
-// review (its run marker and its payload digest).
+// hostMarks are the openings of the hidden lines the host and the
+// transport write into a review: the agent's mark and the transport's
+// markers.
+var hostMarks = strings.NewReplacer(agentMarkOpen, "&lt;"+agentMarkOpen[1:], transportMarkOpen, "&lt;"+transportMarkOpen[1:])
+
+// WithoutMarks is text with every line that would read as one the host or
+// the transport writes into a review written so that it does not. Text a
+// model wrote passes through it before it is posted in a review.
+func WithoutMarks(text string) string { return hostMarks.Replace(text) }
+
+// transportMarkOpen opens the markers the transport adds to a review it
+// posts.
+const transportMarkOpen = "<!-- humagen-review"
+
+// postedTail is what follows the host's mark in a review the transport's
+// review sink posted: the session footer, when there is one, then the two
+// markers the sink adds (its run marker and its payload digest), exactly
+// as it writes them.
 var postedTail = regexp.MustCompile("^(" + regexp.QuoteMeta(sessionFooterOpen) + "[^\n]*" + regexp.QuoteMeta(sessionFooterClose) + ")?" +
-	"(\n\n<!-- humagen-review:[0-9a-f]{64} -->\n\n<!-- humagen-review-payload:[0-9a-f]{64} -->)?$")
+	"\n\n<!-- humagen-review:[0-9a-f]{64} -->\n\n<!-- humagen-review-payload:[0-9a-f]{64} -->$")
 
 // ReviewAgent is the agent named by the mark WithAgentMark put at the end of
-// a review's body, followed by nothing but the session footer and the
-// transport's markers. A mark anywhere else names nobody, and a body
-// without one is "".
+// a review the review sink posted: the mark followed by nothing but the
+// session footer and the sink's two markers. A mark anywhere else, or in a
+// review posted another way, names nobody, and a body without one is "".
 func ReviewAgent(body string) string {
 	i := strings.LastIndex(body, agentMarkOpen)
 	if i < 2 || body[i-2:i] != "\n\n" {

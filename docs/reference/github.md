@@ -602,7 +602,7 @@ even one of an account the client serves, answers 404.
 | Instructions for runs here | `instructions` | none | Pinned on every run the client raises on the repository, as the last instruction layer, after the workspace's and the projects'. At most 4,000 characters. |
 | Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`), within 24,000 characters and 3 seconds. A read that fails or runs out of time is named, not left out. |
 | Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file`, `github_workflow_status` and `github_fix_base`, and a read of another repository that GitHub redirects to it is not followed, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. Every client's view shows the workspace's answer, with the clients that keep it in `kept_by`. |
-| Reviews never approve | `approve: never` | each agent's [review policy](spec.md#review-policy) | No review here approves, whatever the reviewing agent's `review.approve` says. It only makes the policy stricter: `never` is its one value. The console does not set it yet; set it through the API. |
+| Reviews never approve | `approve: never` | each agent's [review policy](spec.md#review-policy) | No review here approves, whatever the reviewing agent's `review.approve` says. It only makes the policy stricter: `never` is its one value. A save that leaves `approve` out keeps it, and `approve: ""` removes it. The console does not set it yet, and keeps it when it saves; set it through the API. |
 
 What is read before a run is untrusted: anyone who can open a pull request
 writes its description and its patch. It is added to the run's text in one
@@ -869,19 +869,26 @@ review that nobody resumed approves.
 
 A new review replaces the same agent's earlier ones on the pull request: an
 approval of an earlier head is dismissed when the new review does not
-approve, and a change request is dismissed when nothing in the new review
-blocks. A push to the pull request dismisses the app's approvals of earlier
-commits at once, whether or not the new commit is reviewed. Each native
-review carries a hidden line naming its agent, written
-by the host after everything the model wrote; a line like it inside the
-review's text is written so that it names nobody, and only the line at the
-end, followed by nothing but the session link and the transport's markers,
-counts. One agent never dismisses another's review, and a review from before
-that line is never dismissed. Since every agent posts as the app and GitHub
-counts the app's latest review, a review does not approve while a change
-request the app posted for another agent is outstanding. Only the app's own reviews are dismissed, through saige's
-host-only dismissal; no model tool reaches it. A dismissal that fails is
-logged and never stops the new review.
+approve, and once the new review has posted as a comment or an approval,
+the agent's earlier change requests are dismissed. A review that does not
+post leaves them in place. A push to the pull request dismisses the app's
+approvals of earlier commits at once, whether or not the new commit is
+reviewed, unless the push's commit is no longer the pull request's head.
+
+Each native review carries a hidden line naming its agent, written by the
+host after everything the model wrote; a line like it inside the review's
+text is written so that it names nobody. Only the line at the end of a
+review the transport's review sink posted, followed by nothing but the
+session link and the sink's two markers, counts. A review posted through
+the `github_create_review` tool is written the same way, in its body and in
+each inline comment, and is no agent's. One agent never dismisses another's
+review, and a review from before that line is never dismissed. Since every
+agent posts as the app and GitHub counts the app's latest review, a review
+does not approve while a change request the app posted that is not the
+same agent's is outstanding, one posted through the tool included. Only the
+app's own reviews are dismissed, through saige's host-only dismissal; no
+model tool reaches it. A dismissal that fails is logged and never stops the
+new review.
 Review recovery uses an app-owned marker and the durable delivery store to
 avoid duplicate reviews. Before it posts, the host records in the delivery
 store that the review is in the current layout. A review with no record was

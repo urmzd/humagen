@@ -4,6 +4,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -208,13 +209,13 @@ func New(cfg Config) (*Connector, error) {
 					if review.Event == "APPROVE" {
 						pending.plan(v, report)
 					}
-					// The agent's earlier reviews this one replaces are
-					// dismissed: an approval of another head unless this one
-					// approves (the hook dismisses it if it then says no), and a
-					// change request unless this one blocks. A dismissal that
-					// fails is logged and never stops this review.
+					// The agent's approvals of another head are stale unless this
+					// review approves (the hook dismisses them if it then says
+					// no). Its change requests are dismissed only once this
+					// review has posted (Deliver). A dismissal that fails is
+					// logged and never stops this review.
 					if owner, repo, number, ok := pullOf(v.Channel); ok {
-						dismissStale(ctx, cfg, c.Connector, transport.Ref{Owner: owner, Repo: repo, Number: number}, v.Agent, review.CommitID, review.Event, review.Event == "REQUEST_CHANGES")
+						dismissStale(ctx, cfg, c.Connector, transport.Ref{Owner: owner, Repo: repo, Number: number}, v.Agent, review.CommitID, review.Event)
 					}
 					// Say which layout this review is posted in before posting it,
 					// so its recovery reproduces it.
@@ -268,12 +269,72 @@ func New(cfg Config) (*Connector, error) {
 	return c, nil
 }
 
+// Deliver delivers an event, and once a run's final answer is delivered on a
+// pull request, dismisses its agent's change requests that the agent's
+// latest posted review, a comment or an approval, replaces. Nothing is
+// dismissed before the review that replaces it has posted.
+func (c *Connector) Deliver(ctx context.Context, target address.Address, e event.Envelope) error {
+	if err := c.Connector.Deliver(ctx, target, e); err != nil {
+		return err
+	}
+	if _, ok := c.cfg.API.(transport.ReviewHistoryAPI); !ok || e.Type != event.TypeCompleted || e.Agent == "" {
+		return nil
+	}
+	if owner, repo, number, ok := pullOf(target.String()); ok {
+		dismissReplaced(ctx, c.cfg, c.Connector, transport.Ref{Owner: owner, Repo: repo, Number: number}, e.Agent)
+	}
+	return nil
+}
+
 func (c *Connector) Actions() []connector.Action {
 	actions := c.Connector.Actions()
+	for i, a := range actions {
+		if a.Name == createReviewAction {
+			actions[i] = withoutMarks(a)
+		}
+	}
 	if c.cfg.Mutations {
 		actions = append(actions, c.mutationAction(), c.runChecksAction())
 	}
 	return actions
+}
+
+// createReviewAction is the transport's tool that posts a review a model
+// wrote.
+const createReviewAction = "github_create_review"
+
+// withoutMarks has a review a model posts through the tool written with
+// WithoutMarks: its body and each inline comment's body, so nothing in it
+// reads as a line the host or the transport writes. Input that is not the
+// tool's is passed on as it is, for the tool to refuse.
+func withoutMarks(a connector.Action) connector.Action {
+	invoke := a.Invoke
+	a.Invoke = func(ctx context.Context, target address.Address, raw json.RawMessage) (connector.Result, error) {
+		var input map[string]json.RawMessage
+		if json.Unmarshal(raw, &input) != nil {
+			return invoke(ctx, target, raw)
+		}
+		var body string
+		if json.Unmarshal(input["body"], &body) == nil {
+			input["body"], _ = json.Marshal(presentation.WithoutMarks(body))
+		}
+		var comments []map[string]json.RawMessage
+		if json.Unmarshal(input["comments"], &comments) == nil && comments != nil {
+			for _, comment := range comments {
+				var text string
+				if json.Unmarshal(comment["body"], &text) == nil {
+					comment["body"], _ = json.Marshal(presentation.WithoutMarks(text))
+				}
+			}
+			input["comments"], _ = json.Marshal(comments)
+		}
+		out, err := json.Marshal(input)
+		if err != nil {
+			return invoke(ctx, target, raw)
+		}
+		return invoke(ctx, target, out)
+	}
+	return a
 }
 
 // prepare applies humagen's policy to an event before it is published. An

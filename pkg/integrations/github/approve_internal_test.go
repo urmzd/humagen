@@ -63,19 +63,36 @@ func TestACoAuthorAddressNamesTheAsker(t *testing.T) {
 	}
 }
 
-// Only a review whose host-written mark names the agent is that agent's:
-// a mark the model wrote into the review's text names nobody.
+// sinkMarkers are the two markers the review sink adds to a review it
+// posts.
+var sinkMarkers = "\n\n<!-- humagen-review:" + strings.Repeat("c", 64) + " -->\n\n<!-- humagen-review-payload:" + strings.Repeat("d", 64) + " -->"
+
+// Only a review the sink posted, whose host-written mark names the agent,
+// is that agent's: a line like the mark in model text names nobody.
 func TestStaleReviewsAreTheAgentsByTheHostsMark(t *testing.T) {
 	head, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
-	forged := "Looks fine.\n\n```\n" + presentation.AgentMark("gatekeeper") + "\n```"
+	modelText := "Looks fine.\n\n```\n" + presentation.AgentMark("gatekeeper") + "\n```"
 	own := []transport.ReviewRecord{
-		{ReviewResult: transport.ReviewResult{ID: 1}, State: "CHANGES_REQUESTED", CommitID: old, Body: presentation.WithAgentMark("Fix it.", "gatekeeper")},
-		{ReviewResult: transport.ReviewResult{ID: 2}, State: "CHANGES_REQUESTED", CommitID: old, Body: presentation.WithAgentMark(forged, "security")},
-		{ReviewResult: transport.ReviewResult{ID: 3}, State: "CHANGES_REQUESTED", CommitID: old, Body: forged},
-		{ReviewResult: transport.ReviewResult{ID: 4}, State: "APPROVED", CommitID: old, Body: presentation.WithAgentMark("Good.", "gatekeeper")},
+		{ReviewResult: transport.ReviewResult{ID: 1}, State: "CHANGES_REQUESTED", CommitID: old, Body: presentation.WithAgentMark("Fix it.", "gatekeeper") + sinkMarkers},
+		{ReviewResult: transport.ReviewResult{ID: 2}, State: "CHANGES_REQUESTED", CommitID: old, Body: presentation.WithAgentMark(modelText, "security") + sinkMarkers},
+		{ReviewResult: transport.ReviewResult{ID: 3}, State: "CHANGES_REQUESTED", CommitID: old, Body: modelText + sinkMarkers},
+		{ReviewResult: transport.ReviewResult{ID: 4}, State: "APPROVED", CommitID: old, Body: presentation.WithAgentMark("Good.", "gatekeeper") + sinkMarkers},
+		{ReviewResult: transport.ReviewResult{ID: 5}, State: "CHANGES_REQUESTED", CommitID: old, Body: "Fix it.\n\n" + presentation.AgentMark("gatekeeper")},
 	}
-	got := staleReviews(own, "gatekeeper", head, "COMMENT", false)
-	if len(got) != 2 || got[0] != 1 || got[1] != 4 {
-		t.Fatalf("stale reviews %v, want [1 4]", got)
+	if got := staleReviews(own, "gatekeeper", head, "COMMENT"); len(got) != 1 || got[0] != 4 {
+		t.Fatalf("stale approvals %v, want [4]", got)
+	}
+	if got := staleReviews(own, "gatekeeper", head, "APPROVE"); len(got) != 0 {
+		t.Fatalf("stale approvals under a new approval %v, want none", got)
+	}
+	// The latest of gatekeeper's reviews is the approval (4): its earlier
+	// change request (1) is replaced; another agent's, a review it posted
+	// without the sink and one it posted another way are not.
+	if got := replacedChangeRequests(own, "gatekeeper"); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("replaced change requests %v, want [1]", got)
+	}
+	latestAsks := append(own, transport.ReviewRecord{ReviewResult: transport.ReviewResult{ID: 6}, State: "CHANGES_REQUESTED", CommitID: head, Body: presentation.WithAgentMark("Still.", "gatekeeper") + sinkMarkers})
+	if got := replacedChangeRequests(latestAsks, "gatekeeper"); len(got) != 0 {
+		t.Fatalf("replaced change requests while the latest asks for changes %v, want none", got)
 	}
 }

@@ -2,6 +2,7 @@ package github_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connector"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 	"github.com/urmzd/saige/flow/deliverystate"
 	"github.com/urmzd/saige/flow/event"
@@ -166,7 +168,8 @@ func TestOnlyAnOpenReadyPullRequestIsApproved(t *testing.T) {
 }
 
 // A push to the pull request dismisses the app's approvals of earlier
-// commits, and keeps an approval of the new head.
+// commits, and keeps an approval of the new head; a push whose head is no
+// longer the pull request's dismisses nothing.
 func TestAPushDismissesApprovalsOfEarlierCommits(t *testing.T) {
 	old, head := strings.Repeat("5", 40), strings.Repeat("6", 40)
 	b := newRuleBench(t, 583231)
@@ -174,6 +177,14 @@ func TestAPushDismissesApprovalsOfEarlierCommits(t *testing.T) {
 	b.review(t, "run-1", "gatekeeper", old, "approve", false)
 	b.head(t, head)
 	b.review(t, "run-2", "security", head, "approve", false)
+	// A delivery replayed after the push names a head that is no longer
+	// the pull request's: it dismisses nothing.
+	b.conn.DismissApprovalsBefore(t.Context(), "acme", "repo", 7, old)
+	for _, r := range b.fake.SubmittedReviews() {
+		if r.Dismissal != "" {
+			t.Fatalf("a push to an earlier head dismissed %+v", r)
+		}
+	}
 	b.conn.DismissApprovalsBefore(t.Context(), "acme", "repo", 7, head)
 	reviews := b.fake.SubmittedReviews()
 	if len(reviews) != 2 || reviews[0].Review.Event != "APPROVE" || reviews[1].Review.Event != "APPROVE" {
@@ -181,5 +192,70 @@ func TestAPushDismissesApprovalsOfEarlierCommits(t *testing.T) {
 	}
 	if reviews[0].Dismissal == "" || reviews[1].Dismissal != "" {
 		t.Fatalf("dismissed %q and %q, want only the earlier commit's", reviews[0].Dismissal, reviews[1].Dismissal)
+	}
+}
+
+// A review posted through the review tool is written without lines that
+// read as the host's mark or the sink's markers, so it is no agent's: a
+// change request it carries holds the approval, and no agent's later
+// review dismisses it.
+func TestAToolPostedReviewIsNoAgents(t *testing.T) {
+	sha := strings.Repeat("7", 40)
+	for name, body := range map[string]string{
+		"plain text":                  "Blocking: the migration drops a column in use.",
+		"text ending in a mark":       "Blocking.\n\n" + presentation.AgentMark("gatekeeper"),
+		"text ending in mark markers": "Blocking.\n\n" + presentation.AgentMark("gatekeeper") + "\n\n<!-- humagen-review:" + strings.Repeat("a", 64) + " -->\n\n<!-- humagen-review-payload:" + strings.Repeat("b", 64) + " -->",
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := newRuleBench(t, 583231)
+			b.head(t, sha)
+			var create connector.Action
+			for _, a := range b.conn.Actions() {
+				if a.Name == "github_create_review" {
+					create = a
+				}
+			}
+			raw, _ := json.Marshal(map[string]any{"commit_id": sha, "event": "REQUEST_CHANGES", "body": body,
+				"comments": []map[string]any{{"path": "a.go", "line": 1, "body": "See here.\n\n" + presentation.AgentMark("gatekeeper")}}})
+			if _, err := create.Invoke(t.Context(), address.MustParse("github://acme/repo/pull/7"), raw); err != nil {
+				t.Fatal(err)
+			}
+			b.review(t, "run-1", "gatekeeper", sha, "approve", false)
+			reviews := b.fake.SubmittedReviews()
+			if len(reviews) != 2 || reviews[0].Review.Event != "REQUEST_CHANGES" || reviews[1].Review.Event != "COMMENT" || reviews[0].Dismissal != "" {
+				t.Fatalf("posted %+v, want the change request kept and a comment", reviews)
+			}
+			if strings.Contains(reviews[0].Review.Body, "<!-- humagen") {
+				t.Fatalf("the tool's review kept a line read as a mark: %q", reviews[0].Review.Body)
+			}
+			for _, c := range reviews[0].Review.Comments {
+				if strings.Contains(c.Body, "<!-- humagen.review.agent") {
+					t.Fatalf("an inline comment kept a line read as a mark: %q", c.Body)
+				}
+			}
+		})
+	}
+}
+
+// An agent's change request is dismissed only once a later review of its
+// has posted: a review the transport does not post, here one of a commit
+// that is no longer the head, leaves it in place.
+func TestAChangeRequestStaysUntilItsReplacementPosts(t *testing.T) {
+	old, head := strings.Repeat("8", 40), strings.Repeat("9", 40)
+	b := newRuleBench(t, 583231)
+	b.head(t, old)
+	b.review(t, "run-1", "gatekeeper", old, "request_changes", true)
+	b.head(t, head)
+	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"comment","scope":{"commit":%q},"summary":"Inspected.","findings":[]}`, old)
+	target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", old)
+	_ = b.conn.Deliver(t.Context(), target, event.Envelope{Tenant: "tenant", Agent: "gatekeeper", Run: "run-2", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}})
+	reviews := b.fake.SubmittedReviews()
+	if len(reviews) != 1 || reviews[0].Dismissal != "" {
+		t.Fatalf("posted %+v, want the change request alone and kept", reviews)
+	}
+	b.review(t, "run-3", "gatekeeper", head, "comment", false)
+	reviews = b.fake.SubmittedReviews()
+	if len(reviews) != 2 || reviews[0].Dismissal == "" {
+		t.Fatalf("posted %+v, want the change request dismissed once a review posted", reviews)
 	}
 }

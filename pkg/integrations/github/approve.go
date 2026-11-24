@@ -256,7 +256,7 @@ func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.Appro
 		}
 		facts.AuthorID = author
 		if presentation.ReviewEvent(p.report, policy, facts) != "APPROVE" {
-			dismissStale(ctx, cfg, a.host(), refOf(req), p.view.Agent, req.Commit, "COMMENT", false)
+			dismissStale(ctx, cfg, a.host(), refOf(req), p.view.Agent, req.Commit, "COMMENT")
 			return false, nil
 		}
 		// One approval for each commit, whichever run or replica posts it:
@@ -324,25 +324,47 @@ func claimApproval(ctx context.Context, cfg Config, req transport.ApprovalReques
 // staleReviewMessage is what a dismissed review says it was dismissed for.
 const staleReviewMessage = "A later review of this pull request replaces this one."
 
-// staleReviews are the earlier reviews of agent a new review at commit,
-// posted as event, makes stale: an approval of another commit when the new
-// review does not approve, and a change request when the new review has no
-// finding that blocks. Only reviews whose host-written mark names agent
-// (presentation.ReviewAgent) are named: another agent's review, and one from
-// before reviews were marked, stay.
-func staleReviews(own []transport.ReviewRecord, agent, commit, event string, blocked bool) []int64 {
-	if presentation.AgentMark(agent) == "" {
+// staleReviews are the earlier approvals of agent's that a new review at
+// commit, posted as event, makes stale: an approval of another commit when
+// the new review does not approve. Only reviews whose host-written mark
+// names agent (presentation.ReviewAgent) are named: another agent's review,
+// one posted another way and one from before reviews were marked stay.
+func staleReviews(own []transport.ReviewRecord, agent, commit, event string) []int64 {
+	if presentation.AgentMark(agent) == "" || event == "APPROVE" {
 		return nil
 	}
 	var out []int64
 	for _, row := range own {
-		if presentation.ReviewAgent(row.Body) != agent {
+		if row.State == "APPROVED" && !strings.EqualFold(row.CommitID, commit) && presentation.ReviewAgent(row.Body) == agent {
+			out = append(out, row.ID)
+		}
+	}
+	return out
+}
+
+// replacedChangeRequests are agent's change requests that a later review of
+// agent's, posted and not itself a change request, replaces: every one
+// older than agent's latest review, when that review commented or
+// approved. While agent's latest review asks for changes, none is named.
+func replacedChangeRequests(own []transport.ReviewRecord, agent string) []int64 {
+	if presentation.AgentMark(agent) == "" {
+		return nil
+	}
+	var latest *transport.ReviewRecord
+	for i, row := range own {
+		if row.State == "DISMISSED" || presentation.ReviewAgent(row.Body) != agent {
 			continue
 		}
-		switch {
-		case row.State == "APPROVED" && event != "APPROVE" && !strings.EqualFold(row.CommitID, commit):
-			out = append(out, row.ID)
-		case row.State == "CHANGES_REQUESTED" && !blocked:
+		if latest == nil || row.ID > latest.ID {
+			latest = &own[i]
+		}
+	}
+	if latest == nil || latest.State != "COMMENTED" && latest.State != "APPROVED" {
+		return nil
+	}
+	var out []int64
+	for _, row := range own {
+		if row.State == "CHANGES_REQUESTED" && row.ID < latest.ID && presentation.ReviewAgent(row.Body) == agent {
 			out = append(out, row.ID)
 		}
 	}
@@ -357,10 +379,22 @@ type reviewHost interface {
 	DismissReview(ctx context.Context, owner, repo string, number int, reviewID int64, message string) error
 }
 
-// dismissStale dismisses the reviews staleReviews names. It never stops the
-// new review: a read or a dismissal that fails is logged, and the review
+// dismissStale dismisses the approvals staleReviews names. It never stops
+// the new review: a read or a dismissal that fails is logged, and the review
 // posts. An API that cannot dismiss dismisses nothing.
-func dismissStale(ctx context.Context, cfg Config, host reviewHost, ref transport.Ref, agent, commit, event string, blocked bool) {
+func dismissStale(ctx context.Context, cfg Config, host reviewHost, ref transport.Ref, agent, commit, event string) {
+	dismissNamed(ctx, cfg, host, ref, func(own []transport.ReviewRecord) []int64 { return staleReviews(own, agent, commit, event) })
+}
+
+// dismissReplaced dismisses the change requests replacedChangeRequests
+// names, once a review has posted. A read or a dismissal that fails is
+// logged.
+func dismissReplaced(ctx context.Context, cfg Config, host reviewHost, ref transport.Ref, agent string) {
+	dismissNamed(ctx, cfg, host, ref, func(own []transport.ReviewRecord) []int64 { return replacedChangeRequests(own, agent) })
+}
+
+// dismissNamed reads the app's own reviews and dismisses those named.
+func dismissNamed(ctx context.Context, cfg Config, host reviewHost, ref transport.Ref, named func([]transport.ReviewRecord) []int64) {
 	if _, ok := cfg.API.(transport.ReviewDismissAPI); !ok || host == nil {
 		return
 	}
@@ -373,7 +407,7 @@ func dismissStale(ctx context.Context, cfg Config, host reviewHost, ref transpor
 		log.Warn("github: earlier reviews could not be read, so none were dismissed", "repository", ref.Owner+"/"+ref.Repo, "pull", ref.Number, "error", err)
 		return
 	}
-	for _, id := range staleReviews(own, agent, commit, event, blocked) {
+	for _, id := range named(own) {
 		if err := host.DismissReview(ctx, ref.Owner, ref.Repo, ref.Number, id, staleReviewMessage); err != nil && !errors.Is(err, transport.ErrNotOwnReview) {
 			log.Warn("github: a stale review could not be dismissed", "repository", ref.Owner+"/"+ref.Repo, "pull", ref.Number, "review", id, "error", err)
 		}
@@ -385,7 +419,8 @@ func refOf(req transport.ApprovalRequest) transport.Ref {
 }
 
 // DismissApprovalsBefore dismisses the app's approvals of a pull request
-// that are on a commit other than head, once a push moved it there. Only a
+// that are on a commit other than head, once a push moved it there and
+// while head is still the pull request's head. Only a
 // review whose host-written mark names an agent is dismissed. A read or a
 // dismissal that fails is logged; an API that cannot dismiss dismisses
 // nothing.
@@ -396,6 +431,20 @@ func (c *Connector) DismissApprovalsBefore(ctx context.Context, owner, repo stri
 	log := c.cfg.Log
 	if log == nil {
 		log = slog.Default()
+	}
+	// A delivery replayed after later pushes names a head that is no
+	// longer the pull request's: it dismisses nothing.
+	reader, ok := c.cfg.API.(transport.ContextAPI)
+	if !ok {
+		return
+	}
+	now, err := reader.ReadContext(ctx, transport.Ref{Owner: owner, Repo: repo, Number: number}, 1)
+	if err != nil {
+		log.Warn("github: the pull request's head could not be read, so no approval was dismissed", "repository", owner+"/"+repo, "pull", number, "error", err)
+		return
+	}
+	if !strings.EqualFold(now.Subject.Head.SHA, head) {
+		return
 	}
 	own, err := c.OwnReviews(ctx, owner, repo, number)
 	if err != nil {
