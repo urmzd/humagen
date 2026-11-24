@@ -58,7 +58,7 @@ func (p *Platform) StartJournalMigration(ctx context.Context) (*JournalMigration
 // what it would write; with replace, a request that is not matched to its
 // run is set to sessionstate.UnkeptRequest.
 func (m *JournalMigration) Migrate(ctx context.Context, tenant string, apply, replace bool) (sessionstate.RequestReport, error) {
-	run, err := m.unsafeFor(tenant, m.unreadable)
+	run, err := m.mayBeBusy(tenant, m.unreadable)
 	if err != nil {
 		return sessionstate.RequestReport{Tenant: tenant, Apply: apply}, err
 	}
@@ -69,21 +69,23 @@ func (m *JournalMigration) Migrate(ctx context.Context, tenant string, apply, re
 	}
 	return sessionstate.NewJournal(m.p.sharedState()).MigrateRequests(ctx, sessionstate.RequestMigration{
 		Tenant: tenant, Apply: apply, Replace: replace, Busy: m.first,
-		Request: m.p.askedRequest,
+		Request: func(ctx context.Context, runID string) (sessionstate.AskedRequest, error) {
+			return m.p.askedRequest(ctx, tenant, runID)
+		},
 		Recheck: func(ctx context.Context) (map[thread.Key]string, string, error) {
 			busy, unreadable, err := m.turns.scan(ctx)
 			if err != nil {
 				return nil, "", err
 			}
-			run, err := m.unsafeFor(tenant, unreadable)
+			run, err := m.mayBeBusy(tenant, unreadable)
 			return busy, run, err
 		},
 	})
 }
 
-// unsafeFor is the first of the unreadable runs that may be tenant's: one the
+// mayBeBusy is the first of the unreadable runs that may be tenant's: one the
 // run index holds in tenant, or in no tenant at all.
-func (m *JournalMigration) unsafeFor(tenant string, unreadable []string) (string, error) {
+func (m *JournalMigration) mayBeBusy(tenant string, unreadable []string) (string, error) {
 	for _, id := range unreadable {
 		holders, ok := m.holders[id]
 		if !ok {
@@ -111,11 +113,28 @@ func (m *JournalMigration) unsafeFor(tenant string, unreadable []string) (string
 	return "", nil
 }
 
-// askedRequest reads one run's request from the run ledger.
-func (p *Platform) askedRequest(ctx context.Context, runID string) (sessionstate.AskedRequest, error) {
+// askedRequest reads one run's request from the run ledger. When the ledger
+// cannot give it, the request as it was asked is read from the trigger the
+// run index holds for the run in tenant, when it holds one, so an entry that
+// is already that request is left.
+func (p *Platform) askedRequest(ctx context.Context, tenant, runID string) (sessionstate.AskedRequest, error) {
+	missing := func(why string) (sessionstate.AskedRequest, error) {
+		out := sessionstate.AskedRequest{Missing: why}
+		r, err := p.Runs.Get(tenant, runID)
+		if errors.Is(err, runs.ErrNotFound) {
+			return out, nil
+		}
+		if err != nil {
+			return sessionstate.AskedRequest{}, fmt.Errorf("platform: run %s: %w", runID, err)
+		}
+		if tag := r.Tag(); tag.Data != nil {
+			out.Asked, out.AskedKnown = wire.AskedOf(tag), true
+		}
+		return out, nil
+	}
 	r, err := p.ledger.GetRun(ctx, runID)
 	if errors.Is(err, drun.ErrNotFound) {
-		return sessionstate.AskedRequest{Missing: "the ledger holds no such run"}, nil
+		return missing("the ledger holds no such run")
 	}
 	if err != nil {
 		return sessionstate.AskedRequest{}, err
@@ -125,7 +144,7 @@ func (p *Platform) askedRequest(ctx context.Context, runID string) (sessionstate
 	}
 	req, err := wire.RunRequestOf(r.Input)
 	if err != nil {
-		return sessionstate.AskedRequest{Missing: "the run's input cannot be read"}, nil
+		return missing("the run's input cannot be read")
 	}
 	return sessionstate.AskedRequest{Thread: req.Thread, Asked: req.Asked, WithPassages: req.WithPassages}, nil
 }

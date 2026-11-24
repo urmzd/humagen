@@ -52,7 +52,10 @@ journal   rewrites each journaled request to the request as it was asked,
           passages its turn retrieved before it is set to the request as it
           was asked; one already as it was asked is left. A request whose
           run the ledger does not hold, or whose text is neither, is listed
-          and left, or with -unmatched replace set to "` + sessionstate.UnkeptRequest + `".
+          and left, or with -unmatched replace set to "` + sessionstate.UnkeptRequest + `"
+          when its text may hold passages: one that is the request as it
+          was asked (read from the run index when the ledger cannot give
+          it), or whose text has no blank line, is left.
           Answers are left. A thread that holds a run that has not ended is
           listed and left: run the command again once it has ended. It
           reads the runs that have not ended once, and with -apply again

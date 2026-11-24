@@ -437,3 +437,108 @@ func TestMigrateJournalLeavesTheTenantOfARunItCannotRead(t *testing.T) {
 		t.Fatalf("a run held in no tenant did not leave every tenant:\n%s", got)
 	}
 }
+
+// A run in acme that the ledger has not ended, and whose input cannot be
+// read, found when the runs are read again before a write, leaves the rest
+// of acme, and another tenant is still migrated.
+func TestMigrateJournalLeavesATenantWhenARunItCannotReadIsFoundBeforeWriting(t *testing.T) {
+	f := newJournalFixture(t)
+	m := f.migration(t)
+	acmeBefore := f.entries(t, "acme")
+	unread := f.accept(t, "acme", "acme-unread-later", []byte("not a run input"), true)
+
+	rep, err := m.Migrate(t.Context(), "acme", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Changes() != 0 || rep.Counts[sessionstate.TenantLeft] != 1 {
+		t.Fatalf("acme: counts %v", rep.Counts)
+	}
+	if l := rep.Lines[len(rep.Lines)-1]; l.Kind != sessionstate.TenantLeft || l.Run != unread || l.Detail == "" {
+		t.Fatalf("acme: last line %+v", l)
+	}
+	if !reflect.DeepEqual(f.entries(t, "acme"), acmeBefore) {
+		t.Fatal("acme was written after a run it cannot read was found")
+	}
+
+	rep, err = m.Migrate(t.Context(), "other", true, false)
+	if err != nil || rep.Changes() != 1 || rep.Counts[sessionstate.TenantLeft] != 0 {
+		t.Fatalf("other: %+v, %v", rep, err)
+	}
+	if texts, _ := f.request(t, "other", "other-passages"); !allAre(texts, f.asked(t, "other", "other-passages")) {
+		t.Fatalf("other was not migrated: %q", texts)
+	}
+}
+
+// With -unmatched replace, a request whose run the ledger does not hold is
+// replaced only when its text may hold passages: one that is the request as
+// it was asked, read from the run index, or whose text has no blank line,
+// is left.
+func TestMigrateJournalReplacesOnlyARequestThatMayHoldPassages(t *testing.T) {
+	f := newJournalFixture(t)
+	p, err := platform.New(platform.Config{Backends: f.b, Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+	journal := sessionstate.NewJournal(f.st)
+	// add journals one exchange whose run the ledger does not hold.
+	add := func(id, source, said string, ctx map[string]string, indexed bool) string {
+		t.Helper()
+		tag := wire.NewEvent(wire.Raise{ID: id, Tenant: "acme", Origin: "api", Agent: "docs", Text: "is it deployed?", Context: ctx, Actor: event.Actor{ID: "ada"}, At: at})
+		tag.Source = source
+		runID := runtime.RunID("acme", id)
+		if indexed {
+			if err := p.Runs.Record(runID, tag, 1); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if said == "" {
+			if said, err = event.Render(tag); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := journal.Append(t.Context(), thread.KeyOf(tag, "docs"),
+			thread.Entry{Role: thread.RoleUser, Text: said, Actor: event.Actor{ID: "ada"}, RunID: runID, At: at},
+			thread.Entry{Role: thread.RoleAssistant, Text: "answered from " + marker, Actor: event.Actor{ID: "docs", Bot: true}, RunID: runID, At: at},
+		); err != nil {
+			t.Fatal(err)
+		}
+		return runID
+	}
+	three := "slack://T1/C3?thread=300.1"
+	// As asked, with trigger context, so its text has a blank line.
+	add("gone-asked", three, "", map[string]string{"pr": "8"}, true)
+	add("gone-plain", three, "is it deployed?", nil, false)
+	add("gone-passages", three, passages+"\n\nis it deployed?", nil, false)
+	_ = p.Close()
+
+	got := f.migrate(t, journalTarget{tenant: "acme", replace: true, apply: true})
+	if !strings.Contains(got, "run "+runtime.RunID("acme", "gone-plain")+" (the ledger holds no such run; left: its text cannot hold passages)") {
+		t.Fatalf("a text with no blank line was not left:\n%s", got)
+	}
+	if texts, _ := f.request(t, "acme", "gone-asked"); !allAre(texts, f.renderOf(t, "gone-asked", three, map[string]string{"pr": "8"}, at)) {
+		t.Fatalf("a request as it was asked was replaced: %q", texts)
+	}
+	if texts, _ := f.request(t, "acme", "gone-plain"); !allAre(texts, "is it deployed?") {
+		t.Fatalf("a text that cannot hold passages was replaced: %q", texts)
+	}
+	if texts, _ := f.request(t, "acme", "gone-passages"); !allAre(texts, sessionstate.UnkeptRequest) {
+		t.Fatalf("a text that may hold passages was not replaced: %q", texts)
+	}
+}
+
+// renderOf is the request as it was asked of a trigger add made.
+func (f *journalFixture) renderOf(t *testing.T, id, source string, ctx map[string]string, at time.Time) string {
+	t.Helper()
+	tag := wire.NewEvent(wire.Raise{ID: id, Tenant: "acme", Origin: "api", Agent: "docs", Text: "is it deployed?", Context: ctx, Actor: event.Actor{ID: "ada"}, At: at})
+	tag.Source = source
+	s, err := event.Render(tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, "\n\n") {
+		t.Fatalf("the request as it was asked has no blank line: %q", s)
+	}
+	return s
+}

@@ -37,12 +37,18 @@ func RunRequestOf(input []byte) (RunRequest, error) {
 		r.Thread = in.Session.ThreadKey()
 	}
 	r.text, r.context, _ = event.Prompt(in.Trigger.Data)
-	if s, err := event.Render(in.Trigger); err == nil && strings.TrimSpace(s) != "" {
-		r.Asked = s
-	} else {
-		r.Asked = event.RequestText(r.text, r.context)
-	}
+	r.Asked = AskedOf(in.Trigger)
 	return r, nil
+}
+
+// AskedOf is the request as it was asked of a run whose trigger is tag (see
+// RunRequest.Asked).
+func AskedOf(tag event.Envelope) string {
+	if s, err := event.Render(tag); err == nil && strings.TrimSpace(s) != "" {
+		return s
+	}
+	text, context, _ := event.Prompt(tag.Data)
+	return event.RequestText(text, context)
 }
 
 // WithPassages reports whether journaled is this request as a turn with

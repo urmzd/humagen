@@ -152,3 +152,49 @@ func TestMigrateRequestsChecksAgainBeforeWriting(t *testing.T) {
 		t.Fatalf("dry run = %+v, %v", rep, err)
 	}
 }
+
+// With Replace, a request not matched to its run is left when it cannot
+// hold passages: it is the request as it was asked (AskedKnown), or its text
+// has no blank line.
+func TestMigrateRequestsReplacesOnlyWhatMayHoldPassages(t *testing.T) {
+	key := thread.Key{Tenant: "acme", Agent: "docs", Surface: "slack://T1/C1?thread=1.1"}
+	st := state.NewMemory()
+	j := sessionstate.NewJournal(st)
+	at := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	for run, text := range map[string]string{"r-asked": "Context from the trigger:\n- pr: 7\n\nwhat changed?", "r-plain": "what changed?", "r-passages": "Passages retrieved.\n\nwhat changed?"} {
+		if _, err := j.Append(t.Context(), key,
+			thread.Entry{Role: thread.RoleUser, Text: text, Actor: event.Actor{ID: "ada"}, RunID: run, At: at},
+			thread.Entry{Role: thread.RoleAssistant, Text: "answer", Actor: event.Actor{ID: "docs", Bot: true}, RunID: run, At: at},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep, err := j.MigrateRequests(t.Context(), sessionstate.RequestMigration{
+		Tenant: "acme", Apply: true, Replace: true,
+		Request: func(_ context.Context, run string) (sessionstate.AskedRequest, error) {
+			if run == "r-asked" {
+				return sessionstate.AskedRequest{Missing: "the ledger holds no such run", AskedKnown: true, Asked: "Context from the trigger:\n- pr: 7\n\nwhat changed?"}, nil
+			}
+			return sessionstate.AskedRequest{Missing: "the ledger holds no such run"}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Counts[sessionstate.RequestAsAsked] != 1 || rep.Counts[sessionstate.RequestReplaced] != 1 || rep.Counts[sessionstate.RequestNotMatched] != 1 {
+		t.Fatalf("counts %v", rep.Counts)
+	}
+	history, err := j.History(t.Context(), key, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, e := range history {
+		if e.Role == thread.RoleUser {
+			got[e.RunID] = e.Text
+		}
+	}
+	if got["r-asked"] != "Context from the trigger:\n- pr: 7\n\nwhat changed?" || got["r-plain"] != "what changed?" || got["r-passages"] != sessionstate.UnkeptRequest {
+		t.Fatalf("texts %q", got)
+	}
+}

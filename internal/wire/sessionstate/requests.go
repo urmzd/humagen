@@ -34,6 +34,10 @@ type AskedRequest struct {
 	// Missing, when not empty, says why the run's request cannot be read,
 	// such as a run the ledger does not hold.
 	Missing string
+	// AskedKnown reports that Asked holds the request as it was asked even
+	// though Missing is set, read from somewhere other than the run's
+	// input, such as the run index. An entry that is Asked is then left.
+	AskedKnown bool
 	// Thread is the thread the run's exchange is journaled in.
 	Thread thread.Key
 	// Asked is the request as it was asked.
@@ -106,7 +110,9 @@ func (r RequestReport) Changes() int { return r.Counts[RequestRewritten] + r.Cou
 //   - An entry that is the request with the passages its turn retrieved
 //     is set to the request as it was asked.
 //   - Any other entry of a run (its run is not in the ledger, or its text is
-//     neither) is listed and left, or set to UnkeptRequest with m.Replace.
+//     neither) is listed and left, or set to UnkeptRequest with m.Replace
+//     when its text may hold passages: an entry that is the request as it
+//     was asked (AskedKnown), or whose text has no blank line, is left.
 //
 // Every record of an entry (its place in the thread, and its index by run
 // and by surface message) is written together, each at the version read, so
@@ -213,10 +219,13 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 	if err != nil {
 		return fmt.Errorf("sessionstate: entry %s: run %s: %w", row.Key, e.RunID, err)
 	}
-	if req.Missing == "" && journalKey(req.Thread) != base {
-		req.Missing = "the run is journaled in another thread"
+	if req.Missing == "" {
+		req.AskedKnown = true
+		if journalKey(req.Thread) != base {
+			req.Missing = "the run is journaled in another thread"
+		}
 	}
-	if req.Missing == "" && e.Text == req.Asked {
+	if req.AskedKnown && e.Text == req.Asked {
 		rep.Counts[RequestAsAsked]++
 		return nil
 	}
@@ -234,6 +243,10 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 	if !matched {
 		if !m.Replace {
 			rep.add(RequestNotMatched, row.Key, e.RunID, detail)
+			return nil
+		}
+		if !mayHoldPassages(e.Text) {
+			rep.add(RequestNotMatched, row.Key, e.RunID, detail+"; left: its text cannot hold passages")
 			return nil
 		}
 		to, kind = UnkeptRequest, RequestReplaced
@@ -274,6 +287,12 @@ func (j *Journal) migrateRequest(ctx context.Context, m RequestMigration, row st
 	rep.add(kind, row.Key, e.RunID, fmt.Sprintf("%s%d records", detail, n))
 	return nil
 }
+
+// mayHoldPassages reports whether a journaled request text can hold the
+// passages a turn retrieved: such a text is the passages, a blank line, then
+// the request's text (after the trigger context, when there is one), so a
+// text with no blank line holds none.
+func mayHoldPassages(text string) bool { return strings.Contains(text, "\n\n") }
 
 // copies are the writes that set every record of entry e (read from row) to
 // text, each at the version read, and how many records they are. An index
