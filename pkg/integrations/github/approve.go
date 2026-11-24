@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -114,33 +115,52 @@ var noReply = regexp.MustCompile(`^(?:([0-9]+)\+)?([a-z0-9](?:[a-z0-9-]{0,38}))@
 // coAuthorsRead reads the Co-authored-by trailers of a pull request's
 // commits for the person who asked. read is true only when every co-author
 // is someone the host can name: an address the client maps a person by
-// (grant.People), or a GitHub no-reply address. A trailer with no address,
-// or one nobody is known by, leaves the list unread. coAuthored is true
-// when a co-author is the asker, by login or by user ID.
+// (grant.People), a GitHub no-reply address with a user ID, or a login-only
+// no-reply address whose login is a mapped person's current login. A
+// trailer with no address, or one nobody is known by, leaves the list
+// unread. coAuthored is true when a co-author is, or may be, the asker: an
+// address the asker is among the people mapped by, a no-reply address with
+// the asker's user ID, or the asker's login.
 func coAuthorsRead(commits []transport.PRCommit, grant ReviewGrant) (read, coAuthored bool) {
 	if grant.AskerID <= 0 {
 		return false, false
 	}
-	byEmail := map[string]string{}
+	byEmail := map[string][]string{}
+	mapped := map[string]bool{}
 	for login, email := range grant.People {
+		login = strings.ToLower(strings.TrimSpace(login))
+		mapped[login] = true
 		if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
-			byEmail[email] = login
+			byEmail[email] = append(byEmail[email], login)
 		}
 	}
 	asker := strings.ToLower(strings.TrimSpace(grant.Asker))
 	for _, c := range commits {
 		for _, co := range c.CoAuthors {
 			email := strings.ToLower(strings.TrimSpace(co.Email))
-			if login, ok := byEmail[email]; ok && email != "" {
-				coAuthored = coAuthored || strings.EqualFold(login, asker)
+			if email == "" {
+				return false, false
+			}
+			// Several people may share an address: it is the asker's when
+			// it is any of theirs.
+			if logins, ok := byEmail[email]; ok {
+				coAuthored = coAuthored || slices.Contains(logins, asker)
 				continue
 			}
 			m := noReply.FindStringSubmatch(email)
 			if m == nil {
 				return false, false
 			}
-			id, _ := strconv.ParseInt(m[1], 10, 64)
-			coAuthored = coAuthored || m[2] == asker || id > 0 && id == grant.AskerID
+			if id, _ := strconv.ParseInt(m[1], 10, 64); id > 0 {
+				coAuthored = coAuthored || id == grant.AskerID
+				continue
+			}
+			// A login-only address names whoever holds the login now; one
+			// from before a rename is no one the host can name.
+			if !mapped[m[2]] {
+				return false, false
+			}
+			coAuthored = coAuthored || m[2] == asker
 		}
 	}
 	return true, coAuthored
@@ -296,7 +316,8 @@ const reviewAgents = "github_review_agents"
 
 // recordReviewAgent keeps that agent wrote the review the sink posts for
 // v's run at commit, before it posts. The record is created once and never
-// changed. Without a store nothing is kept, and a change request of that
+// changed; a record that names another agent fails the review, which then
+// does not post. Without a store nothing is kept, and a change request of that
 // review is then no agent's.
 func recordReviewAgent(ctx context.Context, cfg Config, v transport.View, commit string) error {
 	if cfg.ApprovalClaims == nil || presentation.AgentMark(v.Agent) == "" || v.RunID == "" {
@@ -304,10 +325,18 @@ func recordReviewAgent(ctx context.Context, cfg Config, v transport.View, commit
 	}
 	key := markerKey(transport.ReviewMarker(v.Tenant, v.RunID, commit))
 	err := cfg.ApprovalClaims.Write(ctx, reviewAgents, state.Create(cfg.Tenant, key, []byte(v.Agent)))
-	if errors.Is(err, state.ErrConflict) {
-		return nil
+	if !errors.Is(err, state.ErrConflict) {
+		return err
 	}
-	return err
+	// Kept already, by a retry of this review: it must name the same agent.
+	held, err := cfg.ApprovalClaims.Get(ctx, reviewAgents, cfg.Tenant, key)
+	if err != nil {
+		return err
+	}
+	if string(held) != v.Agent {
+		return fmt.Errorf("github: the review of run %s is recorded for another agent", v.RunID)
+	}
+	return nil
 }
 
 // recordedAgent is the agent the host recorded for a review's delivery

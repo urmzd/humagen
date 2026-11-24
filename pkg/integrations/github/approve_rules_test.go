@@ -30,7 +30,7 @@ func newRuleBench(t *testing.T, authorID int64) *ruleBench {
 	t.Helper()
 	b := &ruleBench{fake: github.NewFake(), ref: transport.Ref{Owner: "acme", Repo: "repo", Number: 7}}
 	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +272,7 @@ func TestAChangeRequestWithNoRecordHoldsTheApproval(t *testing.T) {
 	other := newRuleBench(t, 583231)
 	other.fake = b.fake
 	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -283,5 +283,45 @@ func TestAChangeRequestWithNoRecordHoldsTheApproval(t *testing.T) {
 	reviews := b.fake.SubmittedReviews()
 	if len(reviews) != 2 || reviews[1].Review.Event != "COMMENT" {
 		t.Fatalf("posted %+v, want the clean review as a comment", reviews)
+	}
+}
+
+// Only a GitHub App approves: a connector with an app ID whose login is its
+// bot account. One that posts as a person's account, or names no app ID,
+// posts a clean review as a comment.
+func TestOnlyAGitHubAppApproves(t *testing.T) {
+	sha := strings.Repeat("c", 40)
+	for name, c := range map[string]struct {
+		login string
+		appID int64
+		want  string
+	}{
+		"an app's bot account":        {login: "humagen[bot]", appID: 9001, want: "APPROVE"},
+		"a person's account":          {login: "ci-bot", appID: 9001, want: "COMMENT"},
+		"a bot account and no app ID": {login: "humagen[bot]", want: "COMMENT"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := newRuleBench(t, 583231)
+			clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
+			conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: c.login, AppID: c.appID, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+				ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.conn = conn
+			b.head(t, sha)
+			// A change request the account posted, which the transport
+			// tells apart as its own only for an app's bot account.
+			if c.want == "COMMENT" {
+				if _, err := b.fake.SeedReview(b.ref, c.login, "REQUEST_CHANGES", sha); err != nil {
+					t.Fatal(err)
+				}
+			}
+			b.review(t, "run-1", "gatekeeper", sha, "approve", false)
+			reviews := b.fake.SubmittedReviews()
+			if got := reviews[len(reviews)-1].Review.Event; got != c.want {
+				t.Fatalf("posted %s, want %s", got, c.want)
+			}
+		})
 	}
 }

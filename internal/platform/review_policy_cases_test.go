@@ -134,7 +134,7 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 		t.Fatal(err)
 	}
 	var gh transport.API = withCommits{Fake: api, fail: c.commitsFail}
-	peer, err := ghconnector.New(ghconnector.Config{API: gh, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
+	peer, err := ghconnector.New(ghconnector.Config{API: gh, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", AppID: 9001, Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
 		ReviewPolicy: func(ctx context.Context, v transport.View) (ghconnector.ReviewGrant, error) {
 			n++

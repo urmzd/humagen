@@ -176,9 +176,12 @@ func New(cfg Config) (*Connector, error) {
 				pending := newApprovals(cfg.Clock)
 				pending.host = func() reviewHost { return c.Connector }
 				// The transport asks the hook only of an API that can also
-				// dismiss reviews; without one nothing approves.
+				// dismiss reviews, and only a GitHub App approves: its reviews
+				// are its bot account's, which the transport tells apart as
+				// its own. A client that posts as a person's account never
+				// approves.
 				_, dismisses := cfg.API.(transport.ReviewDismissAPI)
-				if cfg.ReviewPolicy != nil && dismisses {
+				if cfg.ReviewPolicy != nil && dismisses && approvesAsApp(cfg) {
 					base.MayApprove = pending.mayApprove(cfg)
 				}
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
@@ -312,6 +315,12 @@ func (c *Connector) Actions() []connector.Action {
 		actions = append(actions, c.mutationAction(), c.runChecksAction())
 	}
 	return actions
+}
+
+// approvesAsApp reports whether the connector acts as a GitHub App that may
+// approve: it has an app ID, and its login is the app's bot account.
+func approvesAsApp(cfg Config) bool {
+	return cfg.AppID > 0 && strings.HasSuffix(strings.ToLower(cfg.Login), "[bot]")
 }
 
 // createReviewAction is the transport's tool that posts a review a model

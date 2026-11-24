@@ -34,7 +34,7 @@ func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T
 	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[{"id":"f1","severity":"info","title":"Preserve behavior","suggestion":"Keep this result","evidence":[{"observation":"Observed the result","source":"a.go:1","step":"test-1"}],"prompt":"Preserve this behavior","location":{"path":"a.go","line":1}}]}`, sha)
 	evidence := true
 	findings := 0
-	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", ReviewText: func(v transport.View) (string, error) {
+	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ReviewText: func(v transport.View) (string, error) {
 		if !evidence {
 			return "", errors.New("source evidence unavailable")
 		}
@@ -99,7 +99,7 @@ func TestARecoveredApprovalStaysOneApproval(t *testing.T) {
 	}
 	target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", sha)
 	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[]}`, sha)
-	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(),
+	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(),
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) {
 			return github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}, nil
 		}}

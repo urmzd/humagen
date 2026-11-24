@@ -75,7 +75,7 @@ func TestTheApprovalHookDecidesAgain(t *testing.T) {
 				api = &checksThatTurn{Fake: fake}
 			}
 			var calls atomic.Int32
-			conn, err := github.New(github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+			conn, err := github.New(github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 				ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return c.grant(int(calls.Add(1))) }})
 			if err != nil {
 				t.Fatal(err)
@@ -116,7 +116,7 @@ func TestNoReviewPolicyApprovesNothing(t *testing.T) {
 	if err := fake.SeedCommitCheck("acme", "repo", sha, transport.CommitCheck{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "success"}); err != nil {
 		t.Fatal(err)
 	}
-	conn, err := github.New(github.Config{API: fake, Tenant: "tenant", Login: "humagen[bot]", ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s"})
+	conn, err := github.New(github.Config{API: fake, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s"})
 	if err != nil {
 		t.Fatal(err)
 	}

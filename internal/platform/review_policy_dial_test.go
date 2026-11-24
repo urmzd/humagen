@@ -29,7 +29,7 @@ func TestTheDialedConnectorApprovesACleanAutomaticReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := clients.Client{Tenant: "t", ID: "gh", Surface: clients.GitHub, Enabled: true, Managed: clients.ManagedStatic, DefaultAgent: "gatekeeper",
-		Identity: clients.Identity{Owners: []string{"acme"}},
+		Identity: clients.Identity{Owners: []string{"acme"}, AppID: "9001"},
 		GitHub:   &clients.GitHubOptions{Login: "humagen[bot]"}}
 	ref := github.Ref{Owner: "acme", Repo: "site", Number: 7}
 	proof := github.Context{Files: []github.ContextFile{{Filename: "a.go", Patch: "@@ -1 +1 @@\n-old\n+new"}}}

@@ -589,11 +589,10 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		// replica shares; without it nothing approves.
 		cfg.ApprovalClaims, cfg.Log = p.approvalClaims, p.log
 		// The app's own checks are told apart by its ID as well as its
-		// login; a client that is no GitHub App has none.
-		if app {
-			if id, err := strconv.ParseInt(strings.TrimSpace(c.Identity.AppID), 10, 64); err == nil && id > 0 {
-				cfg.AppID = id
-			}
+		// login. A client with no app ID is no GitHub App, and never
+		// approves.
+		if id, err := strconv.ParseInt(strings.TrimSpace(c.Identity.AppID), 10, 64); err == nil && id > 0 {
+			cfg.AppID = id
 		}
 		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
 		installed := p.installedRepos(c, api, app)

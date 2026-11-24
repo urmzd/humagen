@@ -27,7 +27,7 @@ func TestAReviewPostedInTheEarlierLayoutIsRecovered(t *testing.T) {
 	env := event.Envelope{Tenant: "tenant", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
 	store := deliverystate.NewMemory()
 	deliver := func(scope string, legacy bool) error {
-		c, err := New(Config{API: api, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: store, DeliveryScope: scope, legacyPosts: legacy})
+		c, err := New(Config{API: api, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, DeliveryState: store, DeliveryScope: scope, legacyPosts: legacy})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func TestAReviewPostedBeforeTheAgentMarkIsRecovered(t *testing.T) {
 	env := event.Envelope{Tenant: "tenant", Agent: "gatekeeper", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
 	store := deliverystate.NewMemory()
 	deliver := func(scope string, unmarked bool) error {
-		c, err := New(Config{API: api, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: store, DeliveryScope: scope, unmarkedPosts: unmarked})
+		c, err := New(Config{API: api, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, DeliveryState: store, DeliveryScope: scope, unmarkedPosts: unmarked})
 		if err != nil {
 			t.Fatal(err)
 		}
