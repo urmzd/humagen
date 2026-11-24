@@ -13334,6 +13334,22 @@ components:
           description: The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default.
           type: boolean
         output: {$ref: "#/components/schemas/AgentOutput"}
+        skills: {$ref: "#/components/schemas/AgentSkills"}
+    AgentSkills:
+      description: |
+        What the agent may do with the skill library beyond the skills a
+        person names. Left out, it loads none.
+      type: object
+      properties:
+        loadable:
+          description: |
+            The library skills the agent may load with `use_skill`, each run
+            as a subagent of its own (`skill-runner`): skill names, or `*`
+            alone for any published skill of the run's project chain. A
+            personal skill never loads. Empty loads none.
+          type: array
+          maxItems: 32
+          items: {type: string}
     AgentOutput:
       description: |
         The shape of the agent's answer. The model is asked for structured
