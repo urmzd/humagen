@@ -165,6 +165,10 @@ type AutoReviewRequest struct {
 	// Push is a push to the pull request; otherwise it opened, reopened or
 	// left draft, and is reviewed whole.
 	Push bool
+	// Author is the pull request's author, and AuthorID their GitHub user
+	// ID, as the signed payload names them.
+	Author   string
+	AuthorID int64
 }
 
 // MatchAutoReview reads a signature-verified pull_request payload and reports
@@ -183,7 +187,11 @@ func (c Client) MatchAutoReview(kind string, body []byte) (AutoReviewRequest, bo
 		PullRequest struct {
 			Draft bool   `json:"draft"`
 			State string `json:"state"`
-			Head  struct {
+			User  struct {
+				Login string `json:"login"`
+				ID    int64  `json:"id"`
+			} `json:"user"`
+			Head struct {
 				SHA string `json:"sha"`
 			} `json:"head"`
 		} `json:"pull_request"`
@@ -207,7 +215,7 @@ func (c Client) MatchAutoReview(kind string, body []byte) (AutoReviewRequest, bo
 	if !c.GitHub.AutoReview.Reviews(repo) {
 		return AutoReviewRequest{}, false
 	}
-	return AutoReviewRequest{Repository: repo, Number: p.Number, SHA: strings.ToLower(p.PullRequest.Head.SHA), Push: p.Action == "synchronize"}, true
+	return AutoReviewRequest{Repository: repo, Number: p.Number, SHA: strings.ToLower(p.PullRequest.Head.SHA), Push: p.Action == "synchronize", Author: p.PullRequest.User.Login, AuthorID: p.PullRequest.User.ID}, true
 }
 
 func fullSHA(s string) bool {
@@ -283,4 +291,36 @@ func (c Client) Triggers() []string {
 		}
 	}
 	return out
+}
+
+// PullPushed reads a signature-verified pull_request payload and reports a
+// push to an open pull request the client serves: its repository, number
+// and new head, which the payload's after and the pull request's head both
+// name. The app's approvals of an earlier head are dismissed there.
+func (c Client) PullPushed(kind string, body []byte) (repo string, number int, head string, ok bool) {
+	if c.Surface != GitHub || !c.Enabled || c.GitHub == nil || kind != "pull_request" {
+		return "", 0, "", false
+	}
+	var p struct {
+		Action      string `json:"action"`
+		Number      int    `json:"number"`
+		After       string `json:"after"`
+		PullRequest struct {
+			Head struct {
+				SHA string `json:"sha"`
+			} `json:"head"`
+		} `json:"pull_request"`
+		Repository struct {
+			FullName string `json:"full_name"`
+		} `json:"repository"`
+	}
+	if json.Unmarshal(body, &p) != nil || p.Action != "synchronize" || !strings.EqualFold(p.After, p.PullRequest.Head.SHA) {
+		return "", 0, "", false
+	}
+	repo = p.Repository.FullName
+	owner, _, _ := strings.Cut(repo, "/")
+	if p.Number <= 0 || !fullSHA(p.PullRequest.Head.SHA) || !repoPattern.MatchString(repo) || !c.Serves(owner) {
+		return "", 0, "", false
+	}
+	return repo, p.Number, strings.ToLower(p.PullRequest.Head.SHA), true
 }

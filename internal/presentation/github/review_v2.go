@@ -157,31 +157,48 @@ func validLocation(l *ReviewLocation) error {
 	return nil
 }
 
-// NativeReview prepares a real pull request review at t. A finding whose
-// location is a line of the diff gets its own line comment; any other is
-// in the body alone, with its change. The transport checks every anchor
-// against the actual diff again. Agents never approve: an approve verdict is
-// posted as a comment, and a person approves and merges.
-func NativeReview(report ReviewReport, files []transport.ContextFile, t Target) (transport.Review, error) {
+// NativeReview prepares a real pull request review at t, with the event
+// ReviewEvent chooses from the report, policy and facts. A finding whose
+// location is a line of the diff gets its own line comment; any other is in
+// the body alone, with its change. The transport checks every anchor against
+// the actual diff again. An APPROVE is returned prepared as a comment would
+// be: only the transport's review sink posts it, after the host's MayApprove
+// hook agrees, and a no posts it as a comment.
+func NativeReview(report ReviewReport, files []transport.ContextFile, t Target, policy ReviewPolicy, facts ReviewFacts) (transport.Review, error) {
 	r, err := nativeReview(report, files, t)
 	if err != nil {
 		return transport.Review{}, err
 	}
-	return transport.PrepareReview(r, files)
+	event := ReviewEvent(report, policy, facts)
+	if event == "APPROVE" {
+		r.Event = "COMMENT"
+	} else {
+		r.Event = event
+	}
+	r, err = transport.PrepareReview(r, files)
+	if err != nil {
+		return transport.Review{}, err
+	}
+	r.Event = event
+	return r, nil
 }
 
 // RecoveredReview reproduces a review already posted, so a retried delivery
-// matches it instead of posting another. disposition is the posted event. An
-// approval posted before agents stopped approving is reproduced as one; the
-// transport prepares it and never submits a new one.
+// matches it instead of posting another. disposition is the posted event: a
+// comment or a change request is reproduced as posted, and an approval only
+// for a report whose verdict approves. The transport prepares it and never
+// submits a new one.
 func RecoveredReview(report ReviewReport, files []transport.ContextFile, t Target, disposition string) (transport.Review, error) {
 	r, err := nativeReview(report, files, t)
 	if err != nil {
 		return transport.Review{}, err
 	}
-	if disposition == "APPROVE" && report.Verdict == "approve" {
+	switch {
+	case disposition == "APPROVE" && report.Verdict == "approve":
 		r.Event = disposition
 		return r, nil
+	case disposition == "COMMENT", disposition == "REQUEST_CHANGES":
+		r.Event = disposition
 	}
 	return transport.PrepareReview(r, files)
 }
@@ -194,10 +211,7 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 		return transport.Review{}, err
 	}
 	t.Head = report.Scope.Commit
-	r := transport.Review{CommitID: report.Scope.Commit, Event: "COMMENT"}
-	if report.Verdict == "request_changes" {
-		r.Event = "REQUEST_CHANGES"
-	}
+	r := transport.Review{CommitID: report.Scope.Commit, Event: ReviewEvent(report, ReviewPolicy{}, ReviewFacts{})}
 	anchored := map[string]bool{}
 	for _, f := range ordered(report.Findings) {
 		if f.Location == nil {
@@ -220,6 +234,214 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 		return transport.Review{}, fmt.Errorf("the review is too long for one GitHub review; shorten the findings and keep their evidence")
 	}
 	return r, nil
+}
+
+// agentName is an agent's name as a review's mark carries it.
+var agentName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// agentMarkOpen and agentMarkClose enclose the agent's name in its mark.
+const (
+	agentMarkOpen  = "<!-- humagen.review.agent "
+	agentMarkClose = " -->"
+)
+
+// AgentMark is the hidden line a native review carries to name the agent
+// that wrote it, so the host dismisses only that agent's stale reviews. It is
+// "" for a name that is not an agent's.
+func AgentMark(agent string) string {
+	if !agentName.MatchString(agent) {
+		return ""
+	}
+	return agentMarkOpen + agent + agentMarkClose
+}
+
+// WithAgentMark is a review's body with the agent's mark on a line of its
+// own at its end. Anything in body that would read as a mark, such as a
+// code change quoted in a finding, is written so that it does not: only
+// the host's line names the agent. A name that is not an agent's adds no
+// mark.
+func WithAgentMark(body, agent string) string {
+	mark := AgentMark(agent)
+	if mark == "" {
+		return body
+	}
+	return WithoutMarks(body) + "\n\n" + mark
+}
+
+// hostMarks are the openings of the hidden lines the host and the
+// transport write into a review: the agent's mark and the transport's
+// markers.
+var hostMarks = strings.NewReplacer(agentMarkOpen, "&lt;"+agentMarkOpen[1:], transportMarkOpen, "&lt;"+transportMarkOpen[1:])
+
+// WithoutMarks is text with every line that would read as one the host or
+// the transport writes into a review written so that it does not. Text a
+// model wrote passes through it before it is posted in a review.
+func WithoutMarks(text string) string { return hostMarks.Replace(text) }
+
+// transportMarkOpen opens the markers the transport adds to a review it
+// posts.
+const transportMarkOpen = "<!-- humagen-review"
+
+// postedTail is what follows the host's mark in a review the transport's
+// review sink posted: the session footer, when there is one, then the two
+// markers the sink adds (its run marker and its payload digest), exactly
+// as it writes them.
+var postedTail = regexp.MustCompile("^(" + regexp.QuoteMeta(sessionFooterOpen) + "[^\n]*" + regexp.QuoteMeta(sessionFooterClose) + ")?" +
+	"\n\n<!-- humagen-review:[0-9a-f]{64} -->\n\n<!-- humagen-review-payload:[0-9a-f]{64} -->$")
+
+// ReviewAgent is the agent named by the mark WithAgentMark put at the end of
+// a review the review sink posted: the mark followed by nothing but the
+// session footer and the sink's two markers. A mark anywhere else, or in a
+// review posted another way, names nobody, and a body without one is "".
+func ReviewAgent(body string) string {
+	i := strings.LastIndex(body, agentMarkOpen)
+	if i < 2 || body[i-2:i] != "\n\n" {
+		return ""
+	}
+	rest := body[i+len(agentMarkOpen):]
+	end := strings.Index(rest, agentMarkClose)
+	if end < 0 {
+		return ""
+	}
+	name, tail := rest[:end], rest[end+len(agentMarkClose):]
+	if !agentName.MatchString(name) || !postedTail.MatchString(tail) {
+		return ""
+	}
+	return name
+}
+
+// ApproveWhenClean is the one review policy that may approve. Any other
+// value, "never" and "" among them, approves nothing.
+const ApproveWhenClean = "when_clean"
+
+// DefaultBlockOn is the severity a policy that names none blocks on: a
+// finding that must be fixed requests changes.
+const DefaultBlockOn = "error"
+
+// ReviewPolicy is how an agent's reviews decide, as the host narrowed it:
+// the agent's own policy, then the repository's settings, which only make it
+// stricter. The zero value never approves and blocks on DefaultBlockOn.
+type ReviewPolicy struct {
+	// Approve is ApproveWhenClean, or anything else for never.
+	Approve string
+	// BlockOn is the least severity that requests changes: error, warning
+	// or info. "" is DefaultBlockOn, and an unknown one blocks on every
+	// finding.
+	BlockOn string
+}
+
+// ReviewFacts are what the host read for itself about a review, never what
+// the model wrote. The zero value approves nothing.
+type ReviewFacts struct {
+	// ChecksRead says the host read the reviewed commit's checks, all of
+	// them, into Checks.
+	ChecksRead bool
+	Checks     []transport.CommitCheck
+	// Author is the pull request's author and App the app's own login. Both
+	// must be known and differ: the app never approves its own pull request.
+	// Draft is a pull request still in draft, which is never approved.
+	Author, App string
+	Draft       bool
+	// AppID is the numeric ID of the app, 0 when unknown: its checks are
+	// then told apart by App alone.
+	AppID int64
+	// AuthorID is the pull request author's GitHub user ID. People are
+	// told apart by ID, never by login, which its owner may change: 0 is
+	// unknown and approves nothing.
+	AuthorID int64
+	// Trusted says the run was an automatic review, or asked by a person
+	// the client maps. Asker is that person's login, "" for an automatic
+	// review no person resumed, and AskerID their GitHub user ID.
+	Trusted bool
+	Asker   string
+	AskerID int64
+	// CommitsRead says the host read the pull request's commits, every one
+	// linked to a GitHub account, and AskerCommitted that the asker
+	// authored or committed one of them.
+	CommitsRead    bool
+	AskerCommitted bool
+	// CoAuthorsRead says the host read the Co-authored-by trailers of
+	// those commits, and AskerCoAuthored that one names the asker.
+	CoAuthorsRead   bool
+	AskerCoAuthored bool
+}
+
+// checksPassed reports whether the host read the commit's checks and
+// saige's ChecksAllow accepts them for the app named by App and AppID: the
+// app's own checks left out, whatever their run or name, at least one other
+// that concluded success, and none pending or failed.
+func (f ReviewFacts) checksPassed() bool {
+	if !f.ChecksRead {
+		return false
+	}
+	return transport.ApprovalRequest{App: loginOf(f.App), AppID: f.AppID}.ChecksAllow(f.Checks)
+}
+
+// loginOf is a login or app slug in one form: "Humagen[bot]" and "humagen"
+// are both "humagen".
+func loginOf(s string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "[bot]"))
+}
+
+// peopleKnown reports whether the people an approval depends on are told
+// apart by GitHub user ID, and the asker, if any, is a second pair of eyes:
+// not the pull request's author, under any login, and the author, committer
+// or co-author of none of its commits, as the host read them.
+func (f ReviewFacts) peopleKnown() bool {
+	if f.AuthorID <= 0 {
+		return false
+	}
+	if f.Asker == "" && f.AskerID == 0 {
+		return true
+	}
+	return f.AskerID > 0 && f.AskerID != f.AuthorID && loginOf(f.Asker) != loginOf(f.Author) &&
+		f.CommitsRead && !f.AskerCommitted && f.CoAuthorsRead && !f.AskerCoAuthored
+}
+
+// authorNotApp reports whether the pull request's author is known and is
+// not the app.
+func (f ReviewFacts) authorNotApp() bool {
+	return loginOf(f.Author) != "" && loginOf(f.App) != "" && loginOf(f.Author) != loginOf(f.App)
+}
+
+// blocks reports whether a finding is at or above the policy's severity.
+func (p ReviewPolicy) blocks(f ReviewFinding) bool {
+	on := p.BlockOn
+	if on == "" {
+		on = DefaultBlockOn
+	}
+	limit, ok := severities[on]
+	if !ok {
+		limit = len(severities)
+	}
+	rank, ok := severities[f.Severity]
+	return !ok || rank <= limit
+}
+
+// ReviewEvent is the GitHub event a review is posted with. It reads the
+// report's verdict and findings, the host's policy and the facts the host
+// read, and nothing else: no text the model wrote chooses the event.
+//
+// APPROVE needs every guard at once: the policy is ApproveWhenClean, the
+// verdict approves, no finding is at or above the policy's severity, the
+// host read checks from CI and all passed, at least one with success, the
+// author is not the app, the pull request is not a draft, and the run was
+// trusted to approve, with the author known by ID and any asker neither the
+// author nor a writer of the pull request's commits. REQUEST_CHANGES is a verdict that
+// requests changes, or any finding at or above the severity. Anything else
+// is COMMENT.
+func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) string {
+	blocked := report.Verdict == "request_changes"
+	for _, f := range report.Findings {
+		blocked = blocked || policy.blocks(f)
+	}
+	switch {
+	case blocked:
+		return "REQUEST_CHANGES"
+	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && !facts.Draft && facts.Trusted && facts.peopleKnown():
+		return "APPROVE"
+	}
+	return "COMMENT"
 }
 
 // onDiff reports whether the transport would post comment on a line of the

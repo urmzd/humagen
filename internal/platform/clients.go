@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connectors"
@@ -414,6 +416,11 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 	return creds, secrets, nil
 }
 
+// appLoginReader reads the login of a GitHub App's bot account from GitHub.
+type appLoginReader interface {
+	AppLogin(ctx context.Context) (string, error)
+}
+
 // keep stores the secret values that were written, and forgets a stored value
 // that a reference has replaced.
 func (p *Platform) keep(c clients.Client, in ClientInput) error {
@@ -580,6 +587,24 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
 		cfg.AsksReview = func(v ghtransport.View) (bool, error) { return p.asksReview(c, v) }
+		cfg.ReviewPolicy = func(ctx context.Context, v ghtransport.View) (github.ReviewGrant, error) {
+			return p.reviewGrant(ctx, c, v)
+		}
+		// One approval of each commit is claimed in the store every
+		// replica shares; without it nothing approves.
+		cfg.ApprovalClaims, cfg.Log = p.approvalClaims, p.log
+		// Only a client that authenticates as a GitHub App approves, and
+		// only when GitHub names its bot account as the client's login. Its
+		// own checks are told apart by its ID as well as its login. A token
+		// client posts as the token's person, and never approves.
+		if app {
+			if id, err := strconv.ParseInt(strings.TrimSpace(c.Identity.AppID), 10, 64); err == nil && id > 0 {
+				cfg.AppID = id
+			}
+			if reader, ok := api.(appLoginReader); ok {
+				cfg.AppLogin = reader.AppLogin
+			}
+		}
 		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
 		installed := p.installedRepos(c, api, app)
 		if installed != nil {

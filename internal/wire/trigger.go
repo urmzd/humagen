@@ -240,14 +240,20 @@ func ContextOf(e event.Envelope) map[string]string {
 
 // The meta keys a connector's typed fields read as.
 const (
-	MetaSlackEvent     = "slack_event"
-	MetaSlackChannel   = "slack_channel"
-	MetaSlackCommand   = "slack_command"
-	MetaGitHubEvent    = "github_event"
-	MetaGitHubOwner    = "github_owner"
-	MetaGitHubRepo     = "github_repo"
-	MetaGitHubLabels   = "github_labels"
-	MetaGitHubAuthor   = "github_author"
+	MetaSlackEvent   = "slack_event"
+	MetaSlackChannel = "slack_channel"
+	MetaSlackCommand = "slack_command"
+	MetaGitHubEvent  = "github_event"
+	MetaGitHubOwner  = "github_owner"
+	MetaGitHubRepo   = "github_repo"
+	MetaGitHubLabels = "github_labels"
+	MetaGitHubAuthor = "github_author"
+	// MetaGitHubAuthorID is the GitHub user ID of the pull request's
+	// author, where the host read it from a signed payload.
+	MetaGitHubAuthorID = "github_author_id"
+	// MetaGitHubSenderID is the GitHub user ID of who sent a GitHub event:
+	// the commenter, or who requested a review.
+	MetaGitHubSenderID = "github_sender_id"
 	MetaGitHubHeadSHA  = "github_head_sha"
 	MetaCronSchedule   = "cron_schedule"
 	MetaCronExpression = "cron_expression"

@@ -288,6 +288,14 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 		schema, _ := json.Marshal(string(normalizeOutput(spec.Output).Schema))
 		metadata = append(metadata, "  humagen_output_schema: "+string(schema))
 	}
+	if r := spec.Normalize().Review; r.Approve != "" {
+		value, _ := json.Marshal(r.Approve)
+		metadata = append(metadata, "  humagen_review_approve: "+string(value))
+	}
+	if r := spec.Normalize().Review; r.BlockOn != "" {
+		value, _ := json.Marshal(r.BlockOn)
+		metadata = append(metadata, "  humagen_review_block_on: "+string(value))
+	}
 	if skills := normalizeSkills(spec.Skills); skills != nil {
 		loadable, _ := json.Marshal(strings.Join(skills.Loadable, ","))
 		metadata = append(metadata, "  humagen_skills_loadable: "+string(loadable))

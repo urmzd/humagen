@@ -827,6 +827,23 @@ anyone in the workspace approve, except the person who asked.
   tagged_only?: boolean;
   output?: AgentOutput;
   skills?: AgentSkills;
+  review?: AgentReview;
+}
+
+/** How the agent's pull request reviews decide. The host chooses the
+event from the report and this policy, never from the model's words.
+It approves only with `approve: when_clean`, a verdict that approves,
+no finding at or above `block_on`, CI on the reviewed commit that
+passed, an author other than the app, and a run that was an automatic
+review or asked by a mapped person who did not write the change. A verdict of
+`request_changes`, or any finding at or above `block_on`, requests
+changes. Anything else is a comment.
+ */
+export interface AgentReview {
+  /** `never` (the default) or `when_clean`. A repository's settings may set `never` for it. */
+  approve?: "never" | "when_clean";
+  /** The least severity whose findings request changes. Absent is `error`. */
+  block_on?: "error" | "warning" | "info";
 }
 
 /** What the agent may do with the skill library beyond the skills a
@@ -4880,6 +4897,8 @@ export interface GitHubRepoSettings {
   reads?: ("pull_diff" | "linked_issues")[];
   /** False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable. */
   cross_surface_reads?: boolean;
+  /** `never`, its one value, keeps every agent's reviews here from approving. Left out, each agent's review policy applies, and a save that leaves it out keeps what was set. */
+  approve?: string;
   updated_at: string;
   updated_by?: string;
 }
@@ -4922,6 +4941,8 @@ export interface GitHubRepositoryInput {
   reads?: ("pull_diff" | "linked_issues")[];
   /** False keeps the repository to its own runs. Absent or true leaves it readable. */
   cross_surface_reads?: boolean;
+  /** `never` keeps reviews here from approving, and empty removes it so each agent's review policy applies. Absent keeps what was set. */
+  approve?: "" | "never";
   version: number;
 }
 
@@ -5456,6 +5477,14 @@ export interface GitHubRef {
   labels?: string[];
   draft?: boolean;
   installation_id?: number;
+  /** The GitHub user ID of `sender`; a login can be renamed, an ID cannot. Left out when the payload has none. */
+  sender_id?: number;
+  /** The GitHub user ID of `author`. Left out when the payload has none. */
+  author_id?: number;
+  /** On a review request, the login the review was requested from. */
+  requested_reviewer?: string;
+  /** On a review request, the GitHub user ID of `requested_reviewer`. */
+  requested_reviewer_id?: number;
 }
 
 /** The body of a GitHub issue or pull request event that carries nothing of its own. */

@@ -57,6 +57,10 @@ const (
 	ReadLinkedIssues = "linked_issues"
 )
 
+// ApproveNever is the one value Settings.Approve takes: reviews here never
+// approve.
+const ApproveNever = "never"
+
 // Reads are the reads a repository may turn on, in the order they are made.
 var Reads = []string{ReadPullDiff, ReadLinkedIssues}
 
@@ -94,15 +98,27 @@ type Settings struct {
 	// a run raised on another surface (Slack, the console) or on another
 	// repository may not read it, and the console does not show its source.
 	// Left out, it is readable, as every repository a client covers is.
-	CrossSurfaceReads *bool     `json:"cross_surface_reads,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	UpdatedBy         string    `json:"updated_by,omitempty"`
+	CrossSurfaceReads *bool `json:"cross_surface_reads,omitempty"`
+	// Approve, when ApproveNever, keeps every agent's reviews here from
+	// approving, whatever the agent's own review policy says. It can only
+	// make the policy stricter: left out, the agent's policy applies.
+	Approve string `json:"approve,omitempty"`
+	// ClearApprove, on a write, removes Approve. A write that leaves
+	// Approve empty without it keeps what was set, so a caller that does
+	// not know the field never clears it. It is never kept.
+	ClearApprove bool      `json:"-"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	UpdatedBy    string    `json:"updated_by,omitempty"`
 }
 
 // IsZero reports whether the settings change nothing.
 func (s Settings) IsZero() bool {
-	return s.AutoReview == nil && s.Agent == "" && s.Instructions == "" && len(s.Reads) == 0 && s.CrossSurfaceReads == nil
+	return s.AutoReview == nil && s.Agent == "" && s.Instructions == "" && len(s.Reads) == 0 && s.CrossSurfaceReads == nil && s.Approve == ""
 }
+
+// NeverApproves reports whether the settings keep reviews here from
+// approving.
+func (s Settings) NeverApproves() bool { return s.Approve == ApproveNever }
 
 // ReadableElsewhere reports whether runs other than the repository's own may
 // read it.
@@ -117,6 +133,7 @@ func (s Settings) Normalize() Settings {
 	s.Repository = strings.TrimSpace(s.Repository)
 	s.Agent = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s.Agent), "@"))
 	s.Instructions = strings.TrimSpace(s.Instructions)
+	s.Approve = strings.ToLower(strings.TrimSpace(s.Approve))
 	if s.AutoReview != nil {
 		a := *s.AutoReview
 		s.AutoReview = &a
@@ -161,6 +178,9 @@ func (s Settings) Validate() error {
 		if !slices.Contains(Reads, r) {
 			problems = append(problems, fmt.Sprintf("%q is not a read; the reads are %s", r, strings.Join(Reads, ", ")))
 		}
+	}
+	if s.Approve != "" && s.Approve != ApproveNever {
+		problems = append(problems, fmt.Sprintf("approve is %q or left out; a repository can only keep reviews from approving", ApproveNever))
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
@@ -254,7 +274,8 @@ func (s *Store) List(tenant, client string) ([]Item, error) {
 // Put keeps a repository's settings and returns them as kept. version is
 // the version the caller read: 0 for a repository that follows its client,
 // so a write never replaces one the caller has not seen (ErrVersion). Zero
-// settings remove the record, as Delete does.
+// settings remove the record, as Delete does. Approve left empty keeps the
+// kept value unless ClearApprove says to remove it.
 func (s *Store) Put(tenant, client string, v Settings, version int64, by string, now time.Time) (Item, error) {
 	v = v.Normalize()
 	if err := v.Validate(); err != nil {
@@ -267,6 +288,16 @@ func (s *Store) Put(tenant, client string, v Settings, version int64, by string,
 	if version < 0 {
 		return Item{}, fmt.Errorf("%w: a version is 0 or more", ErrInvalid)
 	}
+	// A write that does not name approve keeps it; the version the write
+	// is made at holds it to what was read.
+	if v.Approve == "" && !v.ClearApprove && version > 0 {
+		if cur, err := s.t.Lookup(tenant, k); err == nil {
+			v.Approve = cur.Value.Approve
+		} else if !errors.Is(err, state.ErrNotFound) {
+			return Item{}, err
+		}
+	}
+	v.ClearApprove = false
 	if v.IsZero() {
 		if version == 0 {
 			// Nothing to keep, but only if nothing is kept: settings the

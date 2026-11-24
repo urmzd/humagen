@@ -2183,7 +2183,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", repoRoute, "/api/clients/gh/repositories/acme/site", "", http.StatusBadRequest)
 	c.call(acme, "DELETE", repoRoute, fmt.Sprintf("/api/clients/gh/repositories/acme/site?version=%v", setRepo.field("version")), "", http.StatusOK)
 	c.call(acme, "DELETE", repoRoute, "/api/clients/gh/repositories/acme/site?version=1", "", http.StatusNotFound)
-	c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":0,"instructions":"Kept for the contract."}`, http.StatusOK)
+	keptRepo := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":0,"instructions":"Kept for the contract."}`, http.StatusOK)
+	// A save that leaves approve out keeps it; an empty approve removes it.
+	never := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", fmt.Sprintf(`{"version":%v,"instructions":"Kept for the contract.","approve":"never"}`, keptRepo.field("version")), http.StatusOK)
+	keptNever := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", fmt.Sprintf(`{"version":%v,"instructions":"Saved without approve."}`, never.field("version")), http.StatusOK)
+	if obj(keptNever.field("settings"))["approve"] != "never" {
+		t.Errorf("a save without approve: %s", keptNever.raw)
+	}
+	cleared := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", fmt.Sprintf(`{"version":%v,"instructions":"Kept for the contract.","approve":""}`, keptNever.field("version")), http.StatusOK)
+	if _, has := obj(cleared.field("settings"))["approve"]; has {
+		t.Errorf("an empty approve: %s", cleared.raw)
+	}
 	c.call(acme, "DELETE", repoRoute, "/api/clients/gh/repositories/acme/site?version=9", "", http.StatusConflict)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"client","name":"support"},"period":"day","max_runs":3}`, http.StatusOK)
 	c.call(acme, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusOK)

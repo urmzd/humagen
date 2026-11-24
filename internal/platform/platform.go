@@ -349,7 +349,10 @@ type Platform struct {
 	memoryFailures   *egressguard.MemoryFailures
 	// pullReviews keeps automatic review's count and pause per pull request.
 	pullReviews *state.Table[PullReview]
-	Sessions    session.Store
+	// approvalClaims is where one approval of each commit is claimed, in
+	// the store every replica shares (pkg/integrations/github).
+	approvalClaims state.Store
+	Sessions       session.Store
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate

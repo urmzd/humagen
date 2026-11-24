@@ -602,6 +602,7 @@ even one of an account the client serves, answers 404.
 | Instructions for runs here | `instructions` | none | Pinned on every run the client raises on the repository, as the last instruction layer, after the workspace's and the projects'. At most 4,000 characters. |
 | Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`), within 24,000 characters and 3 seconds. A read that fails or runs out of time is named, not left out. |
 | Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file`, `github_workflow_status` and `github_fix_base`, and a read of another repository that GitHub redirects to it is not followed, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. Every client's view shows the workspace's answer, with the clients that keep it in `kept_by`. |
+| Reviews never approve | `approve: never` | each agent's [review policy](spec.md#review-policy) | No review here approves, whatever the reviewing agent's `review.approve` says. It only makes the policy stricter: `never` is its one value. A save that leaves `approve` out keeps it, and `approve: ""` removes it. The console does not set it yet, and keeps it when it saves; set it through the API. |
 
 What is read before a run is untrusted: anyone who can open a pull request
 writes its description and its patch. It is added to the run's text in one
@@ -827,8 +828,84 @@ comment and an optional committable suggestion. A finding with no location,
 or one off the diff, stays in the review body with its change. Each finding
 may name the agent that found it (`found_by`, such as `security-reviewer` or
 `security-reviewer#a`); the review shows the agent's name without the label.
-Agents never approve: an `approve` verdict is posted as a comment,
-`request_changes` as a change request, and a person approves and merges.
+The host chooses the review's event, never the model. It reads the
+report's verdict and findings, the agent's [review policy](spec.md#review-policy)
+and what it reads itself, and nothing the model or the pull request wrote:
+
+| Event | When |
+| :--- | :--- |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found fewer than 1,000, and saige's `ChecksAllow` accepts them: leaving out every check of the app's own (a check run or suite of its app ID or slug, or a status its bot set), whatever its name or run, none is pending or failed (a check suite still running is pending; another app's check run that concluded neutral or skipped neither passes nor fails) and at least one concluded success; the pull request is open, not a draft and still on the reviewed commit, the app did not open it, and both the signed event and GitHub, when the approval is decided, give the author's GitHub user ID, the same one; the app has not approved this commit already, and every change request the app has outstanding is one the host recorded for this agent; and the run was an automatic review, or was asked (by a comment, or by requesting the review) or resumed by a person the client maps (`github.people` or `github.askers`) who is known by user ID, is not the author, and authored, committed or co-authored none of the pull request's commits |
+| Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
+| Comment | Anything else |
+
+Only a GitHub App client approves: one that authenticates with the App's
+private key, names its app ID (`identity.app_id`), and whose `github.login`
+is the App's bot account, `<slug>[bot]`, as GitHub names it. The host reads
+the App's slug from GitHub (`GET /app`, signed with the App's key) before
+the first approval; when it cannot read it, or the login names another
+account, no review approves and a warning is logged. A client installed
+from the console gets its login from the App's slug. A client that posts
+with a token as a person's account never approves, whatever the policy or
+its `identity.app_id` say; its clean reviews post as comments.
+
+An approval posts only through the transport's approval hook. The hook
+decides again, reading the policy, the repository's settings and the checks
+as they are then, and the author and draft state GitHub reports. It refuses
+by default: a check that failed meanwhile, or an approval of the same commit
+the app already posted, posts the review as a comment. One approval of each
+commit is claimed in the store every replica shares, before it posts; a run
+or a replica that loses the claim posts a comment. A policy it cannot read
+posts nothing, and the delivery is retried. The transport then reads the pull
+request again and posts the approval only while its head is still the
+reviewed commit. The model has no tool that approves. The app's own checks,
+from any run, never count as CI. A rule's run, a run another agent started,
+and a run a stranger asked for never approve.
+
+People are told apart by GitHub user ID, never by login, which its owner
+may change, and an ID of 0 matches nobody. Only a trigger the GitHub
+client's own connector raised, which the platform's ingress stamps with the
+client, is trusted to approve, and only its user IDs are believed. Who asks
+is the commenter, the person who requested the review, or the person who
+resumed a paused automatic review. Before an asked review approves, the host
+reads the pull request's commits (fewer than 250, the reviewed commit among
+them): every commit's author and committer must be linked to a GitHub
+account, since GitHub links them by email, and the asker must be none of
+them. A commit GitHub's `web-flow` account committed, a merge or an edit
+made on the web, is read by its author alone. Each `Co-authored-by` trailer
+must name someone the host can tell: an address the client maps a person
+by (`github.people`), a GitHub no-reply address with a user ID, or a
+login-only no-reply address whose login is a mapped person's current login
+(one from before a rename names no one the host can tell). A trailer with
+no address, or one nobody is known by, refuses the approval, and so does
+one that is, or may be, the asker's: an address several mapped people
+share is the asker's when the asker is one of them. A read that fails approves nothing. Commits need not
+be signed.
+
+A new review replaces the same agent's earlier ones on the pull request: an
+approval of an earlier head is dismissed when the new review does not
+approve, and once the new review has posted as a comment or an approval,
+the agent's earlier change requests are dismissed. A review that does not
+post leaves them in place. A push to the pull request dismisses the app's
+approvals of earlier commits at once, whether or not the new commit is
+reviewed, unless the push's commit is no longer the pull request's head.
+
+Each native review carries a hidden line naming its agent, written by the
+host after everything the model wrote; a line like it inside the review's
+text is written so that it names nobody. Only the line at the end of a
+review the transport's review sink posted, followed by nothing but the
+session link and the sink's two markers, counts. A review posted through
+the `github_create_review` tool is written the same way, in its body and in
+each inline comment, and is no agent's. One agent never dismisses another's
+review, and a review from before that line is never dismissed. Since every
+agent posts as the app and GitHub counts the app's latest review, a review
+does not approve while the app has a change request outstanding that the
+host did not record for the same agent. The host records which agent wrote
+each review the sink posts, by the sink's delivery marker
+(`ReviewMarker`), in the store every replica shares, before it posts; a
+review posted through the tool has no marker and is no agent's. Only the
+app's own reviews are dismissed, through saige's host-only dismissal; no
+model tool reaches it. A dismissal that fails is logged and never stops the
+new review.
 Review recovery uses an app-owned marker and the durable delivery store to
 avoid duplicate reviews. Before it posts, the host records in the delivery
 store that the review is in the current layout. A review with no record was

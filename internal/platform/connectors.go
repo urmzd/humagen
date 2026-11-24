@@ -675,8 +675,21 @@ func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest,
 		Channel: channel.String(),
 		Text:    autoReviewText(req, from),
 		At:      time.Now().UTC(),
-		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo, wire.MetaAnswerShape: wire.ShapeReview},
+		Context: autoReviewContext(kind, owner, repo, req.Author, req.AuthorID),
 	})
+}
+
+// autoReviewContext is what an automatic review's tag says of where it came
+// from, with the pull request's author when the payload named one.
+func autoReviewContext(kind, owner, repo, author string, authorID int64) map[string]string {
+	m := map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo, wire.MetaAnswerShape: wire.ShapeReview}
+	if author != "" {
+		m[wire.MetaGitHubAuthor] = author
+	}
+	if authorID > 0 {
+		m[wire.MetaGitHubAuthorID] = strconv.FormatInt(authorID, 10)
+	}
+	return m
 }
 
 func autoReviewText(req clients.AutoReviewRequest, from string) string {
@@ -685,6 +698,31 @@ func autoReviewText(req clients.AutoReviewRequest, from string) string {
 		return "Review pull request #" + number + " in " + req.Repository + " at commit " + req.SHA + "."
 	}
 	return "Review the commits pushed to pull request #" + number + " in " + req.Repository + " after " + from + ", up to " + req.SHA + ". Earlier commits were reviewed already."
+}
+
+// approvalDismisser is a peer that dismisses the app's approvals of a pull
+// request's earlier heads (the GitHub connector).
+type approvalDismisser interface {
+	DismissApprovalsBefore(ctx context.Context, owner, repo string, number int, head string)
+}
+
+// approvalDismissTimeout bounds the dismissal of stale approvals after a
+// push.
+const approvalDismissTimeout = 30 * time.Second
+
+// dismissApprovalsBefore dismisses, in the background, the app's approvals
+// of repo's pull request number on any commit but head.
+func (s *surface) dismissApprovalsBefore(st *seat, repo string, number int, head string) {
+	d, ok := st.peer.(approvalDismisser)
+	owner, name, split := strings.Cut(repo, "/")
+	if !ok || !split {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), approvalDismissTimeout)
+		defer cancel()
+		d.DismissApprovalsBefore(ctx, owner, name, number, head)
+	}()
 }
 
 // hand passes a request to one client's connector, which verifies it again
@@ -709,6 +747,12 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 		}
 		if current.Surface == clients.GitHub {
 			kind := r.Header.Get("X-GitHub-Event")
+			// A push to a pull request makes the app's approvals of an
+			// earlier head stale, whoever pushed: they are dismissed beside
+			// the delivery, which never waits on them.
+			if repo, number, head, ok := current.PullPushed(kind, body); ok {
+				s.dismissApprovalsBefore(st, repo, number, head)
+			}
 			// Only people who may ask are acted on (GitHubAsker). A comment,
 			// a review or a pull request from anyone else starts nothing at
 			// all; an issue from them still meets the client's own rules,
@@ -748,7 +792,8 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 					}
 				}
 				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
-					if err := s.p.resumeAutoReview(current, repo, number); err != nil {
+					by, _, _ := current.GitHubAsker(kind, body)
+					if err := s.p.resumeAutoReview(current, repo, number, by, clients.GitHubAskerID(kind, body)); err != nil {
 						http.Error(w, "automatic review could not resume", http.StatusServiceUnavailable)
 						return
 					}

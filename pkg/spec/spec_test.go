@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,11 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	}
 	if r, err := cfg.System.Spec.Rooms.Config(); err != nil || r.CoalesceAbove != 200 || r.TailInterval != 3*time.Second || r.RoomRunsPerMinute != 600 || r.PersonRuns != 25 {
 		t.Fatalf("rooms = %+v %v", r, err)
+	}
+	if a := cfg.Platforms[0].Spec.Agents; !slices.ContainsFunc(a, func(a Agent) bool {
+		return a.Spec != nil && a.Spec.Name == "pr-reviewer" && a.Spec.Review == wire.Review{Approve: wire.ReviewApproveWhenClean, BlockOn: "warning"} && a.Spec.Validate() == nil
+	}) {
+		t.Fatalf("the example's review policy did not load: %+v", a)
 	}
 	w := cfg.Platforms[0].Spec.Workspace
 	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes || w.Retention() != 180*24*time.Hour {

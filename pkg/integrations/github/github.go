@@ -4,13 +4,16 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connector"
 	"github.com/urmzd/saige/flow/connectors"
@@ -34,6 +37,21 @@ type Config struct {
 	// posts no native review. An error is retried. Nil asks every run that
 	// answers with a review for one.
 	AsksReview func(transport.View) (bool, error)
+	// ReviewPolicy is what the host says of the run a review answers for:
+	// its agent's review policy narrowed by the repository's settings,
+	// whether a signal that may approve started it, and the pull request's
+	// author. With it the event is ReviewEvent's, decided again by the
+	// transport's MayApprove hook before an approval posts. An error is
+	// retried. Nil approves nothing.
+	ReviewPolicy func(context.Context, transport.View) (ReviewGrant, error)
+	// ApprovalClaims is where one approval of each commit is claimed, in a
+	// store every replica shares, so two runs or two replicas never both
+	// approve a commit. Nil approves nothing.
+	ApprovalClaims state.Store
+	// Log is where a review's side work that fails without stopping it,
+	// such as a stale review that could not be dismissed, is told. Nil is
+	// slog's default.
+	Log *slog.Logger
 	// SessionLink is the console's address of the session a run answers
 	// in, linked under its comment. Nil, or "", links nothing.
 	SessionLink        func(transport.View) string
@@ -60,6 +78,14 @@ type Config struct {
 	ReadRefused func(ctx context.Context, owner, repo string) bool
 	Bots        map[string]string
 	Agents      mention.Set
+	// AppID is the numeric ID of the GitHub App the connector acts as, 0
+	// for a connector that is no app. Checks of the app's own are told
+	// apart by it, and by Login.
+	AppID int64
+	// AppLogin reads the login of the App's bot account from GitHub. An
+	// approval needs it to name Login; without it, or when it reads
+	// another login or fails, nothing approves.
+	AppLogin func(ctx context.Context) (string, error)
 	// Login is the app's own login, which it comments as. With Triggers
 	// set, it asks as a trigger does; without them, a comment that mentions
 	// it and names no agent is raised naming none, and the host chooses who
@@ -92,7 +118,14 @@ type Config struct {
 	// legacyPosts posts reviews in the layout from before reviews read as
 	// prose, as a deploy of that code did. Tests only.
 	legacyPosts bool
+	// unmarkedPosts posts reviews in the prose layout without the agent's
+	// mark, as a deploy from before stale reviews were dismissed did. Tests
+	// only.
+	unmarkedPosts bool
 }
+
+// reviewDecisionTimeout bounds the reads a review's event is decided on.
+const reviewDecisionTimeout = 30 * time.Second
 
 // Connector decorates the transport without introducing another execution path.
 type Connector struct {
@@ -122,7 +155,7 @@ func New(cfg Config) (*Connector, error) {
 			return nil, fmt.Errorf("github: mutations need the tenant the connector's runs belong to")
 		}
 	}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, MayRead: cfg.MayRead, ReadRefused: cfg.ReadRefused, Bots: cfg.Bots, Agents: triggerAware(cfg.Agents, cfg.Triggers), Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, MayRead: cfg.MayRead, ReadRefused: cfg.ReadRefused, Bots: cfg.Bots, Agents: triggerAware(cfg.Agents, cfg.Triggers), Login: cfg.Login, AppID: cfg.AppID, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.FixPullRequests, base.AuthorizeFixPull = cfg.FixPullRequests, cfg.AuthorizeFixPull
 	base.FixPullContext = cfg.FixPullContext
@@ -144,6 +177,17 @@ func New(cfg Config) (*Connector, error) {
 		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
 			if _, ok := cfg.API.(transport.ContextAPI); ok {
 				layouts := newLayouts(cfg)
+				pending := newApprovals(cfg.Clock)
+				pending.host = func() reviewHost { return c.Connector }
+				// The transport asks the hook only of an API that can also
+				// dismiss reviews, and only a GitHub App approves: its reviews
+				// are its bot account's, which the transport tells apart as
+				// its own. A client that posts as a person's account never
+				// approves.
+				_, dismisses := cfg.API.(transport.ReviewDismissAPI)
+				if cfg.ReviewPolicy != nil && dismisses && approvesAsApp(cfg) {
+					base.MayApprove = pending.mayApprove(cfg)
+				}
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
 					// A run the host saved as a reply posts no review, whatever
 					// its agent wrote: the host, not the model, chose the shape.
@@ -164,16 +208,50 @@ func New(cfg Config) (*Connector, error) {
 						review, err := presentation.LegacyRecoveredReview(report, files, "")
 						return review, true, err
 					}
-					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel))
+					// The transport gives this no context; the decision's reads
+					// are bounded on their own.
+					ctx, cancel := context.WithTimeout(context.Background(), reviewDecisionTimeout)
+					defer cancel()
+					policy, facts, err := reviewDecision(ctx, cfg, v, report)
 					if err != nil {
 						return transport.Review{}, true, err
 					}
+					if base.MayApprove == nil {
+						policy.Approve = "never"
+					}
+					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel), policy, facts)
+					if err != nil {
+						return transport.Review{}, true, err
+					}
+					if review.Event == "APPROVE" {
+						pending.plan(v, report)
+					}
+					// The agent's approvals of another head are stale unless this
+					// review approves (the hook dismisses them if it then says
+					// no). Its change requests are dismissed only once this
+					// review has posted (Deliver). A dismissal that fails is
+					// logged and never stops this review.
+					if owner, repo, number, ok := pullOf(v.Channel); ok {
+						dismissStale(ctx, cfg, c.Connector, transport.Ref{Owner: owner, Repo: repo, Number: number}, v.Agent, review.CommitID, review.Event)
+					}
 					// Say which layout this review is posted in before posting it,
 					// so its recovery reproduces it.
+					if cfg.unmarkedPosts {
+						if err := layouts.record(v, proseLayout); err != nil {
+							return transport.Review{}, true, err
+						}
+						review.Body += presentation.SessionFooter(sessionLink(cfg, v))
+						return review, true, nil
+					}
 					if err := layouts.mark(v); err != nil {
 						return transport.Review{}, true, err
 					}
-					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
+					// Which agent wrote it is kept before it posts, by the
+					// marker the sink posts it with.
+					if err := recordReviewAgent(ctx, cfg, v, review.CommitID); err != nil {
+						return transport.Review{}, true, err
+					}
+					review.Body = presentation.WithAgentMark(review.Body, v.Agent) + presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, nil
 				}
 				// The transport calls this only after verifying an existing app-authored
@@ -186,15 +264,18 @@ func New(cfg Config) (*Connector, error) {
 					if !ok || err != nil {
 						return transport.Review{}, err != nil, err
 					}
-					current, err := layouts.posted(v)
+					layout, err := layouts.posted(v)
 					if err != nil {
 						return transport.Review{}, true, err
 					}
-					if !current {
+					if layout == "" {
 						review, err := presentation.LegacyRecoveredReview(report, files, disposition)
 						return review, true, err
 					}
 					review, err := presentation.RecoveredReview(report, files, presentation.TargetOf(v.Channel), disposition)
+					if layout == markedLayout {
+						review.Body = presentation.WithAgentMark(review.Body, v.Agent)
+					}
 					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, err
 				}
@@ -210,12 +291,79 @@ func New(cfg Config) (*Connector, error) {
 	return c, nil
 }
 
+// Deliver delivers an event, and once a run's final answer is delivered on a
+// pull request, dismisses its agent's change requests that the agent's
+// latest posted review, a comment or an approval, replaces. Nothing is
+// dismissed before the review that replaces it has posted.
+func (c *Connector) Deliver(ctx context.Context, target address.Address, e event.Envelope) error {
+	if err := c.Connector.Deliver(ctx, target, e); err != nil {
+		return err
+	}
+	if _, ok := c.cfg.API.(transport.ReviewHistoryAPI); !ok || e.Type != event.TypeCompleted || e.Agent == "" {
+		return nil
+	}
+	if owner, repo, number, ok := pullOf(target.String()); ok {
+		dismissReplaced(ctx, c.cfg, c.Connector, transport.Ref{Owner: owner, Repo: repo, Number: number}, e.Agent)
+	}
+	return nil
+}
+
 func (c *Connector) Actions() []connector.Action {
 	actions := c.Connector.Actions()
+	for i, a := range actions {
+		if a.Name == createReviewAction {
+			actions[i] = withoutMarks(a)
+		}
+	}
 	if c.cfg.Mutations {
 		actions = append(actions, c.mutationAction(), c.runChecksAction())
 	}
 	return actions
+}
+
+// approvesAsApp reports whether the connector acts as a GitHub App that may
+// approve: it has an app ID, its login is a bot account, and it can read
+// the App's own login from GitHub to check the two agree.
+func approvesAsApp(cfg Config) bool {
+	return cfg.AppID > 0 && strings.HasSuffix(strings.ToLower(cfg.Login), "[bot]") && cfg.AppLogin != nil
+}
+
+// createReviewAction is the transport's tool that posts a review a model
+// wrote.
+const createReviewAction = "github_create_review"
+
+// withoutMarks has a review a model posts through the tool written with
+// WithoutMarks: its body and each inline comment's body, so nothing in it
+// reads as a line the host or the transport writes. Input that is not the
+// tool's is passed on as it is, for the tool to refuse.
+func withoutMarks(a connector.Action) connector.Action {
+	invoke := a.Invoke
+	a.Invoke = func(ctx context.Context, target address.Address, raw json.RawMessage) (connector.Result, error) {
+		var input map[string]json.RawMessage
+		if json.Unmarshal(raw, &input) != nil {
+			return invoke(ctx, target, raw)
+		}
+		var body string
+		if json.Unmarshal(input["body"], &body) == nil {
+			input["body"], _ = json.Marshal(presentation.WithoutMarks(body))
+		}
+		var comments []map[string]json.RawMessage
+		if json.Unmarshal(input["comments"], &comments) == nil && comments != nil {
+			for _, comment := range comments {
+				var text string
+				if json.Unmarshal(comment["body"], &text) == nil {
+					comment["body"], _ = json.Marshal(presentation.WithoutMarks(text))
+				}
+			}
+			input["comments"], _ = json.Marshal(comments)
+		}
+		out, err := json.Marshal(input)
+		if err != nil {
+			return invoke(ctx, target, raw)
+		}
+		return invoke(ctx, target, out)
+	}
+	return a
 }
 
 // prepare applies humagen's policy to an event before it is published. An

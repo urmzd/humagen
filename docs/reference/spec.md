@@ -738,6 +738,12 @@ spec:
         tools: [use_skill]
         skills: {loadable: [secure-review]}   # library skills it may load mid-run, or [*]; none when left out
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
+    - spec:
+        name: pr-reviewer
+        provider: anthropic
+        model: claude-sonnet-5-5
+        system_prompt: You review pull requests.
+        review: {approve: when_clean, block_on: warning}   # see Review policy
     - project: Globex       # its home: only Globex's readers see it, and it answers only where they alone read
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
     - file: agents/reviewer.agent.md   # saige's own format; a .json or .yaml file holds a spec instead
@@ -968,6 +974,46 @@ what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it
 started with.
+
+### Review policy
+
+An agent's `review` says how its pull request reviews decide. The host
+chooses the review's event from the report and this policy. The model never
+chooses it, and text in a pull request cannot change it.
+
+| Field | Values | Left out | What it does |
+| :--- | :--- | :--- | :--- |
+| `approve` | `never`, `when_clean` | `never` | `when_clean` approves a review the host finds clean. `never` posts it as a comment. |
+| `block_on` | `error`, `warning`, `info` | `error` | A finding at or above this severity requests changes, whatever the verdict. |
+
+A review approves only when all of these hold:
+
+1. `approve` is `when_clean`, in the revision the run started with and in
+   the agent's current one, and the repository's settings do not say
+   `approve: never`.
+2. The verdict is `approve`, and no finding is at or above `block_on`.
+3. The host read every check on the reviewed commit itself, fewer than
+   1,000. Leaving out the app's own checks, none is pending or failed, and
+   at least one concluded success (saige's `ChecksAllow`).
+4. The pull request is open, not a draft and still on the reviewed commit,
+   and its author is not the app.
+5. The run was an automatic review, or asked (by a comment or a review
+   request) or resumed by a person the GitHub client maps (`github.people`
+   or `github.askers`) who is known by GitHub user ID and wrote neither the
+   pull request nor any of its commits, as author, committer or co-author.
+   The app has not approved the commit already, and no change request it
+   posted for another agent is outstanding
+   ([GitHub](github.md#native-reviews-and-feedback) says which runs approve
+   today).
+
+A verdict of `request_changes`, or any finding at or above `block_on`,
+requests changes. Anything else is a comment. The example above has
+`pr-reviewer` approve clean reviews and request changes on a finding that
+should be fixed. An `.agent.md` file sets the policy in its metadata:
+`metadata: {humagen_review_approve: when_clean, humagen_review_block_on: warning}`.
+A repository's settings may set `approve: never`, which only makes the policy
+stricter ([GitHub](github.md#repository-settings)). How the event is posted
+is in [GitHub](github.md#native-reviews-and-feedback).
 
 ### The Slack app
 

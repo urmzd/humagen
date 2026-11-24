@@ -23,6 +23,17 @@ type HTTPAPI struct {
 	base  string
 	token string
 	http  *http.Client
+	// app is the App's token source, nil for a client that is no App.
+	app *AppTokenSource
+}
+
+// AppLogin is the login of the App's bot account as GitHub names it, read
+// with the App's own key. A client that is no App has none.
+func (a *HTTPAPI) AppLogin(ctx context.Context) (string, error) {
+	if a.app == nil {
+		return "", fmt.Errorf("github: the client is no GitHub App")
+	}
+	return a.app.AppLogin(ctx)
 }
 
 func NewHTTPAPI(token string, client *http.Client) *HTTPAPI {

@@ -128,6 +128,11 @@ func (s AgentSpec) HashIn(domain string) string {
 		writeString(h, "output")
 		writeString(h, string(c.Output.Schema))
 	}
+	if c.Review != (Review{}) {
+		writeString(h, "review")
+		writeString(h, c.Review.Approve)
+		writeString(h, c.Review.BlockOn)
+	}
 	if c.Skills != nil {
 		writeString(h, "skills_loadable")
 		writeStrings(h, c.Skills.Loadable)

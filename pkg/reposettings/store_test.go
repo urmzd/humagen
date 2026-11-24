@@ -143,6 +143,9 @@ func TestInvalidSettings(t *testing.T) {
 		{Repository: "acme/site", Instructions: strings.Repeat("i", MaxInstructions+1)},
 		{Repository: "acme/site", Instructions: "a\x00b"},
 		{Repository: "acme/site", Reads: []string{"everything"}},
+		// A repository may only keep reviews from approving.
+		{Repository: "acme/site", Approve: "when_clean"},
+		{Repository: "acme/site", Approve: "always"},
 	} {
 		if _, err := s.Put("acme", "gh", v, 0, "ada", now); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%+v: %v, want ErrInvalid", v, err)
@@ -153,6 +156,18 @@ func TestInvalidSettings(t *testing.T) {
 	}
 	if list, _ := s.List("acme", "gh"); len(list) != 0 {
 		t.Fatalf("invalid settings were kept: %+v", list)
+	}
+}
+
+// A repository that keeps reviews from approving says so, written in any case.
+func TestARepositoryMayKeepReviewsFromApproving(t *testing.T) {
+	s := Open(nil)
+	it, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Approve: " Never "}, 0, "ada", now)
+	if err != nil || !it.NeverApproves() || it.IsZero() {
+		t.Fatalf("approve never = %+v %v", it, err)
+	}
+	if (Settings{}).NeverApproves() {
+		t.Fatal("no settings kept reviews from approving")
 	}
 }
 
@@ -179,5 +194,30 @@ func TestSettingsAreBounded(t *testing.T) {
 	}
 	if list, _ := s.List("acme", "gh-2"); len(list) != 1 {
 		t.Fatalf("removing one client removed another's: %d", len(list))
+	}
+}
+
+// A save that does not name approve keeps it, as the console's save of the
+// fields it shows does; only ClearApprove removes it.
+func TestASaveThatLeavesApproveOutKeepsIt(t *testing.T) {
+	s := Open(nil)
+	kept, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Approve: ApproveNever}, 0, "admin", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Instructions: "Prefer small changes."}, kept.Version, "member", now)
+	if err != nil || !again.NeverApproves() || again.Instructions != "Prefer small changes." {
+		t.Fatalf("a save without approve = %+v %v", again, err)
+	}
+	if _, err := s.Put("acme", "gh", Settings{Repository: "acme/site"}, kept.Version, "member", now); !errors.Is(err, ErrVersion) {
+		t.Fatalf("a save at a version read before: %v, want ErrVersion", err)
+	}
+	cleared, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Instructions: "Prefer small changes.", ClearApprove: true}, again.Version, "admin", now)
+	if err != nil || cleared.NeverApproves() || cleared.Instructions != "Prefer small changes." {
+		t.Fatalf("clearing approve = %+v %v", cleared, err)
+	}
+	stored, err := s.Get("acme", "gh", "acme/site")
+	if err != nil || stored.NeverApproves() || stored.ClearApprove {
+		t.Fatalf("stored after clearing = %+v %v", stored, err)
 	}
 }
