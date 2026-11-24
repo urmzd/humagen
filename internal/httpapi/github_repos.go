@@ -29,6 +29,7 @@ type githubRepoBody struct {
 	Instructions      string                   `json:"instructions"`
 	Reads             []string                 `json:"reads"`
 	CrossSurfaceReads *bool                    `json:"cross_surface_reads"`
+	Approve           string                   `json:"approve"`
 	Version           int64                    `json:"version"`
 }
 
@@ -57,7 +58,7 @@ func (s *Server) putGitHubRepository(w http.ResponseWriter, r *http.Request, who
 	if !decode(w, r, &body) {
 		return
 	}
-	in := reposettings.Settings{AutoReview: body.AutoReview, Agent: body.Agent, Instructions: body.Instructions, Reads: body.Reads, CrossSurfaceReads: body.CrossSurfaceReads}
+	in := reposettings.Settings{AutoReview: body.AutoReview, Agent: body.Agent, Instructions: body.Instructions, Reads: body.Reads, CrossSurfaceReads: body.CrossSurfaceReads, Approve: body.Approve}
 	out, err := s.P.SetGitHubRepository(r.Context(), who, r.PathValue("id"), repoPath(r), in, body.Version)
 	if err != nil {
 		s.problem(w, err)

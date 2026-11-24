@@ -143,6 +143,9 @@ func TestInvalidSettings(t *testing.T) {
 		{Repository: "acme/site", Instructions: strings.Repeat("i", MaxInstructions+1)},
 		{Repository: "acme/site", Instructions: "a\x00b"},
 		{Repository: "acme/site", Reads: []string{"everything"}},
+		// A repository may only keep reviews from approving.
+		{Repository: "acme/site", Approve: "when_clean"},
+		{Repository: "acme/site", Approve: "always"},
 	} {
 		if _, err := s.Put("acme", "gh", v, 0, "ada", now); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%+v: %v, want ErrInvalid", v, err)
@@ -153,6 +156,18 @@ func TestInvalidSettings(t *testing.T) {
 	}
 	if list, _ := s.List("acme", "gh"); len(list) != 0 {
 		t.Fatalf("invalid settings were kept: %+v", list)
+	}
+}
+
+// A repository that keeps reviews from approving says so, written in any case.
+func TestARepositoryMayKeepReviewsFromApproving(t *testing.T) {
+	s := Open(nil)
+	it, err := s.Put("acme", "gh", Settings{Repository: "acme/site", Approve: " Never "}, 0, "ada", now)
+	if err != nil || !it.NeverApproves() || it.IsZero() {
+		t.Fatalf("approve never = %+v %v", it, err)
+	}
+	if (Settings{}).NeverApproves() {
+		t.Fatal("no settings kept reviews from approving")
 	}
 }
 

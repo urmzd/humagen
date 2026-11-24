@@ -826,6 +826,23 @@ anyone in the workspace approve, except the person who asked.
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
   output?: AgentOutput;
+  review?: AgentReview;
+}
+
+/** How the agent's pull request reviews decide. The host chooses the
+event from the report and this policy, never from the model's words.
+It approves only with `approve: when_clean`, a verdict that approves,
+no finding at or above `block_on`, every check on the reviewed commit
+passed, an author other than the app, and a run that was an automatic
+review, a review request, or asked by a mapped person. A verdict of
+`request_changes`, or any finding at or above `block_on`, requests
+changes. Anything else is a comment.
+ */
+export interface AgentReview {
+  /** `never` (the default) or `when_clean`. A repository's settings may set `never` for it. */
+  approve?: "never" | "when_clean";
+  /** The least severity whose findings request changes. Absent is `error`. */
+  block_on?: "error" | "warning" | "info";
 }
 
 /** The shape of the agent's answer. The model is asked for structured
@@ -4867,6 +4884,8 @@ export interface GitHubRepoSettings {
   reads?: ("pull_diff" | "linked_issues")[];
   /** False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable. */
   cross_surface_reads?: boolean;
+  /** `never` keeps every agent's reviews here from approving. Left out, each agent's review policy applies. */
+  approve: "never";
   updated_at: string;
   updated_by?: string;
 }
@@ -4909,6 +4928,8 @@ export interface GitHubRepositoryInput {
   reads?: ("pull_diff" | "linked_issues")[];
   /** False keeps the repository to its own runs. Absent or true leaves it readable. */
   cross_surface_reads?: boolean;
+  /** `never` keeps reviews here from approving. Absent or empty leaves each agent's review policy. */
+  approve?: "" | "never";
   version: number;
 }
 

@@ -34,6 +34,13 @@ type Config struct {
 	// posts no native review. An error is retried. Nil asks every run that
 	// answers with a review for one.
 	AsksReview func(transport.View) (bool, error)
+	// ReviewPolicy is what the host says of the run a review answers for:
+	// its agent's review policy narrowed by the repository's settings,
+	// whether a signal that may approve started it, and the pull request's
+	// author. With it the event is ReviewEvent's, decided again by the
+	// transport's MayApprove hook before an approval posts. An error is
+	// retried. Nil approves nothing.
+	ReviewPolicy func(context.Context, transport.View) (ReviewGrant, error)
 	// SessionLink is the console's address of the session a run answers
 	// in, linked under its comment. Nil, or "", links nothing.
 	SessionLink        func(transport.View) string
@@ -94,6 +101,9 @@ type Config struct {
 	legacyPosts bool
 }
 
+// reviewDecisionTimeout bounds the reads a review's event is decided on.
+const reviewDecisionTimeout = 30 * time.Second
+
 // Connector decorates the transport without introducing another execution path.
 type Connector struct {
 	*transport.Connector
@@ -144,6 +154,10 @@ func New(cfg Config) (*Connector, error) {
 		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
 			if _, ok := cfg.API.(transport.ContextAPI); ok {
 				layouts := newLayouts(cfg)
+				pending := newApprovals(cfg.Clock)
+				if cfg.ReviewPolicy != nil {
+					base.MayApprove = pending.mayApprove(cfg)
+				}
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
 					// A run the host saved as a reply posts no review, whatever
 					// its agent wrote: the host, not the model, chose the shape.
@@ -164,9 +178,20 @@ func New(cfg Config) (*Connector, error) {
 						review, err := presentation.LegacyRecoveredReview(report, files, "")
 						return review, true, err
 					}
-					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel), presentation.ReviewPolicy{}, presentation.ReviewFacts{})
+					// The transport gives this no context; the decision's reads
+					// are bounded on their own.
+					ctx, cancel := context.WithTimeout(context.Background(), reviewDecisionTimeout)
+					policy, facts, err := reviewDecision(ctx, cfg, v, report)
+					cancel()
 					if err != nil {
 						return transport.Review{}, true, err
+					}
+					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel), policy, facts)
+					if err != nil {
+						return transport.Review{}, true, err
+					}
+					if review.Event == "APPROVE" {
+						pending.plan(v, report)
 					}
 					// Say which layout this review is posted in before posting it,
 					// so its recovery reproduces it.

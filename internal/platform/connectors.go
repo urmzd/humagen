@@ -675,8 +675,18 @@ func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest,
 		Channel: channel.String(),
 		Text:    autoReviewText(req, from),
 		At:      time.Now().UTC(),
-		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo, wire.MetaAnswerShape: wire.ShapeReview},
+		Context: autoReviewContext(kind, owner, repo, req.Author),
 	})
+}
+
+// autoReviewContext is what an automatic review's tag says of where it came
+// from, with the pull request's author when the payload named one.
+func autoReviewContext(kind, owner, repo, author string) map[string]string {
+	m := map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo, wire.MetaAnswerShape: wire.ShapeReview}
+	if author != "" {
+		m[wire.MetaGitHubAuthor] = author
+	}
+	return m
 }
 
 func autoReviewText(req clients.AutoReviewRequest, from string) string {

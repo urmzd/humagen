@@ -189,6 +189,35 @@ type AgentSpec struct {
 	// data. Nil is an answer in free text, as every revision written before
 	// it existed answers.
 	Output *Output `json:"output,omitempty"`
+	// Review is how the agent's pull request reviews decide. The zero value
+	// never approves and requests changes on a finding that must be fixed.
+	Review Review `json:"review,omitzero"`
+}
+
+// The values Review.Approve takes.
+const (
+	// ReviewApproveNever never approves: a clean review is a comment. It
+	// is the default.
+	ReviewApproveNever = "never"
+	// ReviewApproveWhenClean approves when the host finds the review clean:
+	// the verdict approves, no finding blocks, every check on the reviewed
+	// commit passed, the author is not the app, and the run was an
+	// automatic review, a review request, or asked by a mapped person.
+	ReviewApproveWhenClean = "when_clean"
+)
+
+// ReviewSeverities are the severities Review.BlockOn names, most urgent
+// first, as a review report's findings carry them.
+var ReviewSeverities = []string{"error", "warning", "info"}
+
+// Review is how an agent's reviews decide. The model never chooses the
+// event: the host does, from the report and this policy.
+type Review struct {
+	// Approve is ReviewApproveNever ("" too) or ReviewApproveWhenClean.
+	Approve string `json:"approve,omitempty"`
+	// BlockOn is the least severity whose findings request changes: error
+	// ("" too), warning or info.
+	BlockOn string `json:"block_on,omitempty"`
 }
 
 // Output is what an agent's answer must be.
@@ -381,6 +410,10 @@ func (s AgentSpec) Normalize() AgentSpec {
 			WorkspaceAreas: normalizeSet(s.Access.WorkspaceAreas, false),
 		},
 		Output: normalizeOutput(s.Output),
+		Review: Review{
+			Approve: strings.ToLower(strings.TrimSpace(s.Review.Approve)),
+			BlockOn: strings.ToLower(strings.TrimSpace(s.Review.BlockOn)),
+		},
 	}
 	if len(s.Sources) > 0 {
 		sources := make([]Source, 0, len(s.Sources))
@@ -441,6 +474,10 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		return fmt.Errorf("%w: agent %q has an empty system prompt; an agent with no instructions is a definition of nothing", ErrInvalidAgent, c.Name)
 	case c.Effort != "" && !validEffort(c.Effort):
 		return fmt.Errorf("%w: agent %q asks for reasoning effort %q; an effort is one word, such as low, medium or high", ErrInvalidAgent, c.Name, c.Effort)
+	case c.Review.Approve != "" && c.Review.Approve != ReviewApproveNever && c.Review.Approve != ReviewApproveWhenClean:
+		return fmt.Errorf("%w: agent %q has review.approve %q; it is never or when_clean", ErrInvalidAgent, c.Name, c.Review.Approve)
+	case c.Review.BlockOn != "" && !slices.Contains(ReviewSeverities, c.Review.BlockOn):
+		return fmt.Errorf("%w: agent %q has review.block_on %q; it is error, warning or info", ErrInvalidAgent, c.Name, c.Review.BlockOn)
 	}
 	// The charset is pkg/topic's to decide, not this package's. An agent
 	// name becomes a topic segment the moment the agent emits anything, so a

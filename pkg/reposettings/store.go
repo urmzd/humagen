@@ -57,6 +57,10 @@ const (
 	ReadLinkedIssues = "linked_issues"
 )
 
+// ApproveNever is the one value Settings.Approve takes: reviews here never
+// approve.
+const ApproveNever = "never"
+
 // Reads are the reads a repository may turn on, in the order they are made.
 var Reads = []string{ReadPullDiff, ReadLinkedIssues}
 
@@ -94,15 +98,23 @@ type Settings struct {
 	// a run raised on another surface (Slack, the console) or on another
 	// repository may not read it, and the console does not show its source.
 	// Left out, it is readable, as every repository a client covers is.
-	CrossSurfaceReads *bool     `json:"cross_surface_reads,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	UpdatedBy         string    `json:"updated_by,omitempty"`
+	CrossSurfaceReads *bool `json:"cross_surface_reads,omitempty"`
+	// Approve, when ApproveNever, keeps every agent's reviews here from
+	// approving, whatever the agent's own review policy says. It can only
+	// make the policy stricter: left out, the agent's policy applies.
+	Approve   string    `json:"approve,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+	UpdatedBy string    `json:"updated_by,omitempty"`
 }
 
 // IsZero reports whether the settings change nothing.
 func (s Settings) IsZero() bool {
-	return s.AutoReview == nil && s.Agent == "" && s.Instructions == "" && len(s.Reads) == 0 && s.CrossSurfaceReads == nil
+	return s.AutoReview == nil && s.Agent == "" && s.Instructions == "" && len(s.Reads) == 0 && s.CrossSurfaceReads == nil && s.Approve == ""
 }
+
+// NeverApproves reports whether the settings keep reviews here from
+// approving.
+func (s Settings) NeverApproves() bool { return s.Approve == ApproveNever }
 
 // ReadableElsewhere reports whether runs other than the repository's own may
 // read it.
@@ -117,6 +129,7 @@ func (s Settings) Normalize() Settings {
 	s.Repository = strings.TrimSpace(s.Repository)
 	s.Agent = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s.Agent), "@"))
 	s.Instructions = strings.TrimSpace(s.Instructions)
+	s.Approve = strings.ToLower(strings.TrimSpace(s.Approve))
 	if s.AutoReview != nil {
 		a := *s.AutoReview
 		s.AutoReview = &a
@@ -161,6 +174,9 @@ func (s Settings) Validate() error {
 		if !slices.Contains(Reads, r) {
 			problems = append(problems, fmt.Sprintf("%q is not a read; the reads are %s", r, strings.Join(Reads, ", ")))
 		}
+	}
+	if s.Approve != "" && s.Approve != ApproveNever {
+		problems = append(problems, fmt.Sprintf("approve is %q or left out; a repository can only keep reviews from approving", ApproveNever))
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
