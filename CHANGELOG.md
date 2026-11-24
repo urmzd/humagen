@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.204.0 (2026-11-24)
+
+### Features
+
+- **web**: set an agent's review approval and loadable skills in its settings ([daf4e11](https://github.com/urmzd/humagen/commit/daf4e11e1e18fdd2670267d2122b0f4d8a2d94bc))
+
+### Bug Fixes
+
+- **web**: keep stored review and skill fields as written in agent settings ([665ab50](https://github.com/urmzd/humagen/commit/665ab501519b89d2bb2a4d4f551c3bab3bd0570a))
+
+### Misc
+
+- **copy**: regenerate copy keys for the review and loadable skills settings ([0b268a3](https://github.com/urmzd/humagen/commit/0b268a3bdce62e590fe3b0735ecdd7534a1e8cc5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.203.0...v0.204.0)
+
+
 ## 0.203.0 (2026-11-24)
 
 ### Features
