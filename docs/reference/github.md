@@ -838,10 +838,15 @@ and what it reads itself, and nothing the model or the pull request wrote:
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 
-Only a GitHub App client approves: one with an app ID (`identity.app_id`)
-whose `github.login` is the app's bot account, `<slug>[bot]`. A client
-that posts with a token as a person's account never approves, whatever the
-policy says; its clean reviews post as comments.
+Only a GitHub App client approves: one that authenticates with the App's
+private key, names its app ID (`identity.app_id`), and whose `github.login`
+is the App's bot account, `<slug>[bot]`, as GitHub names it. The host reads
+the App's slug from GitHub (`GET /app`, signed with the App's key) before
+the first approval; when it cannot read it, or the login names another
+account, no review approves and a warning is logged. A client installed
+from the console gets its login from the App's slug. A client that posts
+with a token as a person's account never approves, whatever the policy or
+its `identity.app_id` say; its clean reviews post as comments.
 
 An approval posts only through the transport's approval hook. The hook
 decides again, reading the policy, the repository's settings and the checks

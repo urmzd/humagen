@@ -32,7 +32,7 @@ func TestTwoRunsOnOneCommitApproveOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-	conn, err := github.New(github.Config{API: fake, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	conn, err := github.New(github.Config{API: fake, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestALaterReviewDismissesTheAppsStaleReviews(t *testing.T) {
 				}
 			}
 			clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-			conn, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+			conn, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 				ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 			if err != nil {
 				t.Fatal(err)

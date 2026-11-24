@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
@@ -191,9 +192,12 @@ const (
 // the transport's sink asks MayApprove about that run. The hook is told the
 // run but not its report, which the decision reads again.
 type approvals struct {
-	mu      sync.Mutex
-	now     func() time.Time
-	pending map[string]pendingApproval
+	// verified is set once GitHub has named the App's login as the
+	// connector's.
+	verified atomic.Bool
+	mu       sync.Mutex
+	now      func() time.Time
+	pending  map[string]pendingApproval
 	// host is the connector, set once it is built.
 	host func() reviewHost
 }
@@ -267,6 +271,11 @@ func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.Appro
 		}
 		owner, repo, number, ok := pullOf(p.view.Channel)
 		if !ok || !strings.EqualFold(owner, req.Owner) || !strings.EqualFold(repo, req.Repo) || number != req.Number {
+			return false, nil
+		}
+		// The login the connector posts as must be the App's own, as
+		// GitHub names it; otherwise its own reviews are not told apart.
+		if !a.loginVerified(ctx, cfg) {
 			return false, nil
 		}
 		policy, facts, err := reviewDecision(ctx, cfg, p.view, p.report)
@@ -364,6 +373,34 @@ func markerKey(marker string) string {
 		return ""
 	}
 	return m[1]
+}
+
+// loginVerified reports whether GitHub names the App's bot account as the
+// connector's login. A read that fails, or names another login, is logged
+// and approves nothing; it is read again for the next approval. A login
+// GitHub confirmed is kept for the connector's life.
+func (a *approvals) loginVerified(ctx context.Context, cfg Config) bool {
+	if a.verified.Load() {
+		return true
+	}
+	log := cfg.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	if cfg.AppLogin == nil {
+		return false
+	}
+	login, err := cfg.AppLogin(ctx)
+	switch {
+	case err != nil:
+		log.Warn("github: the App's login could not be read, so reviews do not approve", "login", cfg.Login, "error", err)
+		return false
+	case !strings.EqualFold(login, cfg.Login):
+		log.Warn("github: the client's login is not the App's, so reviews do not approve", "login", cfg.Login, "app_login", login)
+		return false
+	}
+	a.verified.Store(true)
+	return true
 }
 
 // approvalClaims is the namespace an approval's claim is kept in.

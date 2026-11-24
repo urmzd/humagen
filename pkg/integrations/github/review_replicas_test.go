@@ -42,7 +42,7 @@ func vconn(t *testing.T, api any, claims ...state.Store) *github.Connector {
 		store = claims[0]
 	}
 	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-	conn, err := github.New(github.Config{API: api.(transport.API), Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: store, DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	conn, err := github.New(github.Config{API: api.(transport.API), Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, ApprovalClaims: store, DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)

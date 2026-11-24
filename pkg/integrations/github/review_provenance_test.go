@@ -26,7 +26,7 @@ func TestReviewHostProjectionPrecedesNativeAndCommentRendering(t *testing.T) {
 			report := presentation.ReviewReport{Format: presentation.ReviewFormatV2, Title: "Review", Verdict: "comment", Scope: &presentation.ReviewScope{Commit: sha}, Summary: "Inspected changes", Findings: []presentation.ReviewFinding{{ID: "one", Severity: "warning", Title: "Input", Suggestion: "Check it", Prompt: "Fix input", Evidence: []presentation.ReviewEvidence{{Step: "fabricated", Observation: "Claimed a failure"}}}}}
 			raw, _ := json.Marshal(report)
 			calls := 0
-			peer, err := github.New(github.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", AppID: 9001, Interval: -1, ReviewText: func(v transport.View) (string, error) {
+			peer, err := github.New(github.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, Interval: -1, ReviewText: func(v transport.View) (string, error) {
 				calls++
 				var safe presentation.ReviewReport
 				if err := json.Unmarshal([]byte(v.Text), &safe); err != nil {
@@ -80,7 +80,7 @@ func TestNativeReviewIsPinnedByTheHostAndOnlyForARequestedReview(t *testing.T) {
 			t.Fatal(err)
 		}
 		answer := `{"format":"humagen.review.v2","title":"Review","verdict":"comment","summary":"Inspected the change.","findings":[]}`
-		peer, err := github.New(github.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", AppID: 9001, Interval: -1,
+		peer, err := github.New(github.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, Interval: -1,
 			AsksReview:  func(transport.View) (bool, error) { return asked, nil },
 			SessionLink: func(transport.View) string { return "https://humagen.example/sessions/s_1" },
 		})

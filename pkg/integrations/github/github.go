@@ -82,6 +82,10 @@ type Config struct {
 	// for a connector that is no app. Checks of the app's own are told
 	// apart by it, and by Login.
 	AppID int64
+	// AppLogin reads the login of the App's bot account from GitHub. An
+	// approval needs it to name Login; without it, or when it reads
+	// another login or fails, nothing approves.
+	AppLogin func(ctx context.Context) (string, error)
 	// Login is the app's own login, which it comments as. With Triggers
 	// set, it asks as a trigger does; without them, a comment that mentions
 	// it and names no agent is raised naming none, and the host chooses who
@@ -318,9 +322,10 @@ func (c *Connector) Actions() []connector.Action {
 }
 
 // approvesAsApp reports whether the connector acts as a GitHub App that may
-// approve: it has an app ID, and its login is the app's bot account.
+// approve: it has an app ID, its login is a bot account, and it can read
+// the App's own login from GitHub to check the two agree.
 func approvesAsApp(cfg Config) bool {
-	return cfg.AppID > 0 && strings.HasSuffix(strings.ToLower(cfg.Login), "[bot]")
+	return cfg.AppID > 0 && strings.HasSuffix(strings.ToLower(cfg.Login), "[bot]") && cfg.AppLogin != nil
 }
 
 // createReviewAction is the transport's tool that posts a review a model

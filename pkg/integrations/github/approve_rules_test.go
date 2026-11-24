@@ -30,7 +30,7 @@ func newRuleBench(t *testing.T, authorID int64) *ruleBench {
 	t.Helper()
 	b := &ruleBench{fake: github.NewFake(), ref: transport.Ref{Owner: "acme", Repo: "repo", Number: 7}}
 	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +272,7 @@ func TestAChangeRequestWithNoRecordHoldsTheApproval(t *testing.T) {
 	other := newRuleBench(t, 583231)
 	other.fake = b.fake
 	clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+	conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 		ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -286,24 +286,32 @@ func TestAChangeRequestWithNoRecordHoldsTheApproval(t *testing.T) {
 	}
 }
 
-// Only a GitHub App approves: a connector with an app ID whose login is its
-// bot account. One that posts as a person's account, or names no app ID,
-// posts a clean review as a comment.
+// Only a GitHub App approves: a connector with an app ID whose login is the
+// bot account GitHub names for the App. One that posts as a person's
+// account, names no app ID, names another app's bot account, or cannot read
+// the App's login, posts a clean review as a comment.
 func TestOnlyAGitHubAppApproves(t *testing.T) {
 	sha := strings.Repeat("c", 40)
+	failing := func(context.Context) (string, error) { return "", fmt.Errorf("github: app read returned status 502") }
+	another := func(context.Context) (string, error) { return "other-app[bot]", nil }
 	for name, c := range map[string]struct {
-		login string
-		appID int64
-		want  string
+		login    string
+		appID    int64
+		appLogin func(context.Context) (string, error)
+		want     string
 	}{
-		"an app's bot account":        {login: "humagen[bot]", appID: 9001, want: "APPROVE"},
-		"a person's account":          {login: "ci-bot", appID: 9001, want: "COMMENT"},
-		"a bot account and no app ID": {login: "humagen[bot]", want: "COMMENT"},
+		"an app's bot account":                {login: "humagen[bot]", appID: 9001, appLogin: appBotLogin, want: "APPROVE"},
+		"the login GitHub names, in any case": {login: "Humagen[bot]", appID: 9001, appLogin: appBotLogin, want: "APPROVE"},
+		"a person's account":                  {login: "ci-bot", appID: 9001, appLogin: appBotLogin, want: "COMMENT"},
+		"a bot account and no app ID":         {login: "humagen[bot]", appLogin: appBotLogin, want: "COMMENT"},
+		"another app's bot account":           {login: "humagen[bot]", appID: 9001, appLogin: another, want: "COMMENT"},
+		"an App login that cannot be read":    {login: "humagen[bot]", appID: 9001, appLogin: failing, want: "COMMENT"},
+		"no way to read the App login":        {login: "humagen[bot]", appID: 9001, want: "COMMENT"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := newRuleBench(t, 583231)
 			clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat", AuthorID: 583231}
-			conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: c.login, AppID: c.appID, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+			conn, err := github.New(github.Config{API: b.fake, Owners: []string{"acme"}, Tenant: "tenant", Login: c.login, AppID: c.appID, AppLogin: c.appLogin, ApprovalClaims: state.NewMemory(), DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 				ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 			if err != nil {
 				t.Fatal(err)
@@ -325,3 +333,6 @@ func TestOnlyAGitHubAppApproves(t *testing.T) {
 		})
 	}
 }
+
+// appBotLogin is GitHub naming the App's bot account humagen[bot].
+func appBotLogin(context.Context) (string, error) { return "humagen[bot]", nil }
