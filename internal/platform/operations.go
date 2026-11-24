@@ -142,6 +142,16 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 			return !legacy.AgentToolNamed(allowed, agent)
 		})
 	}
+	// A run a skill was loaded for waits for a person wherever its caller
+	// would, and its caller's approvers answer it.
+	caller, loaded, err := p.callerRevision(context.Background(), req.Tenant, req.RunID)
+	if err != nil {
+		return req, err
+	}
+	if loaded {
+		spec := &req.Definition.Spec
+		spec.Approvals, spec.Approvers, spec.Answerers, spec.SelfApproval = heldAsCaller(spec.Approvals, caller.Spec, spec.Tools)
+	}
 	control, err := p.AgentControl(req.Tenant, req.Agent())
 	if err != nil {
 		return req, err
@@ -337,8 +347,13 @@ const policyApprovalWait = 24 * time.Hour
 func (p *Platform) agentApprovers(req runtime.Request) []string {
 	approvers := slices.Clone(req.Definition.Spec.Approvers)
 	if len(approvers) == 0 {
-		// Without the control, the fallback approvers still answer.
-		control, _ := p.AgentControl(req.Tenant, req.Agent())
+		// Without the control, the fallback approvers still answer. A run
+		// a skill was loaded for is its caller's to manage.
+		agent := req.Agent()
+		if caller, ok := p.loadedCaller(req.Tenant, req.RunID); ok {
+			agent = caller
+		}
+		control, _ := p.AgentControl(req.Tenant, agent)
 		approvers = slices.Clone(fallbackApprovers)
 		if control.Manager != "" {
 			approvers = append(approvers, control.Manager)

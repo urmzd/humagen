@@ -117,6 +117,13 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 		return
 	}
 	alwaysAsk := agentApprovals(rev.Spec.Approvals)
+	// What the agent that loaded a skill always asks about, its run asks
+	// about too.
+	if caller, loaded, err := p.callerRevision(ctx, run.Tenant, run.ID); err != nil {
+		return
+	} else if loaded {
+		alwaysAsk = append(alwaysAsk, agentApprovals(caller.Spec.Approvals)...)
+	}
 	if q.Tool != nil && legacy.ToolName(q.Tool.Name) == ToolAgent && slices.Contains(alwaysAsk, tagTool+targetOf(q.Tool.Arguments)) {
 		// The agent holds its calls to this one agent itself.
 		alwaysAsk = append(alwaysAsk, q.Tool.Name)

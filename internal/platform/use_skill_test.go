@@ -9,11 +9,13 @@ import (
 
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -246,5 +248,81 @@ func TestALoadIsHeldToTheCallLimitsAndIsTheOnlyWayToSkillRunner(t *testing.T) {
 	}
 	if sent := strings.Join(c.requests("rogue"), "\n"); !strings.Contains(sent, "runs only a skill another agent loads") {
 		t.Fatalf("a plain call to skill-runner: %s", sent)
+	}
+}
+
+// skillListing is skill-runner listing files, then answering skillFound.
+func skillListing() [][]saigetypes.Delta {
+	return [][]saigetypes.Delta{
+		agenttest.ToolCallResponse("list", platform.ToolFileList, map[string]any{"path": "."}),
+		say(skillFound),
+	}
+}
+
+// reviseLead adds tools to lead's spec and lets change set its approval
+// rules.
+func reviseLead(t *testing.T, p *platform.Platform, tool string, change func(*wire.AgentSpec)) wire.AgentSpec {
+	t.Helper()
+	rev, err := p.Catalog().Get(t.Context(), tenant, "lead", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := rev.Spec
+	spec.Tools = append(spec.Tools, tool)
+	change(&spec)
+	if _, err := p.Agents.Revise(t.Context(), tenant, spec, rev.Rev, "test"); err != nil {
+		t.Fatal(err)
+	}
+	return spec
+}
+
+// Only the caller's approvers answer a question its loaded skill asks: a
+// manager the caller does not name may not approve it, and one it names may.
+func TestTheCallersApproversAnswerItsLoadedSkill(t *testing.T) {
+	c := &cast{continues: true, says: map[string][][]saigetypes.Delta{
+		"lead":                      {loadingSkill("load-1", "go-style"), say("Done.")},
+		platform.BuiltinSkillRunner: skillListing(),
+	}}
+	p := loading(t, c, map[string][]string{"lead": {wire.AnySkill}}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	spec := reviseLead(t, p, platform.ToolFileRead, func(s *wire.AgentSpec) {
+		s.Approvals, s.Approvers = []string{platform.ToolFileRead}, []string{olu.Subject}
+	})
+	publishSkill(t, p, admin.Subject, library.Scope{Kind: "workspace"}, "go-style", "GO STYLE", nil)
+	if _, err := p.Operations.SetPolicy(tenant, operations.Policy{Scope: operations.Scope{Kind: "agent", Name: "lead"}, Rules: map[operations.Category]operations.Level{operations.ReadContext: operations.Ask}}, 0, "owner", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "caller-approvers", Agent: "lead", Text: "Review it.", Actor: event.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := called(t, p, first.ID, platform.BuiltinSkillRunner, runs.Parked)
+	if got := questionFor(t, p, child.ID).Parts[0].Question.Approvers; !slices.Equal(got, spec.Approvers) {
+		t.Fatalf("the loaded skill's question is for %v, want the caller's %v", got, spec.Approvers)
+	}
+	if _, err := p.AnswerQuestion(t.Context(), mo, child.ID, child.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err == nil {
+		t.Fatalf("mo, whom lead does not name, approved its loaded skill's read")
+	}
+	if _, err := p.AnswerQuestion(t.Context(), olu, child.ID, child.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err != nil {
+		t.Fatalf("olu, whom lead names, could not approve: %v", err)
+	}
+	await(t, p, first.ID, runs.Completed)
+}
+
+// A tool the caller's spec holds for a person waits in its loaded skill too.
+func TestTheCallersSpecApprovalsHoldItsLoadedSkill(t *testing.T) {
+	c := &cast{continues: true, says: map[string][][]saigetypes.Delta{
+		"lead":                      {loadingSkill("load-1", "go-style"), say("Done.")},
+		platform.BuiltinSkillRunner: skillListing(),
+	}}
+	p := loading(t, c, map[string][]string{"lead": {wire.AnySkill}}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	reviseLead(t, p, platform.ToolFileList, func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileList} })
+	publishSkill(t, p, admin.Subject, library.Scope{Kind: "workspace"}, "go-style", "GO STYLE", nil)
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "caller-approvals", Agent: "lead", Text: "Review it.", Actor: event.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := called(t, p, first.ID, platform.BuiltinSkillRunner, runs.Parked)
+	if q := questionFor(t, p, child.ID).Parts[0].Question; q.Tool == nil || q.Tool.Name != platform.ToolFileList {
+		t.Fatalf("the loaded skill parked on %+v, want its file_list", q)
 	}
 }

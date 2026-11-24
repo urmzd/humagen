@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // Skills loaded as subagents.
@@ -275,6 +276,59 @@ func (p *Platform) actingAgents(tenant, runID, agent string) []string {
 		return []string{agent, caller}
 	}
 	return []string{agent}
+}
+
+// callerRevision is, for a run a skill was loaded for, the revision its
+// caller's run is pinned to; false for any other run. A caller whose
+// revision cannot be read is an error: its rules cannot be known.
+func (p *Platform) callerRevision(ctx context.Context, tenant, runID string) (wire.Revision, bool, error) {
+	run, err := p.runRecordOf(tenant, runID)
+	if err != nil {
+		return wire.Revision{}, false, nil
+	}
+	if _, ok := loadedOf(wire.Meta(run.Tag())); !ok {
+		return wire.Revision{}, false, nil
+	}
+	caller, err := p.Runs.Get(tenant, run.Parent)
+	if err != nil {
+		return wire.Revision{}, true, fmt.Errorf("%w: the run that loaded this skill cannot be read, so nobody approves its calls", ErrForbidden)
+	}
+	rev, err := p.Catalog().Get(ctx, tenant, caller.Agent, caller.Rev)
+	if err != nil {
+		return wire.Revision{}, true, fmt.Errorf("%w: the rules of the agent that loaded this skill cannot be read, so nobody approves its calls", ErrForbidden)
+	}
+	return rev, true, nil
+}
+
+// heldAsCaller is the approval rules a run a skill was loaded for is held
+// to, on own, its own agent's: a tool waits for a person when either spec
+// says so (only those among tools, the tools it has), and only the
+// caller's approvers, answerers and self-approval rule answer it.
+func heldAsCaller(approvals []string, caller wire.AgentSpec, tools []string) (held, approvers, answerers []string, self bool) {
+	held = slices.Clone(approvals)
+	for _, name := range caller.Approvals {
+		if slices.Contains(tools, name) && !slices.Contains(held, name) {
+			held = append(held, name)
+		}
+	}
+	return held, slices.Clone(caller.Approvers), slices.Clone(caller.Answerers), caller.SelfApproval
+}
+
+// approvalRevision is the revision whose approval rules hold run's
+// questions: its own, or for a run a skill was loaded for, its own with its
+// caller's approval rules (heldAsCaller).
+func (p *Platform) approvalRevision(ctx context.Context, run runs.Run) (wire.Revision, error) {
+	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
+	if err != nil {
+		return rev, err
+	}
+	caller, loaded, err := p.callerRevision(ctx, run.Tenant, run.ID)
+	if err != nil || !loaded {
+		return rev, err
+	}
+	rev = rev.Clone()
+	rev.Spec.Approvals, rev.Spec.Approvers, rev.Spec.Answerers, rev.Spec.SelfApproval = heldAsCaller(rev.Spec.Approvals, caller.Spec, rev.Spec.Tools)
+	return rev, nil
 }
 
 // pinnedSpec is the agent revision a run is pinned to, as the registry
