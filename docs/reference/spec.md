@@ -735,6 +735,8 @@ spec:
         fallbacks: [{provider: openai, model: gpt-5.1}]
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
+        tools: [use_skill]
+        skills: {loadable: [secure-review]}   # library skills it may load mid-run, or [*]; none when left out
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
     - project: Globex       # its home: only Globex's readers see it, and it answers only where they alone read
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
@@ -928,6 +930,18 @@ that cannot give it fails the run instead of answering in free text. The
 answer, checked against the whole schema, is kept on the run as `output`. An
 `.agent.md` file sets it in metadata, `humagen_output_schema`, as the schema in
 a JSON string.
+
+An agent may load library skills mid-run: `skills: {loadable: [<name>, ...]}`,
+or `[*]` for any published skill of the run's project chain, with `use_skill`
+in its `tools`. Left out, it loads none. Each load runs the skill as a
+subagent, `skill-runner` from the Review package, under the same depth,
+fan-out and budget limits as the agent tool. The host pins that one skill on
+it and narrows its tools as the skill says; the model only names the skill.
+Its place is its caller's, so it reads the caller's repository as its own. It
+answers with findings in the review report's shape, each with
+`found_by: skill-runner#<skill>`. A personal skill never loads. An
+`.agent.md` file sets the list in metadata, `humagen_skills_loadable`, as one
+comma-separated string.
 
 The approval agent ships with a schema of `decision` (allow, ask or deny),
 `reason` and `references`. A workspace may give it its own, which must keep

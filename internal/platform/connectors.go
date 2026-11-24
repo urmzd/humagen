@@ -941,12 +941,21 @@ func (p *Platform) IngressHandler() http.Handler {
 func (p *Platform) connectorTools(req runtime.Request, emit func(event.Action) error) (native.Tools, error) {
 	reg := connector.NewRegistry()
 	client := p.clientOf(req.Tenant, req.RunID)
+	// A run a skill was loaded for acts in its caller's place, routed as
+	// its caller was: its reads of that place are its own (use_skill.go).
+	// Its record says so; a call's request carries no meta to its tools.
+	routes := req.Agent()
+	if run, err := p.runRecordOf(req.Tenant, req.RunID); err == nil {
+		if l, ok := loadedOf(wire.Meta(run.Tag())); ok {
+			req.Source, routes = l.Place, l.Caller
+		}
+	}
 	for _, surface := range clients.Surfaces() {
-		st := p.surfaces[string(surface)].actor(req.Tenant, client, req.Agent())
+		st := p.surfaces[string(surface)].actor(req.Tenant, client, routes)
 		if st == nil {
 			continue
 		}
-		if err := reg.Register(capabilityActor{p: p, st: st, req: req}); err != nil {
+		if err := reg.Register(capabilityActor{p: p, st: st, req: req, routes: routes}); err != nil {
 			return nil, err
 		}
 	}

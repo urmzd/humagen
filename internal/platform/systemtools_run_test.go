@@ -41,7 +41,7 @@ var namedCategories = map[string]operations.Category{
 	"session_call": operations.Other, "session_link": operations.Other, "session_listen": operations.Other, "session_read": operations.Other,
 	"session_status": operations.Other, "set_workspace_prompt": operations.Other, "shell": operations.WriteFiles, "slack_add_reaction": operations.ExternalMessages,
 	"slack_post_message": operations.ExternalMessages, "source_search": operations.ReadContext, "tag_writer": operations.CallAgents, "write_eval_suite": operations.Other,
-	"start_review": operations.Other,
+	"start_review": operations.Other, "use_skill": operations.CallAgents,
 }
 
 func registryPlatform(t *testing.T) *Platform {
@@ -210,8 +210,8 @@ func TestATurnsToolsAreBuiltFromTheRegistry(t *testing.T) {
 		}
 		built++
 	}
-	if built != 52 {
-		t.Errorf("built %d tools, want 52", built)
+	if built != 53 {
+		t.Errorf("built %d tools, want 53", built)
 	}
 	for _, name := range []string{"no_such_tool", "list_schedules", "session_call", "delegate_task"} {
 		if _, err := tools.Lookup(name); !errors.Is(err, native.ErrNoSuchTool) {

@@ -122,6 +122,9 @@ func RevisionOf(rec definition.Record, rev int) (Revision, error) {
 	if schema := d.Metadata["humagen_output_schema"]; schema != "" {
 		spec.Output = &Output{Schema: json.RawMessage(schema)}
 	}
+	if loadable := d.Metadata["humagen_skills_loadable"]; loadable != "" {
+		spec.Skills = &Skills{Loadable: strings.Split(loadable, ",")}
+	}
 	if d.Model != nil {
 		spec.Provider, spec.Model, _ = strings.Cut(d.Model.Use, "/")
 		for _, f := range d.Model.Fallback {

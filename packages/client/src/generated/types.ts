@@ -826,6 +826,19 @@ anyone in the workspace approve, except the person who asked.
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
   output?: AgentOutput;
+  skills?: AgentSkills;
+}
+
+/** What the agent may do with the skill library beyond the skills a
+person names. Left out, it loads none.
+ */
+export interface AgentSkills {
+  /** The library skills the agent may load with `use_skill`, each run
+as a subagent of its own (`skill-runner`): skill names, or `*`
+alone for any published skill of the run's project chain. A
+personal skill never loads. Empty loads none.
+ */
+  loadable?: string[];
 }
 
 /** The shape of the agent's answer. The model is asked for structured

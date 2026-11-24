@@ -63,6 +63,15 @@ func (p *Platform) operationAdmissionRequest(req runtime.Request) error {
 	if err != nil {
 		return err
 	}
+	// A run a skill was loaded for stops with its caller: a paused caller
+	// does not go on working through it.
+	if caller, ok := p.loadedCaller(req.Tenant, req.RunID); ok && !agent.Paused {
+		held, err := p.Operations.Control(req.Tenant, legacy.BuiltinAgent(caller))
+		if err != nil {
+			return err
+		}
+		agent.Paused = held.Paused
+	}
 	if !agent.Paused && p.agentReady(req.Tenant, req.Agent()) {
 		return nil
 	}
