@@ -593,6 +593,7 @@ even one of an account the client serves, answers 404.
 | Instructions for runs here | `instructions` | none | Pinned on every run the client raises on the repository, as the last instruction layer, after the workspace's and the projects'. At most 4,000 characters. |
 | Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`), within 24,000 characters and 3 seconds. A read that fails or runs out of time is named, not left out. |
 | Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file`, `github_workflow_status` and `github_fix_base`, and a read of another repository that GitHub redirects to it is not followed, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. Every client's view shows the workspace's answer, with the clients that keep it in `kept_by`. |
+| Reviews never approve | `approve: never` | each agent's [review policy](spec.md#review-policy) | No review here approves, whatever the reviewing agent's `review.approve` says. It only makes the policy stricter: `never` is its one value. The console does not set it yet; set it through the API. |
 
 What is read before a run is untrusted: anyone who can open a pull request
 writes its description and its patch. It is added to the run's text in one
@@ -818,8 +819,24 @@ comment and an optional committable suggestion. A finding with no location,
 or one off the diff, stays in the review body with its change. Each finding
 may name the agent that found it (`found_by`, such as `security-reviewer` or
 `security-reviewer#a`); the review shows the agent's name without the label.
-Agents never approve: an `approve` verdict is posted as a comment,
-`request_changes` as a change request, and a person approves and merges.
+The host chooses the review's event, never the model. It reads the
+report's verdict and findings, the agent's [review policy](spec.md#review-policy)
+and what it reads itself, and nothing the model or the pull request wrote:
+
+| Event | When |
+| :--- | :--- |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found at least one, fewer than 1,000, and every one passed (success, neutral or skipped); the pull request's author is not the app; and the run was an automatic review, a review requested from the app, or asked by a person the client maps (`github.people` or `github.askers`) |
+| Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
+| Comment | Anything else |
+
+An approval posts only through the transport's approval hook. The hook
+decides again, reading the policy, the repository's settings and the checks
+as they are then, and refuses by default: an answer it cannot read, two runs
+approving one commit at once, or a check that failed meanwhile posts the
+review as a comment. The transport then reads the pull request again and
+posts the approval only while its head is still the reviewed commit. The
+model has no tool that approves. A rule's run, a run another agent started,
+and a run a stranger asked for never approve.
 Review recovery uses an app-owned marker and the durable delivery store to
 avoid duplicate reviews. Before it posts, the host records in the delivery
 store that the review is in the current layout. A review with no record was
