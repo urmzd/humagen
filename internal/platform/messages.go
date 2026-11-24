@@ -623,7 +623,23 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 		return threads.Thread{}, false, err
 	}
 	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Visibility: vis, Participants: people, Title: place, Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(who), Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	if c != nil && origin.Type == RefSlack {
+		// A Slack thread's root records its client's surface, as
+		// StartSurfaceSession does, so it is kept by that client.
+		if sf := (threads.Surface{Client: c.ID, Channel: origin.Channel, TS: cmpOr(origin.ThreadTS, origin.TS)}); sf.Validate() == nil {
+			th.Surface = &sf
+		}
+	}
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
+	if th.Surface != nil && errors.Is(err, threads.ErrExists) {
+		if _, got := p.Threads.Get(who.Tenant, rec.ID); errors.Is(got, threads.ErrNotFound) {
+			// The surface's thread is another root of the place (one
+			// StartSurfaceSession opened under its own label): this one is
+			// started without it.
+			th.Surface = nil
+			_, err = p.Threads.Create(who.Tenant, th, p.now())
+		}
+	}
 	created := err == nil
 	if err != nil && !errors.Is(err, threads.ErrExists) {
 		return threads.Thread{}, false, err
@@ -646,6 +662,17 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if !created && !verified {
 		// The root is as it was started.
 		return th, false, nil
+	}
+	if !created && th.Surface != nil && (c == nil || th.Surface.Client != c.ID) {
+		// A root a client's surface started is kept by that client: another
+		// client of the team, or an origin with none, changes nothing of it.
+		return threads.Thread{}, false, errNotThatSurfaces
+	}
+	if !created && th.Surface == nil && c != nil && origin.Type == RefSlack && !p.deliversThrough(who.Tenant, th.ID, c.ID) {
+		// A root kept from before roots recorded their surface answers
+		// through the client that started it: another client of the team
+		// changes nothing of it.
+		return threads.Thread{}, false, errNotThatSurfaces
 	}
 	if !created && p.mayKeepFor(who, nil, th, projects.Member, member) != nil {
 		return threads.Thread{}, false, threads.ErrNotFound
@@ -760,6 +787,19 @@ func (p *Platform) keepDelivery(tenant, root string, d delivery) {
 	if err := p.deliveries.Put(tenant, root, rootDelivery{Channel: d.channel, Client: d.client, SlackChannel: d.slackChannel}); err != nil {
 		p.log.Warn("platform: where a place answers could not be kept", "root", root, "error", err)
 	}
+}
+
+// deliversThrough reports whether root answers through client, or has no
+// client it answers through yet. A record that cannot be read says no.
+func (p *Platform) deliversThrough(tenant, root, client string) bool {
+	it, err := p.deliveries.Lookup(tenant, root)
+	if errors.Is(err, state.ErrNotFound) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	return it.Value.Client == "" || it.Value.Client == client
 }
 
 // keptDelivery is where th's root answers, if a surface built into the

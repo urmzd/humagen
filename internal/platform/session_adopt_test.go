@@ -1213,8 +1213,8 @@ func TestAHalfAdoptedSlackThreadRefusesAnotherAppsMessage(t *testing.T) {
 }
 
 // Once adopted, a message from another app of the team at the same place
-// reaches the adopted session through the key's alias, and keeps no
-// audience for it.
+// is refused: the adopted session is its own app's, and keeps no audience
+// and no message from the other app.
 func TestAnAdoptedSlackThreadKeepsNoAudienceThroughAnotherApp(t *testing.T) {
 	ctx := t.Context()
 	p, _ := adoptRoom(t, state.NewMemory())
@@ -1228,7 +1228,16 @@ func TestAnAdoptedSlackThreadKeepsNoAudienceThroughAnotherApp(t *testing.T) {
 		Text: "<@UAPP2> hello", ActAs: &platform.ActAs{Client: "app2", User: "U0ANA"},
 		Surface: &platform.SurfaceRef{Client: "app2", Channel: "C09FULL", TS: ts, AppUser: "UAPP2"},
 	}
-	_, _, _ = p.StartSurfaceSession(ctx, machine2, withAudience(in, platform.ChannelPrivate, "U0ANA"))
+	said, _, err := p.Threads.Messages(tenant, th.ID, "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, started, err := p.StartSurfaceSession(ctx, machine2, withAudience(in, platform.ChannelPrivate, "U0ANA")); !errors.Is(err, threads.ErrInvalid) || started || v.ID != "" {
+		t.Fatalf("another app's message at the adopted thread = %q, started %v, %v; want refused", v.ID, started, err)
+	}
+	if now, _, err := p.Threads.Messages(tenant, th.ID, "", 50); err != nil || len(now) != len(said) {
+		t.Fatalf("the adopted thread holds %d messages, held %d: %v", len(now), len(said), err)
+	}
 	if aud, kept := p.SessionAudience(tenant, th.ID); kept {
 		t.Fatalf("the adopted Slack thread keeps an audience after another app's message: %+v", aud)
 	}

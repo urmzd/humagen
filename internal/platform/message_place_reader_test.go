@@ -27,7 +27,12 @@ const (
 // platform keeps its records in, the app's machine and the root's id.
 func placeRoom(t *testing.T) (*platform.Platform, state.Store, auth.Principal, string) {
 	t.Helper()
-	st := state.NewMemory()
+	return placeRoomOn(t, state.NewMemory())
+}
+
+// placeRoomOn is placeRoom keeping its records in st.
+func placeRoomOn(t *testing.T, st state.Store) (*platform.Platform, state.Store, auth.Principal, string) {
+	t.Helper()
 	p, machine := slackRoomOn(t, startWith(t, platform.Config{Backends: platform.Backends{State: st}}), func(in *platform.ClientInput) {
 		in.Slack.People["U0BEN"] = "ben"
 	})
