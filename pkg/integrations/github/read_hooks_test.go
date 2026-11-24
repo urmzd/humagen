@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -270,5 +271,85 @@ func TestTheGrantsReadTheAddressTheWayTheTransportDecodesIt(t *testing.T) {
 	// A key in another case still reads a repository the grants allow.
 	if summary, err := read("slack://T01/C01", `{"ADDRESS":"acme/web"}`); err != nil || !strings.Contains(summary, "web repository") {
 		t.Fatalf("an allowed read in another case: %q, %v", summary, err)
+	}
+}
+
+// A repository kept to its own runs is refused to the read tools and to
+// ReadComments even when read_repositories also names it and the
+// installation covers it, whether a run names it or a read of the run's own
+// repository is redirected to it; a refusal by name says why.
+func TestAKeptRepositoryIsRefusedByNameAndThroughARedirect(t *testing.T) {
+	c, err := github.New(reachConfig(github.NewHTTPAPI("token", redirectingGitHub(t))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := action(t, c, "github_read_context")
+	for _, source := range []string{"slack://T01/C01", "github://acme/web/pull/3"} {
+		_, err := read(source, `{"address":"github://acme/kept/issues/7"}`)
+		var refusal *github.ReadError
+		if !errors.As(err, &refusal) || !refusal.Kept || !strings.Contains(err.Error(), "not readable from other surfaces") {
+			t.Fatalf("%s read the kept repository by name: %v", source, err)
+		}
+		_, err = c.ReadComments(context.Background(), address.MustParse(source), "github://acme/kept/issues/7", 5, nil)
+		if !errors.As(err, &refusal) || !strings.Contains(err.Error(), "not readable from other surfaces") {
+			t.Fatalf("%s read the kept repository's comments by name: %v", source, err)
+		}
+	}
+	// acme/web's issue 103 was moved to acme/kept.
+	if summary, err := read("github://acme/web/pull/3", `{"address":"github://acme/web/issues/103"}`); !errors.Is(err, github.ErrReadRedirected) {
+		t.Fatalf("a redirect from the run's own repository reached the kept one: %q, %v", summary, err)
+	}
+	if got, err := c.ReadComments(context.Background(), address.MustParse("github://acme/web/issues/103"), "", 5, nil); !errors.Is(err, github.ErrReadRedirected) {
+		t.Fatalf("comments of the kept repository through a redirect: %v, %v", got, err)
+	}
+	// A run on the kept repository reads it.
+	if summary, err := read("github://acme/kept/pull/3", `{"address":"github://acme/kept/issues/7"}`); err != nil || !strings.Contains(summary, "acme/kept issue") {
+		t.Fatalf("its own run: %q, %v", summary, err)
+	}
+	if got, err := c.ReadComments(context.Background(), address.MustParse("github://acme/kept/issues/7"), "", 5, nil); err != nil || len(got) != 1 {
+		t.Fatalf("its own run's comments: %v, %v", got, err)
+	}
+}
+
+// A read of the run's own repository that GitHub redirects to a repository
+// the installation covers is answered by that repository, as a read of it by
+// name is; one redirected to a repository nothing grants is not.
+func TestARedirectFromTheRunsOwnRepositoryReachesAnInstalledOne(t *testing.T) {
+	c, err := github.New(reachConfig(github.NewHTTPAPI("token", redirectingGitHub(t))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := action(t, c, "github_read_context")
+	// acme/web's issue 102 was moved to acme/docs, and 104 to acme/secret.
+	if summary, err := read("github://acme/web/pull/3", `{"address":"github://acme/web/issues/102"}`); err != nil || !strings.Contains(summary, "acme/docs issue") {
+		t.Fatalf("a redirect to an installed repository: %q, %v", summary, err)
+	}
+	if summary, err := read("github://acme/web/pull/3", `{"address":"github://acme/web/issues/104"}`); !errors.Is(err, github.ErrReadRedirected) {
+		t.Fatalf("a redirect to a repository nothing grants: %q, %v", summary, err)
+	}
+}
+
+// The connector's comment reads are granted as its read tools are: the run's
+// own repository, a repository named or covered, and nothing else.
+func TestCommentReadsFollowTheReadGrants(t *testing.T) {
+	c, err := github.New(reachConfig(github.NewHTTPAPI("token", redirectingGitHub(t))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		source, reference string
+		want              bool
+	}{
+		{"github://acme/web/pull/7", "", true},
+		{"slack://T01/C01", "github://acme/listed/issues/7", true},
+		{"slack://T01/C01", "https://github.com/acme/docs/issues/7", true},
+		{"slack://T01/C01", "github://acme/secret/issues/7", false},
+		{"slack://T01/C01", "github://partner/tools/issues/7", false},
+		{"github://acme/web/pull/3", "github://acme/secret/issues/7", false},
+	} {
+		got, err := c.ReadComments(context.Background(), address.MustParse(tc.source), tc.reference, 5, nil)
+		if (err == nil) != tc.want {
+			t.Fatalf("%s reading %q: %v, %v", tc.source, tc.reference, got, err)
+		}
 	}
 }

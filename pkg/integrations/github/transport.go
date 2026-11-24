@@ -27,9 +27,11 @@ type FileContent = transport.FileContent
 type FileEdit = transport.FileEdit
 type Guide = transport.Guide
 type GuideAPI = transport.GuideAPI
+type LatestCommentsAPI = transport.LatestCommentsAPI
 type MutationAPI = transport.MutationAPI
 type NotFoundError = transport.NotFoundError
 type ReactionCounts = transport.ReactionCounts
+type ReadError = transport.ReadError
 type Ref = transport.Ref
 type ReplyAPI = transport.ReplyAPI
 type RepositoryAPI = transport.RepositoryAPI
@@ -46,6 +48,16 @@ const HeaderDelivery = transport.HeaderDelivery
 const MaxBodyChars = transport.MaxBodyChars
 
 var NewFake = transport.NewFake
+
+// ErrCommentsChanged reports comments deleted while they were read
+// (LatestCommentsAPI). ErrReadRedirected reports a read GitHub answered from
+// another location that the read does not follow. ReadWhereNamed marks a
+// context for a read that follows no redirect.
+var (
+	ErrCommentsChanged = transport.ErrCommentsChanged
+	ErrReadRedirected  = transport.ErrReadRedirected
+	ReadWhereNamed     = transport.ReadWhereNamed
+)
 
 func refAddress(r Ref, kind string) address.Address {
 	return address.Address{Connector: Name, Workspace: r.Owner, Path: []string{r.Repo, kind, strconv.Itoa(r.Number)}}

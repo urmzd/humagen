@@ -102,6 +102,9 @@ type seat struct {
 	// context reads an issue or pull request for the reads a repository's
 	// settings ask for (github_repo_settings.go). Nil for a surface without.
 	context github.ContextAPI
+	// comments reads an issue's or pull request's latest comments through
+	// the client's connector (github_context.go). Nil for a surface without.
+	comments commentReader
 	// guard holds the client's writes to its surface to the egress policy
 	// (egress_guard.go). Nil for a Connection, and for a client whose API
 	// the embedding program supplied: their calls are not the platform's.

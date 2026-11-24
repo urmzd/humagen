@@ -598,8 +598,14 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
 		}
-		if reader, ok := api.(github.ContextAPI); ok {
-			st.context = reader
+		// The reads the platform makes for a run on an issue or pull request
+		// go through the connector, as the run's own reads do, so a redirect
+		// to another repository is decided by the same grants.
+		if _, ok := api.(github.ContextAPI); ok {
+			st.context = peer.PlaceReader()
+		}
+		if _, ok := api.(github.LatestCommentsAPI); ok {
+			st.comments = peer
 		}
 		return st, nil
 	}

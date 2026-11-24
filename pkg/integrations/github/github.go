@@ -46,13 +46,17 @@ type Config struct {
 	Owners             []string
 	ReadRepositories   []string
 	// MayRead grants a cross-source read of a repository ReadRepositories
-	// does not name, such as one the GitHub App installation covers. It
-	// grants reads only: the read tools may name the repository, and
-	// nothing else does. Nil grants nothing more.
+	// does not name, such as one the GitHub App installation covers. It is
+	// the transport's Config.MayRead: it grants reads only (the read tools,
+	// Connector.ReadComments, and a redirect of a read of the run's own
+	// repository to this one), and it is given the owner and repository in
+	// lower case. Nil grants nothing more.
 	MayRead func(ctx context.Context, owner, repo string) bool
 	// ReadRefused names a repository only its own runs may read: a
-	// cross-source read of it is refused, whatever MayRead or
-	// ReadRepositories grant. Nil refuses nothing.
+	// cross-source read of it, or a redirect to it from a read of another
+	// repository, is refused whatever MayRead or ReadRepositories grant. It
+	// is the transport's Config.ReadRefused, given the owner and repository
+	// in lower case. Nil refuses nothing.
 	ReadRefused func(ctx context.Context, owner, repo string) bool
 	Bots        map[string]string
 	Agents      mention.Set
@@ -118,7 +122,7 @@ func New(cfg Config) (*Connector, error) {
 			return nil, fmt.Errorf("github: mutations need the tenant the connector's runs belong to")
 		}
 	}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: triggerAware(cfg.Agents, cfg.Triggers), Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, MayRead: cfg.MayRead, ReadRefused: cfg.ReadRefused, Bots: cfg.Bots, Agents: triggerAware(cfg.Agents, cfg.Triggers), Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.FixPullRequests, base.AuthorizeFixPull = cfg.FixPullRequests, cfg.AuthorizeFixPull
 	base.FixPullContext = cfg.FixPullContext
@@ -208,11 +212,6 @@ func New(cfg Config) (*Connector, error) {
 
 func (c *Connector) Actions() []connector.Action {
 	actions := c.Connector.Actions()
-	for i, a := range actions {
-		if readActions[a.Name] {
-			actions[i].Invoke = c.grantedRead(a)
-		}
-	}
 	if c.cfg.Mutations {
 		actions = append(actions, c.mutationAction(), c.runChecksAction())
 	}
