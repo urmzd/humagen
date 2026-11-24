@@ -92,6 +92,7 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen store list|install|remove  use the agent store through the API
        humagen import sessions|skills|agents  bring sessions, skills and agents from other assistants in, through the API
        humagen migrate sessions [-apply]  file past work into sessions; a dry run unless -apply
+       humagen migrate journal [-apply]   rewrite each journaled request to the request as it was asked; a dry run unless -apply
        humagen config check|print -f PATH check a spec, or print it with every default
        humagen config copy-keys           list the console's text branding.copy may replace
        humagen slack manifest [flags]     print the Slack app manifest

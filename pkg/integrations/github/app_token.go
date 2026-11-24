@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -265,6 +266,49 @@ func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	return s.token, nil
 }
 
+// appSlug is a GitHub App's slug.
+var appSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,99}$`)
+
+// AppLogin reads the App's slug from GitHub (GET /app, signed with the
+// App's own key) and returns its bot account's login, "<slug>[bot]".
+func (s *AppTokenSource) AppLogin(ctx context.Context) (string, error) {
+	now := time.Now().UTC()
+	if s.clock != nil {
+		now = s.clock().UTC()
+	}
+	jwtToken, err := SignAppJWT(s.appID, s.key, now)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.base+"/app", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", fmt.Errorf("github: app read failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("github: app read returned status %d", resp.StatusCode)
+	}
+	var out struct {
+		Slug string `json:"slug"`
+	}
+	const maxResponse = 1 << 20
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	if err != nil || len(raw) > maxResponse || json.Unmarshal(raw, &out) != nil || !appSlug.MatchString(out.Slug) {
+		return "", fmt.Errorf("github: app read carried no valid slug")
+	}
+	return out.Slug + "[bot]", nil
+}
+
 type appRoundTripper struct {
 	base   http.RoundTripper
 	source *AppTokenSource
@@ -329,5 +373,5 @@ func NewAppHTTPAPIAt(base string, cfg AppConfig) (*HTTPAPI, error) {
 		CheckRedirect: refuseAppRedirect,
 	}
 	base = source.base
-	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPIAt(base, "", authed), base: base, http: authed}, nil
+	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPIAt(base, "", authed), base: base, http: authed, app: source}, nil
 }

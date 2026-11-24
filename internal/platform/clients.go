@@ -416,6 +416,11 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 	return creds, secrets, nil
 }
 
+// appLoginReader reads the login of a GitHub App's bot account from GitHub.
+type appLoginReader interface {
+	AppLogin(ctx context.Context) (string, error)
+}
+
 // keep stores the secret values that were written, and forgets a stored value
 // that a reference has replaced.
 func (p *Platform) keep(c clients.Client, in ClientInput) error {
@@ -588,11 +593,16 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		// One approval of each commit is claimed in the store every
 		// replica shares; without it nothing approves.
 		cfg.ApprovalClaims, cfg.Log = p.approvalClaims, p.log
-		// The app's own checks are told apart by its ID as well as its
-		// login; a client that is no GitHub App has none.
+		// Only a client that authenticates as a GitHub App approves, and
+		// only when GitHub names its bot account as the client's login. Its
+		// own checks are told apart by its ID as well as its login. A token
+		// client posts as the token's person, and never approves.
 		if app {
 			if id, err := strconv.ParseInt(strings.TrimSpace(c.Identity.AppID), 10, 64); err == nil && id > 0 {
 				cfg.AppID = id
+			}
+			if reader, ok := api.(appLoginReader); ok {
+				cfg.AppLogin = reader.AppLogin
 			}
 		}
 		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }

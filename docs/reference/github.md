@@ -838,6 +838,16 @@ and what it reads itself, and nothing the model or the pull request wrote:
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 
+Only a GitHub App client approves: one that authenticates with the App's
+private key, names its app ID (`identity.app_id`), and whose `github.login`
+is the App's bot account, `<slug>[bot]`, as GitHub names it. The host reads
+the App's slug from GitHub (`GET /app`, signed with the App's key) before
+the first approval; when it cannot read it, or the login names another
+account, no review approves and a warning is logged. A client installed
+from the console gets its login from the App's slug. A client that posts
+with a token as a person's account never approves, whatever the policy or
+its `identity.app_id` say; its clean reviews post as comments.
+
 An approval posts only through the transport's approval hook. The hook
 decides again, reading the policy, the repository's settings and the checks
 as they are then, and the author and draft state GitHub reports. It refuses
@@ -863,9 +873,12 @@ account, since GitHub links them by email, and the asker must be none of
 them. A commit GitHub's `web-flow` account committed, a merge or an edit
 made on the web, is read by its author alone. Each `Co-authored-by` trailer
 must name someone the host can tell: an address the client maps a person
-by (`github.people`), or a GitHub no-reply address. A trailer with no
-address, or one nobody is known by, refuses the approval, and so does one
-that is the asker's. A read that fails approves nothing. Commits need not
+by (`github.people`), a GitHub no-reply address with a user ID, or a
+login-only no-reply address whose login is a mapped person's current login
+(one from before a rename names no one the host can tell). A trailer with
+no address, or one nobody is known by, refuses the approval, and so does
+one that is, or may be, the asker's: an address several mapped people
+share is the asker's when the asker is one of them. A read that fails approves nothing. Commits need not
 be signed.
 
 A new review replaces the same agent's earlier ones on the pull request: an

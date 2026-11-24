@@ -176,3 +176,49 @@ func TestAppTokenSourceMintsAndRefreshesInstallationTokens(t *testing.T) {
 		t.Fatalf("mintCalls after expiry window = %d, want 2", got)
 	}
 }
+
+// An App's login is its slug from GET /app, signed with the App's own key,
+// as its bot account; a read that fails or names no valid slug is an error,
+// and a client that is no App has none.
+func TestAppLoginIsTheAppsBotAccount(t *testing.T) {
+	_, pemStr := generateTestRSAKeyPEM(t, false)
+	for name, c := range map[string]struct {
+		status int
+		body   string
+		want   string
+	}{
+		"the app":       {status: http.StatusOK, body: `{"slug":"humagen-dev"}`, want: "humagen-dev[bot]"},
+		"a refusal":     {status: http.StatusUnauthorized, body: `{}`},
+		"no slug":       {status: http.StatusOK, body: `{"slug":""}`},
+		"a slug's form": {status: http.StatusOK, body: `{"slug":"Not A Slug"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/app" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+					http.Error(w, "unexpected", http.StatusBadRequest)
+					return
+				}
+				w.WriteHeader(c.status)
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+			api, err := NewAppHTTPAPIAt(srv.URL, AppConfig{AppID: "123", InstallationID: "987654", PrivateKey: pemStr, HTTPClient: srv.Client()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := api.AppLogin(context.Background())
+			if c.want == "" {
+				if err == nil {
+					t.Fatalf("read %q, want an error", got)
+				}
+				return
+			}
+			if err != nil || got != c.want {
+				t.Fatalf("read %q %v, want %q", got, err, c.want)
+			}
+		})
+	}
+	if _, err := NewHTTPAPI("token", nil).AppLogin(context.Background()); err == nil {
+		t.Fatal("a token client read an App login")
+	}
+}

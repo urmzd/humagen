@@ -4941,7 +4941,7 @@ export interface GitHubRepositoryInput {
   reads?: ("pull_diff" | "linked_issues")[];
   /** False keeps the repository to its own runs. Absent or true leaves it readable. */
   cross_surface_reads?: boolean;
-  /** `never` keeps reviews here from approving. Absent or empty leaves each agent's review policy. */
+  /** `never` keeps reviews here from approving, and empty removes it so each agent's review policy applies. Absent keeps what was set. */
   approve?: "" | "never";
   version: number;
 }

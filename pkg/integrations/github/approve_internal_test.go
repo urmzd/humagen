@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/humagen/pkg/state"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
@@ -57,15 +58,18 @@ func TestCoAuthorsAreReadOnlyWhenEachIsKnown(t *testing.T) {
 		commits         []transport.PRCommit
 		read, coAuthors bool
 	}{
-		"no co-authors":                      {commits: with(), read: true},
-		"a mapped person":                    {commits: with(transport.CoAuthor{Name: "Octo", Email: "Octo@Acme.example"}), read: true},
-		"another account's no-reply address": {commits: with(transport.CoAuthor{Email: "583231+octocat@users.noreply.github.com"}), read: true},
-		"the asker's mapped address":         {commits: with(transport.CoAuthor{Email: "ADA@acme.example"}), read: true, coAuthors: true},
-		"the asker's no-reply address":       {commits: with(transport.CoAuthor{Email: "1001+ada@users.noreply.github.com"}), read: true, coAuthors: true},
-		"the asker's older no-reply address": {commits: with(transport.CoAuthor{Email: "ada@users.noreply.github.com"}), read: true, coAuthors: true},
-		"the asker's ID under another login": {commits: with(transport.CoAuthor{Email: "1001+ada-renamed@users.noreply.github.com"}), read: true, coAuthors: true},
-		"an address nobody is known by":      {commits: with(transport.CoAuthor{Email: "someone@elsewhere.example"})},
-		"no address":                         {commits: with(transport.CoAuthor{Name: "Someone"})},
+		"no co-authors":                             {commits: with(), read: true},
+		"a mapped person":                           {commits: with(transport.CoAuthor{Name: "Octo", Email: "Octo@Acme.example"}), read: true},
+		"another account's no-reply address":        {commits: with(transport.CoAuthor{Email: "583231+octocat@users.noreply.github.com"}), read: true},
+		"the asker's mapped address":                {commits: with(transport.CoAuthor{Email: "ADA@acme.example"}), read: true, coAuthors: true},
+		"the asker's no-reply address":              {commits: with(transport.CoAuthor{Email: "1001+ada@users.noreply.github.com"}), read: true, coAuthors: true},
+		"the asker's older no-reply address":        {commits: with(transport.CoAuthor{Email: "ada@users.noreply.github.com"}), read: true, coAuthors: true},
+		"the asker's ID under another login":        {commits: with(transport.CoAuthor{Email: "1001+ada-renamed@users.noreply.github.com"}), read: true, coAuthors: true},
+		"an address nobody is known by":             {commits: with(transport.CoAuthor{Email: "someone@elsewhere.example"})},
+		"a mapped person's login-only no-reply":     {commits: with(transport.CoAuthor{Email: "octocat@users.noreply.github.com"}), read: true},
+		"a login-only no-reply nobody maps":         {commits: with(transport.CoAuthor{Email: "ada-old@users.noreply.github.com"})},
+		"another account's ID under a mapped login": {commits: with(transport.CoAuthor{Email: "42+ada@users.noreply.github.com"}), read: true},
+		"no address": {commits: with(transport.CoAuthor{Name: "Someone"})},
 	} {
 		read, coAuthored := coAuthorsRead(c.commits, grant)
 		if read != c.read || coAuthored != c.coAuthors {
@@ -74,6 +78,43 @@ func TestCoAuthorsAreReadOnlyWhenEachIsKnown(t *testing.T) {
 	}
 	if read, _ := coAuthorsRead(with(), ReviewGrant{}); read {
 		t.Error("co-authors were read for no asker")
+	}
+}
+
+// An address several mapped people share is the asker's when it is any of
+// theirs, whatever order the people are read in.
+func TestASharedAddressIsTheAskersWhenAnyHolderIs(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	commits := []transport.PRCommit{{SHA: head, AuthorID: 583231, CommitterID: 583231, CoAuthors: []transport.CoAuthor{{Email: "team@acme.example"}}}}
+	withAsker := ReviewGrant{Asker: "ada", AskerID: 1001, People: map[string]string{"ada": "team@acme.example", "bob": "team@acme.example", "cy": "team@acme.example"}}
+	withoutAsker := ReviewGrant{Asker: "ada", AskerID: 1001, People: map[string]string{"ada": "ada@acme.example", "bob": "team@acme.example", "cy": "team@acme.example"}}
+	for range 50 {
+		if read, co := coAuthorsRead(commits, withAsker); !read || !co {
+			t.Fatalf("an address the asker shares: read %v co-authored %v", read, co)
+		}
+		if read, co := coAuthorsRead(commits, withoutAsker); !read || co {
+			t.Fatalf("an address others share: read %v co-authored %v", read, co)
+		}
+	}
+}
+
+// A review's record names one agent: a retry for the same agent keeps it,
+// and a record that names another fails the review.
+func TestAReviewRecordNamesOneAgent(t *testing.T) {
+	cfg := Config{Tenant: "t", ApprovalClaims: state.NewMemory()}
+	commit := strings.Repeat("a", 40)
+	v := transport.View{Tenant: "t", RunID: "run-1", Agent: "gatekeeper"}
+	for range 2 {
+		if err := recordReviewAgent(t.Context(), cfg, v, commit); err != nil {
+			t.Fatalf("recording %s: %v", v.Agent, err)
+		}
+	}
+	if agent, err := recordedAgent(t.Context(), cfg, transport.ReviewMarker("t", "run-1", commit)); err != nil || agent != "gatekeeper" {
+		t.Fatalf("recorded %q %v", agent, err)
+	}
+	v.Agent = "security"
+	if err := recordReviewAgent(t.Context(), cfg, v, commit); err == nil {
+		t.Fatal("a record for another agent was accepted")
 	}
 }
 

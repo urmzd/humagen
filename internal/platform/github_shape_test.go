@@ -551,7 +551,7 @@ func TestStartReviewIsRefusedForARunTheAskerDidNotStart(t *testing.T) {
 // platform's to allow, as a client's connector is wired.
 func shapeConnector(t *testing.T, p *Platform, api *transport.Fake) *ghconnector.Connector {
 	t.Helper()
-	peer, err := ghconnector.New(ghconnector.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1,
+	peer, err := ghconnector.New(ghconnector.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", AppID: 9001, AppLogin: appBotLogin, Interval: -1,
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(shapeClient("t"), v) },
 		ReviewText: func(v transport.View) (string, error) {
 			// As reviewView: only a report is read against the run's record.

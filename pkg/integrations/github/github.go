@@ -82,6 +82,10 @@ type Config struct {
 	// for a connector that is no app. Checks of the app's own are told
 	// apart by it, and by Login.
 	AppID int64
+	// AppLogin reads the login of the App's bot account from GitHub. An
+	// approval needs it to name Login; without it, or when it reads
+	// another login or fails, nothing approves.
+	AppLogin func(ctx context.Context) (string, error)
 	// Login is the app's own login, which it comments as. With Triggers
 	// set, it asks as a trigger does; without them, a comment that mentions
 	// it and names no agent is raised naming none, and the host chooses who
@@ -176,9 +180,12 @@ func New(cfg Config) (*Connector, error) {
 				pending := newApprovals(cfg.Clock)
 				pending.host = func() reviewHost { return c.Connector }
 				// The transport asks the hook only of an API that can also
-				// dismiss reviews; without one nothing approves.
+				// dismiss reviews, and only a GitHub App approves: its reviews
+				// are its bot account's, which the transport tells apart as
+				// its own. A client that posts as a person's account never
+				// approves.
 				_, dismisses := cfg.API.(transport.ReviewDismissAPI)
-				if cfg.ReviewPolicy != nil && dismisses {
+				if cfg.ReviewPolicy != nil && dismisses && approvesAsApp(cfg) {
 					base.MayApprove = pending.mayApprove(cfg)
 				}
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
@@ -312,6 +319,13 @@ func (c *Connector) Actions() []connector.Action {
 		actions = append(actions, c.mutationAction(), c.runChecksAction())
 	}
 	return actions
+}
+
+// approvesAsApp reports whether the connector acts as a GitHub App that may
+// approve: it has an app ID, its login is a bot account, and it can read
+// the App's own login from GitHub to check the two agree.
+func approvesAsApp(cfg Config) bool {
+	return cfg.AppID > 0 && strings.HasSuffix(strings.ToLower(cfg.Login), "[bot]") && cfg.AppLogin != nil
 }
 
 // createReviewAction is the transport's tool that posts a review a model
