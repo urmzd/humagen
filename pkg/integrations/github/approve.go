@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,11 +55,21 @@ func reviewDecision(ctx context.Context, cfg Config, v transport.View, report pr
 }
 
 func ownerRepo(channel string) (owner, repo string, ok bool) {
+	owner, repo, _, ok = pullOf(channel)
+	return owner, repo, ok
+}
+
+// pullOf is the pull request a run's channel is on.
+func pullOf(channel string) (owner, repo string, number int, ok bool) {
 	a, err := address.Parse(channel)
 	if err != nil || a.Connector != "github" || a.Workspace == "" || len(a.Path) < 3 || a.Path[1] != "pull" {
-		return "", "", false
+		return "", "", 0, false
 	}
-	return a.Workspace, a.Path[0], true
+	number, err = strconv.Atoi(a.Path[2])
+	if err != nil || number <= 0 {
+		return "", "", 0, false
+	}
+	return a.Workspace, a.Path[0], number, true
 }
 
 // The bounds on approvals waiting for the transport's MayApprove hook. The
@@ -94,17 +105,17 @@ func newApprovals(clock func() time.Time) *approvals {
 	return &approvals{now: clock, pending: map[string]pendingApproval{}}
 }
 
-func approvalKey(owner, repo, commit string) string {
-	return strings.ToLower(owner + "/" + repo + "@" + commit)
+func approvalKey(owner, repo string, number int, commit string) string {
+	return strings.ToLower(owner + "/" + repo + "#" + strconv.Itoa(number) + "@" + commit)
 }
 
 // plan records that Review planned an approval for v's run.
 func (a *approvals) plan(v transport.View, report presentation.ReviewReport) {
-	owner, repo, ok := ownerRepo(v.Channel)
+	owner, repo, number, ok := pullOf(v.Channel)
 	if !ok || report.Scope == nil {
 		return
 	}
-	key := approvalKey(owner, repo, report.Scope.Commit)
+	key := approvalKey(owner, repo, number, report.Scope.Commit)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := a.now()
@@ -126,8 +137,8 @@ func (a *approvals) plan(v transport.View, report presentation.ReviewReport) {
 
 // take removes and returns the approval planned for this commit, if exactly
 // one run planned it lately.
-func (a *approvals) take(owner, repo, commit string) (pendingApproval, bool) {
-	key := approvalKey(owner, repo, commit)
+func (a *approvals) take(owner, repo string, number int, commit string) (pendingApproval, bool) {
+	key := approvalKey(owner, repo, number, commit)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	p, ok := a.pending[key]
@@ -139,18 +150,25 @@ func (a *approvals) take(owner, repo, commit string) (pendingApproval, bool) {
 }
 
 // mayApprove is the transport's MayApprove: it decides the planned
-// approval again, reading the policy and the checks as they are now, and
-// says yes only when ReviewEvent still approves. Anything missing is no.
-func (a *approvals) mayApprove(cfg Config) func(context.Context, string, string, transport.Review) bool {
-	return func(ctx context.Context, owner, repo string, review transport.Review) bool {
-		if review.Event != "APPROVE" {
-			return false
+// approval again, reading the policy and the checks as they are now, with
+// the pull request's author and draft state as the transport read them from
+// GitHub, and says yes only when ReviewEvent still approves. An approval
+// nothing planned is no. A grant that cannot be read is an error, which
+// posts nothing and is retried.
+func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.ApprovalRequest) (bool, error) {
+	return func(ctx context.Context, req transport.ApprovalRequest) (bool, error) {
+		if req.Review.Event != "APPROVE" || req.Review.CommitID != req.Commit {
+			return false, nil
 		}
-		p, ok := a.take(owner, repo, review.CommitID)
-		if !ok || p.report.Scope == nil || p.report.Scope.Commit != review.CommitID {
-			return false
+		p, ok := a.take(req.Owner, req.Repo, req.Number, req.Commit)
+		if !ok || p.report.Scope == nil || p.report.Scope.Commit != req.Commit {
+			return false, nil
 		}
 		policy, facts, err := reviewDecision(ctx, cfg, p.view, p.report)
-		return err == nil && presentation.ReviewEvent(p.report, policy, facts) == "APPROVE"
+		if err != nil {
+			return false, err
+		}
+		facts.Author, facts.Draft = req.Author, req.Draft
+		return presentation.ReviewEvent(p.report, policy, facts) == "APPROVE", nil
 	}
 }

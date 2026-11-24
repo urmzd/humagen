@@ -264,25 +264,19 @@ type ReviewFacts struct {
 	Checks     []transport.CommitCheck
 	// Author is the pull request's author and App the app's own login. Both
 	// must be known and differ: the app never approves its own pull request.
+	// Draft is a pull request still in draft, which is never approved.
 	Author, App string
+	Draft       bool
 	// Trusted says the run was an automatic review, a review request, or
 	// started by a person the client maps.
 	Trusted bool
 }
 
-// checksPassed reports whether the host read at least one check on the
-// commit, fewer than the read's bound, and every one passed. A read at the
-// bound may have left checks out, so it is not passed.
+// checksPassed reports whether the host read the commit's checks and
+// saige's AllPassed accepts them: at least one check other than the
+// connector's own, every such check passed, and fewer than the read's bound.
 func (f ReviewFacts) checksPassed() bool {
-	if !f.ChecksRead || len(f.Checks) == 0 || len(f.Checks) >= transport.MaxCommitChecks {
-		return false
-	}
-	for _, c := range f.Checks {
-		if !c.Passed() {
-			return false
-		}
-	}
-	return true
+	return f.ChecksRead && transport.AllPassed(f.Checks)
 }
 
 // authorNotApp reports whether the pull request's author is known and is
@@ -313,7 +307,7 @@ func (p ReviewPolicy) blocks(f ReviewFinding) bool {
 // APPROVE needs every guard at once: the policy is ApproveWhenClean, the
 // verdict approves, no finding is at or above the policy's severity, the
 // host read at least one check and all passed, the author is not the app,
-// and the run was trusted to approve. REQUEST_CHANGES is a verdict that
+// the pull request is not a draft, and the run was trusted to approve. REQUEST_CHANGES is a verdict that
 // requests changes, or any finding at or above the severity. Anything else
 // is COMMENT.
 func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) string {
@@ -324,7 +318,7 @@ func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) st
 	switch {
 	case blocked:
 		return "REQUEST_CHANGES"
-	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && facts.Trusted:
+	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && !facts.Draft && facts.Trusted:
 		return "APPROVE"
 	}
 	return "COMMENT"

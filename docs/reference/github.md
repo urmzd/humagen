@@ -825,15 +825,16 @@ and what it reads itself, and nothing the model or the pull request wrote:
 
 | Event | When |
 | :--- | :--- |
-| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found at least one, fewer than 1,000, and every one passed (success, neutral or skipped); the pull request's author is not the app; and the run was an automatic review, a review requested from the app, or asked by a person the client maps (`github.people` or `github.askers`) |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found at least one besides the connector's own `fiber/<agent>` check, fewer than 1,000, and every one passed (success, neutral or skipped); the pull request is open and not a draft, and its author, as GitHub reports it, is not the app; and the run was an automatic review, a review requested from the app, or asked by a person the client maps (`github.people` or `github.askers`) |
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 
 An approval posts only through the transport's approval hook. The hook
 decides again, reading the policy, the repository's settings and the checks
-as they are then, and refuses by default: an answer it cannot read, two runs
-approving one commit at once, or a check that failed meanwhile posts the
-review as a comment. The transport then reads the pull request again and
+as they are then, and the author and draft state GitHub reports. It refuses
+by default: two runs approving one commit at once, or a check that failed
+meanwhile, posts the review as a comment. A policy it cannot read posts
+nothing, and the delivery is retried. The transport then reads the pull request again and
 posts the approval only while its head is still the reviewed commit. The
 model has no tool that approves. A rule's run, a run another agent started,
 and a run a stranger asked for never approve.

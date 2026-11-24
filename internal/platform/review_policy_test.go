@@ -30,10 +30,14 @@ type approvalCase struct {
 	// requested makes the asker's run a review requested from the app.
 	requested bool
 	author    string
-	prBody    string
-	verdict   string
-	finding   string // a finding's severity, "" for none
-	summary   string
+	// githubAuthor and draft are what GitHub says of the pull request when
+	// the approval is decided; githubAuthor "" is author.
+	githubAuthor string
+	draft        bool
+	prBody       string
+	verdict      string
+	finding      string // a finding's severity, "" for none
+	summary      string
 }
 
 const approvalSHA = "abababababababababababababababababababab"
@@ -71,6 +75,11 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	proof := transport.Context{Files: []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1 +1 @@\n-old\n+new"}}}
 	proof.Subject.Head.SHA = approvalSHA
 	proof.Subject.Body = c.prBody
+	proof.Subject.State, proof.Subject.Draft = "open", c.draft
+	proof.Subject.User.Login = c.author
+	if c.githubAuthor != "" {
+		proof.Subject.User.Login = c.githubAuthor
+	}
 	if err := api.SeedContext(ref, proof); err != nil {
 		t.Fatal(err)
 	}

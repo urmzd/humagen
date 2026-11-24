@@ -31,7 +31,7 @@ func (c *checksThatTurn) CommitChecks(ctx context.Context, owner, repo, sha stri
 
 // The approval hook decides again with what is true when the transport asks:
 // a policy or a check that changed after the review was planned posts a
-// comment, and so does a grant that cannot be read.
+// comment, and a grant that cannot be read posts nothing and is retried.
 func TestTheApprovalHookDecidesAgain(t *testing.T) {
 	sha := strings.Repeat("c", 40)
 	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[]}`, sha)
@@ -54,13 +54,17 @@ func TestTheApprovalHookDecidesAgain(t *testing.T) {
 				return github.ReviewGrant{}, fmt.Errorf("unavailable")
 			}
 			return clean, nil
-		}, want: "COMMENT"},
+		}, want: ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fake := github.NewFake()
 			ref := transport.Ref{Owner: "acme", Repo: "repo", Number: 7}
 			snapshot := transport.Context{}
 			snapshot.Subject.Head.SHA = sha
+			snapshot.Subject.State = "open"
+			snapshot.Subject.User.Login = "octocat"
+			snapshot.Subject.State = "open"
+			snapshot.Subject.User.Login = "octocat"
 			if err := fake.SeedContext(ref, snapshot); err != nil {
 				t.Fatal(err)
 			}
@@ -79,7 +83,16 @@ func TestTheApprovalHookDecidesAgain(t *testing.T) {
 			}
 			target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", sha)
 			env := event.Envelope{Tenant: "tenant", Run: "run", Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: text}}
-			if err := conn.Deliver(t.Context(), target, env); err != nil {
+			err = conn.Deliver(t.Context(), target, env)
+			if c.want == "" {
+				// An answer the hook cannot read posts nothing; the
+				// delivery is retried.
+				if err == nil || len(fake.SubmittedReviews()) != 0 {
+					t.Fatalf("an unreadable grant posted %+v, %v", fake.SubmittedReviews(), err)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			if reviews := fake.SubmittedReviews(); len(reviews) != 1 || reviews[0].Review.Event != c.want {
@@ -96,6 +109,8 @@ func TestNoReviewPolicyApprovesNothing(t *testing.T) {
 	fake := github.NewFake()
 	snapshot := transport.Context{}
 	snapshot.Subject.Head.SHA = sha
+	snapshot.Subject.State = "open"
+	snapshot.Subject.User.Login = "octocat"
 	if err := fake.SeedContext(transport.Ref{Owner: "acme", Repo: "repo", Number: 7}, snapshot); err != nil {
 		t.Fatal(err)
 	}
