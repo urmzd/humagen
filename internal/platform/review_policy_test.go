@@ -34,10 +34,12 @@ type approvalCase struct {
 	// the approval is decided; githubAuthor "" is author.
 	githubAuthor string
 	draft        bool
-	prBody       string
-	verdict      string
-	finding      string // a finding's severity, "" for none
-	summary      string
+	// ownCheck adds the app's in-progress check for the run under review.
+	ownCheck bool
+	prBody   string
+	verdict  string
+	finding  string // a finding's severity, "" for none
+	summary  string
 }
 
 const approvalSHA = "abababababababababababababababababababab"
@@ -110,6 +112,11 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if c.ownCheck {
+		if err := api.SeedCommitCheck("acme", "site", approvalSHA, transport.CommitCheck{Kind: transport.CheckKindRun, Name: "fiber/gatekeeper", Status: "in_progress", App: "humagen", ExternalID: runID}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	report := presentation.ReviewReport{Format: presentation.ReviewFormatV2, Title: "Review", Verdict: c.verdict, Summary: c.summary, Findings: []presentation.ReviewFinding{}}
 	if c.finding != "" {
 		report.Findings = append(report.Findings, presentation.ReviewFinding{ID: "f1", Severity: c.finding, Title: "Check input", Suggestion: "Validate input", Prompt: "Fix validation",
@@ -164,7 +171,15 @@ func TestTheReviewEventFollowsThePolicyAndTheChecks(t *testing.T) {
 		"the app's own pull request":       {mutate: func(c *approvalCase) { c.author = "humagen[bot]" }, want: "COMMENT"},
 		"an unknown author":                {mutate: func(c *approvalCase) { c.author = "" }, want: "COMMENT"},
 		"an unmapped asker":                {mutate: func(c *approvalCase) { c.asker = "stranger" }, want: "COMMENT"},
-		"a comment verdict":                {mutate: func(c *approvalCase) { c.verdict = "comment" }, want: "COMMENT"},
+		"a review request":                 {mutate: func(c *approvalCase) { c.asker, c.requested = "stranger", true }, want: "APPROVE"},
+		"GitHub says the app opened it":    {mutate: func(c *approvalCase) { c.githubAuthor = "humagen[bot]" }, want: "COMMENT"},
+		"a draft":                          {mutate: func(c *approvalCase) { c.draft = true }, want: "COMMENT"},
+		"the run's own check in progress":  {mutate: func(c *approvalCase) { c.ownCheck = true }, want: "APPROVE"},
+		"only the run's own check":         {mutate: func(c *approvalCase) { c.checks, c.ownCheck = nil, true }, want: "COMMENT"},
+		"only the app's own check": {mutate: func(c *approvalCase) {
+			c.checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "fiber/gatekeeper", Status: "in_progress", App: "humagen", ExternalID: "any-run"}}
+		}, want: "COMMENT"},
+		"a comment verdict": {mutate: func(c *approvalCase) { c.verdict = "comment" }, want: "COMMENT"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ac := cleanApproval()

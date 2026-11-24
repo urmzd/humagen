@@ -979,7 +979,7 @@ A review approves only when all of these hold:
    `approve: never`.
 2. The verdict is `approve`, and no finding is at or above `block_on`.
 3. The host read every check on the reviewed commit itself. It found at
-   least one besides the connector's own `fiber/<agent>` check, and fewer
+   least one besides the app's own `fiber/<agent>` check for this run, and fewer
    than 1,000, and each passed: success, neutral or skipped.
 4. The pull request is open and not a draft, and its author is not the app.
 5. The run was an automatic review, a review requested from the app, or

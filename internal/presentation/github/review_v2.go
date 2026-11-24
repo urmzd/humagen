@@ -262,6 +262,10 @@ type ReviewFacts struct {
 	// them, into Checks.
 	ChecksRead bool
 	Checks     []transport.CommitCheck
+	// Own reports the connector's own check for the run under review,
+	// still in progress while the review is decided, which is skipped.
+	// Nil skips nothing.
+	Own func(transport.CommitCheck) bool
 	// Author is the pull request's author and App the app's own login. Both
 	// must be known and differ: the app never approves its own pull request.
 	// Draft is a pull request still in draft, which is never approved.
@@ -273,10 +277,10 @@ type ReviewFacts struct {
 }
 
 // checksPassed reports whether the host read the commit's checks and
-// saige's AllPassed accepts them: at least one check other than the
-// connector's own, every such check passed, and fewer than the read's bound.
+// saige's AllPassed accepts them: at least one check that Own does not
+// skip, every such check passed, and fewer than the read's bound.
 func (f ReviewFacts) checksPassed() bool {
-	return f.ChecksRead && transport.AllPassed(f.Checks)
+	return f.ChecksRead && transport.AllPassed(f.Checks, f.Own)
 }
 
 // authorNotApp reports whether the pull request's author is known and is

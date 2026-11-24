@@ -825,7 +825,7 @@ and what it reads itself, and nothing the model or the pull request wrote:
 
 | Event | When |
 | :--- | :--- |
-| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found at least one besides the connector's own `fiber/<agent>` check, fewer than 1,000, and every one passed (success, neutral or skipped); the pull request is open and not a draft, and its author, as GitHub reports it, is not the app; and the run was an automatic review, a review requested from the app, or asked by a person the client maps (`github.people` or `github.askers`) |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found at least one besides the app's own `fiber/<agent>` check for this run, fewer than 1,000, and every one passed (success, neutral or skipped); the pull request is open and not a draft, and its author, as GitHub reports it, is not the app; and the run was an automatic review, a review requested from the app, or asked by a person the client maps (`github.people` or `github.askers`) |
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 

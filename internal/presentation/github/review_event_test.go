@@ -10,6 +10,14 @@ func passed(name string) transport.CommitCheck {
 	return transport.CommitCheck{Kind: transport.CheckKindRun, Name: name, Status: "completed", Conclusion: "success"}
 }
 
+func ownCheck() transport.CommitCheck {
+	return transport.CommitCheck{Kind: transport.CheckKindRun, Name: "fiber/gatekeeper", Status: "in_progress", App: "humagen", ExternalID: "run-1"}
+}
+
+func isOwn(c transport.CommitCheck) bool {
+	return transport.ApprovalRequest{RunID: "run-1", App: "humagen"}.OwnCheck(c)
+}
+
 func cleanReport() ReviewReport {
 	r := reviewV2()
 	r.Verdict = "approve"
@@ -67,11 +75,23 @@ func TestReviewEventApprovesOnlyWhenEveryGuardHolds(t *testing.T) {
 		"status pending": {facts: func(f *ReviewFacts) {
 			f.Checks = append(f.Checks, transport.CommitCheck{Kind: transport.CheckKindStatus, Name: "ci", Status: "pending"})
 		}, want: "COMMENT"},
-		"author is the app":                 {facts: func(f *ReviewFacts) { f.Author = "Humagen[bot]" }, want: "COMMENT"},
-		"author is the app name":            {facts: func(f *ReviewFacts) { f.Author = "humagen" }, want: "COMMENT"},
-		"author unknown":                    {facts: func(f *ReviewFacts) { f.Author = "" }, want: "COMMENT"},
-		"app unknown":                       {facts: func(f *ReviewFacts) { f.App = "" }, want: "COMMENT"},
-		"not trusted":                       {facts: func(f *ReviewFacts) { f.Trusted = false }, want: "COMMENT"},
+		"author is the app":      {facts: func(f *ReviewFacts) { f.Author = "Humagen[bot]" }, want: "COMMENT"},
+		"author is the app name": {facts: func(f *ReviewFacts) { f.Author = "humagen" }, want: "COMMENT"},
+		"author unknown":         {facts: func(f *ReviewFacts) { f.Author = "" }, want: "COMMENT"},
+		"app unknown":            {facts: func(f *ReviewFacts) { f.App = "" }, want: "COMMENT"},
+		"not trusted":            {facts: func(f *ReviewFacts) { f.Trusted = false }, want: "COMMENT"},
+		"a draft":                {facts: func(f *ReviewFacts) { f.Draft = true }, want: "COMMENT"},
+		"only the run's own check": {facts: func(f *ReviewFacts) {
+			f.Checks, f.Own = []transport.CommitCheck{ownCheck()}, isOwn
+		}, want: "COMMENT"},
+		"the run's own check in progress beside green ones": {facts: func(f *ReviewFacts) {
+			f.Checks, f.Own = append(f.Checks, ownCheck()), isOwn
+		}, want: "APPROVE"},
+		"another run's check in progress": {facts: func(f *ReviewFacts) {
+			other := ownCheck()
+			other.ExternalID = "another-run"
+			f.Checks, f.Own = append(f.Checks, other), isOwn
+		}, want: "COMMENT"},
 		"must-fix and failed check":         {report: func(r *ReviewReport) { r.Findings[0].Severity = "error" }, facts: func(f *ReviewFacts) { *f = failed("failure") }, want: "REQUEST_CHANGES"},
 		"never and untrusted and no checks": {policy: ReviewPolicy{Approve: "never"}, facts: func(f *ReviewFacts) { f.Trusted, f.Checks = false, nil }, want: "COMMENT"},
 		"request_changes under never":       {report: func(r *ReviewReport) { r.Verdict = "request_changes" }, policy: ReviewPolicy{Approve: "never"}, want: "REQUEST_CHANGES"},

@@ -37,7 +37,8 @@ func reviewDecision(ctx context.Context, cfg Config, v transport.View, report pr
 			return presentation.ReviewPolicy{}, presentation.ReviewFacts{}, err
 		}
 	}
-	facts := presentation.ReviewFacts{Author: grant.Author, App: cfg.Login, Trusted: grant.Trusted}
+	own := transport.ApprovalRequest{RunID: v.RunID, App: strings.TrimSuffix(strings.ToLower(strings.TrimSpace(cfg.Login)), "[bot]")}
+	facts := presentation.ReviewFacts{Author: grant.Author, App: cfg.Login, Trusted: grant.Trusted, Own: own.OwnCheck}
 	if grant.Policy.Approve != presentation.ApproveWhenClean || report.Verdict != "approve" || report.Scope == nil {
 		return grant.Policy, facts, nil
 	}
@@ -80,11 +81,9 @@ const (
 	maxApprovalWait = 256
 )
 
-// approvals holds each approval Review planned until the transport's sink
-// asks MayApprove about it. The hook is told only the repository and the
-// review, so this is how it finds the run the review answers for, and
-// decides again with what is true when it asks. Two runs planning an
-// approval of the same commit at once approve neither.
+// approvals holds the report of each approval Review planned, by run, until
+// the transport's sink asks MayApprove about that run. The hook is told the
+// run but not its report, which the decision reads again.
 type approvals struct {
 	mu      sync.Mutex
 	now     func() time.Time
@@ -92,10 +91,9 @@ type approvals struct {
 }
 
 type pendingApproval struct {
-	view      transport.View
-	report    presentation.ReviewReport
-	at        time.Time
-	ambiguous bool
+	view   transport.View
+	report presentation.ReviewReport
+	at     time.Time
 }
 
 func newApprovals(clock func() time.Time) *approvals {
@@ -105,17 +103,13 @@ func newApprovals(clock func() time.Time) *approvals {
 	return &approvals{now: clock, pending: map[string]pendingApproval{}}
 }
 
-func approvalKey(owner, repo string, number int, commit string) string {
-	return strings.ToLower(owner + "/" + repo + "#" + strconv.Itoa(number) + "@" + commit)
-}
+func approvalKey(run, commit string) string { return run + "@" + strings.ToLower(commit) }
 
 // plan records that Review planned an approval for v's run.
 func (a *approvals) plan(v transport.View, report presentation.ReviewReport) {
-	owner, repo, number, ok := pullOf(v.Channel)
-	if !ok || report.Scope == nil {
+	if v.RunID == "" || report.Scope == nil {
 		return
 	}
-	key := approvalKey(owner, repo, number, report.Scope.Commit)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := a.now()
@@ -124,51 +118,50 @@ func (a *approvals) plan(v transport.View, report presentation.ReviewReport) {
 			delete(a.pending, k)
 		}
 	}
-	if p, ok := a.pending[key]; ok && p.view.RunID != v.RunID {
-		p.ambiguous, p.at = true, now
-		a.pending[key] = p
-		return
-	}
 	if len(a.pending) >= maxApprovalWait {
 		return
 	}
-	a.pending[key] = pendingApproval{view: v, report: report, at: now}
+	a.pending[approvalKey(v.RunID, report.Scope.Commit)] = pendingApproval{view: v, report: report, at: now}
 }
 
-// take removes and returns the approval planned for this commit, if exactly
-// one run planned it lately.
-func (a *approvals) take(owner, repo string, number int, commit string) (pendingApproval, bool) {
-	key := approvalKey(owner, repo, number, commit)
+// take removes and returns the approval run planned for commit lately.
+func (a *approvals) take(run, commit string) (pendingApproval, bool) {
+	key := approvalKey(run, commit)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	p, ok := a.pending[key]
 	delete(a.pending, key)
-	if !ok || p.ambiguous || a.now().Sub(p.at) > approvalTTL {
+	if !ok || a.now().Sub(p.at) > approvalTTL {
 		return pendingApproval{}, false
 	}
 	return p, true
 }
 
-// mayApprove is the transport's MayApprove: it decides the planned
-// approval again, reading the policy and the checks as they are now, with
-// the pull request's author and draft state as the transport read them from
-// GitHub, and says yes only when ReviewEvent still approves. An approval
-// nothing planned is no. A grant that cannot be read is an error, which
-// posts nothing and is retried.
+// mayApprove is the transport's MayApprove: it finds the run by the
+// request's RunID, decides its planned approval again, reading the policy
+// and the checks as they are now, with the pull request's author and draft
+// state as the transport read them from GitHub and the run's own check
+// skipped, and says yes only when ReviewEvent still approves. A request for
+// another pull request, or one nothing planned, is no. A grant that cannot be
+// read is an error, which posts nothing and is retried.
 func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.ApprovalRequest) (bool, error) {
 	return func(ctx context.Context, req transport.ApprovalRequest) (bool, error) {
-		if req.Review.Event != "APPROVE" || req.Review.CommitID != req.Commit {
+		if req.RunID == "" || req.Review.Event != "APPROVE" || req.Review.CommitID != req.Commit {
 			return false, nil
 		}
-		p, ok := a.take(req.Owner, req.Repo, req.Number, req.Commit)
+		p, ok := a.take(req.RunID, req.Commit)
 		if !ok || p.report.Scope == nil || p.report.Scope.Commit != req.Commit {
+			return false, nil
+		}
+		owner, repo, number, ok := pullOf(p.view.Channel)
+		if !ok || !strings.EqualFold(owner, req.Owner) || !strings.EqualFold(repo, req.Repo) || number != req.Number {
 			return false, nil
 		}
 		policy, facts, err := reviewDecision(ctx, cfg, p.view, p.report)
 		if err != nil {
 			return false, err
 		}
-		facts.Author, facts.Draft = req.Author, req.Draft
+		facts.Author, facts.Draft, facts.Own = req.Author, req.Draft, req.OwnCheck
 		return presentation.ReviewEvent(p.report, policy, facts) == "APPROVE", nil
 	}
 }
