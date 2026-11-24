@@ -583,6 +583,9 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		cfg.ReviewPolicy = func(ctx context.Context, v ghtransport.View) (github.ReviewGrant, error) {
 			return p.reviewGrant(ctx, c, v)
 		}
+		// One approval of each commit is claimed in the store every
+		// replica shares; without it nothing approves.
+		cfg.ApprovalClaims, cfg.Log = p.approvalClaims, p.log
 		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
 		installed := p.installedRepos(c, api, app)
 		if installed != nil {
