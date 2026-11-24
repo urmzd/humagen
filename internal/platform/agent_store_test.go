@@ -308,7 +308,7 @@ func TestAWorkspaceWithEveryAgentKeepsThem(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := directory(t, p); len(got) != 8 {
+	if got := directory(t, p); len(got) != 9 {
 		t.Fatalf("directory = %v", got)
 	}
 	upgraded, _ := p.Agents.Get(t.Context(), tenant, platform.BuiltinWriter, 0)
