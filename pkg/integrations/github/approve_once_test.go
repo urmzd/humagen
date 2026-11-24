@@ -24,7 +24,7 @@ func TestTwoRunsOnOneCommitApproveOnce(t *testing.T) {
 	snapshot := transport.Context{}
 	snapshot.Subject.Head.SHA = sha
 	snapshot.Subject.State = "open"
-	snapshot.Subject.User.Login = "octocat"
+	snapshot.Subject.User.Login, snapshot.Subject.User.ID = "octocat", 583231
 	if err := fake.SeedContext(ref, snapshot); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestALaterReviewDismissesTheAppsStaleReviews(t *testing.T) {
 			seed := func(sha string) {
 				snapshot := transport.Context{}
 				snapshot.Subject.Head.SHA, snapshot.Subject.State = sha, "open"
-				snapshot.Subject.User.Login = "octocat"
+				snapshot.Subject.User.Login, snapshot.Subject.User.ID = "octocat", 583231
 				if err := fake.SeedContext(ref, snapshot); err != nil {
 					t.Fatal(err)
 				}

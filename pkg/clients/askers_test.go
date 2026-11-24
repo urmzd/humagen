@@ -65,3 +65,35 @@ func TestAskersAreLogins(t *testing.T) {
 		t.Fatal("an asker that is not a login was accepted")
 	}
 }
+
+// The asker's GitHub user ID is read from the same part of the payload as
+// their login: the requester of a review is its sender, not the pull
+// request's author.
+func TestGitHubAskerIDReadsWhoAsks(t *testing.T) {
+	user := func(id int64) map[string]any { return map[string]any{"user": map[string]any{"id": id}} }
+	for name, c := range map[string]struct {
+		kind string
+		body map[string]any
+		want int64
+	}{
+		"a comment":          {"issue_comment", map[string]any{"comment": user(11), "sender": map[string]any{"id": 99}}, 11},
+		"a line comment":     {"pull_request_review_comment", map[string]any{"comment": user(12)}, 12},
+		"a review":           {"pull_request_review", map[string]any{"review": user(13)}, 13},
+		"an issue":           {"issues", map[string]any{"issue": user(14)}, 14},
+		"a pull request":     {"pull_request", map[string]any{"action": "opened", "pull_request": user(15), "sender": map[string]any{"id": 99}}, 15},
+		"a review request":   {"pull_request", map[string]any{"action": "review_requested", "pull_request": user(15), "sender": map[string]any{"id": 16}}, 16},
+		"a push":             {"push", map[string]any{"sender": map[string]any{"id": 17}}, 0},
+		"a comment, no user": {"issue_comment", map[string]any{"comment": map[string]any{}}, 0},
+	} {
+		body, err := json.Marshal(c.body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := GitHubAskerID(c.kind, body); got != c.want {
+			t.Errorf("%s: %d, want %d", name, got, c.want)
+		}
+	}
+	if got := GitHubAskerID("issue_comment", []byte("{")); got != 0 {
+		t.Errorf("an unreadable payload: %d", got)
+	}
+}

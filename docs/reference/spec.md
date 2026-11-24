@@ -993,16 +993,18 @@ A review approves only when all of these hold:
    `approve: never`.
 2. The verdict is `approve`, and no finding is at or above `block_on`.
 3. The host read every check on the reviewed commit itself, fewer than
-   1,000. Every check another app reported passed (success, neutral or
-   skipped), and at least one concluded success. The app's own checks never
-   count.
-4. The pull request is open and not a draft, and its author is not the app.
-5. The run was an automatic review, or asked or resumed by a person the
-   GitHub client maps (`github.people` or `github.askers`) who is known by
-   GitHub user ID and wrote neither the pull request nor any of its commits.
-   The app has not approved the commit already
-   ([GitHub](github.md#native-reviews-and-feedback) says which runs carry
-   user IDs today).
+   1,000. Leaving out the app's own check runs, none is pending or failed
+   (success, neutral or skipped pass), and at least one concluded success.
+4. The pull request is open, not a draft and still on the reviewed commit,
+   and its author is not the app.
+5. The run was an automatic review, or asked (by a comment or a review
+   request) or resumed by a person the GitHub client maps (`github.people`
+   or `github.askers`) who is known by GitHub user ID and wrote neither the
+   pull request nor any of its commits, as author, committer or co-author.
+   The app has not approved the commit already, and no change request it
+   posted for another agent is outstanding
+   ([GitHub](github.md#native-reviews-and-feedback) says which runs approve
+   today).
 
 A verdict of `request_changes`, or any finding at or above `block_on`,
 requests changes. Anything else is a comment. The example above has

@@ -26,7 +26,7 @@ func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T
 	snapshot := transport.Context{Files: []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1 +1 @@\n-old\n+new"}}}
 	snapshot.Subject.Head.SHA = sha
 	snapshot.Subject.State = "open"
-	snapshot.Subject.User.Login = "octocat"
+	snapshot.Subject.User.Login, snapshot.Subject.User.ID = "octocat", 583231
 	if err := api.SeedContext(ref, snapshot); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestARecoveredApprovalStaysOneApproval(t *testing.T) {
 	snapshot := transport.Context{Files: []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1 +1 @@\n-old\n+new"}}}
 	snapshot.Subject.Head.SHA = sha
 	snapshot.Subject.State = "open"
-	snapshot.Subject.User.Login = "octocat"
+	snapshot.Subject.User.Login, snapshot.Subject.User.ID = "octocat", 583231
 	if err := api.SeedContext(ref, snapshot); err != nil {
 		t.Fatal(err)
 	}

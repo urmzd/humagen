@@ -115,15 +115,6 @@ type Config struct {
 	unmarkedPosts bool
 }
 
-// agentMark is the hidden line naming the agent that wrote v's review, on
-// a line of its own.
-func agentMark(v transport.View) string {
-	if mark := presentation.AgentMark(v.Agent); mark != "" {
-		return "\n\n" + mark
-	}
-	return ""
-}
-
 // reviewDecisionTimeout bounds the reads a review's event is decided on.
 const reviewDecisionTimeout = 30 * time.Second
 
@@ -237,7 +228,7 @@ func New(cfg Config) (*Connector, error) {
 					if err := layouts.mark(v); err != nil {
 						return transport.Review{}, true, err
 					}
-					review.Body += agentMark(v) + presentation.SessionFooter(sessionLink(cfg, v))
+					review.Body = presentation.WithAgentMark(review.Body, v.Agent) + presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, nil
 				}
 				// The transport calls this only after verifying an existing app-authored
@@ -260,7 +251,7 @@ func New(cfg Config) (*Connector, error) {
 					}
 					review, err := presentation.RecoveredReview(report, files, presentation.TargetOf(v.Channel), disposition)
 					if layout == markedLayout {
-						review.Body += agentMark(v)
+						review.Body = presentation.WithAgentMark(review.Body, v.Agent)
 					}
 					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, err

@@ -63,9 +63,7 @@ func TestTheApprovalHookDecidesAgain(t *testing.T) {
 			snapshot := transport.Context{}
 			snapshot.Subject.Head.SHA = sha
 			snapshot.Subject.State = "open"
-			snapshot.Subject.User.Login = "octocat"
-			snapshot.Subject.State = "open"
-			snapshot.Subject.User.Login = "octocat"
+			snapshot.Subject.User.Login, snapshot.Subject.User.ID = "octocat", 583231
 			if err := fake.SeedContext(ref, snapshot); err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +109,7 @@ func TestNoReviewPolicyApprovesNothing(t *testing.T) {
 	snapshot := transport.Context{}
 	snapshot.Subject.Head.SHA = sha
 	snapshot.Subject.State = "open"
-	snapshot.Subject.User.Login = "octocat"
+	snapshot.Subject.User.Login, snapshot.Subject.User.ID = "octocat", 583231
 	if err := fake.SeedContext(transport.Ref{Owner: "acme", Repo: "repo", Number: 7}, snapshot); err != nil {
 		t.Fatal(err)
 	}

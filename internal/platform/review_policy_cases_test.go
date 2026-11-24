@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	ghconnector "github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/reposettings"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
@@ -34,15 +35,47 @@ type hookedCase struct {
 	// read fail.
 	commits     []transport.PRCommit
 	commitsFail bool
+	// coAuthors are the addresses the commits' Co-authored-by trailers
+	// name; coAuthorsFail makes their read fail, and noCoAuthors leaves the
+	// API without the read.
+	coAuthors     []string
+	coAuthorsFail bool
+	noCoAuthors   bool
+	// stampedBy, when set, is the client the trigger's ingress stamp names
+	// in place of the client that raised it; "" is none.
+	stampedBy *string
 }
 
-// failingCommits is a GitHub API whose read of a pull request's commits
-// fails.
-type failingCommits struct{ *transport.Fake }
-
-func (failingCommits) PullRequestCommits(context.Context, string, string, int) ([]transport.PRCommit, error) {
-	return nil, errors.New("github: 502 listing commits")
+// withCommits is a GitHub API whose read of a pull request's commits can
+// be made to fail.
+type withCommits struct {
+	*transport.Fake
+	fail bool
 }
+
+func (w withCommits) PullRequestCommits(ctx context.Context, owner, repo string, number int) ([]transport.PRCommit, error) {
+	if w.fail {
+		return nil, errors.New("github: 502 listing commits")
+	}
+	return w.Fake.PullRequestCommits(ctx, owner, repo, number)
+}
+
+// withCoAuthors is a GitHub API that also reads the Co-authored-by
+// trailers of a pull request's commits.
+type withCoAuthors struct {
+	withCommits
+	emails []string
+	fail   bool
+}
+
+func (w withCoAuthors) PullRequestCoAuthors(context.Context, string, string, int) ([]string, error) {
+	if w.fail {
+		return nil, errors.New("github: 502 reading commits")
+	}
+	return w.emails, nil
+}
+
+var _ ghconnector.CoAuthorsAPI = withCoAuthors{}
 
 func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	t.Helper()
@@ -57,7 +90,7 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	proof := transport.Context{Files: []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1 +1 @@\n-old\n+new"}}}
 	proof.Subject.Head.SHA = approvalSHA
 	proof.Subject.State = "open"
-	proof.Subject.User.Login = c.author
+	proof.Subject.User.Login, proof.Subject.User.ID = c.author, githubID(c.author)
 	if err := api.SeedContext(ref, proof); err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +112,14 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 		wire.SetShape(&tag, wire.ShapeReview)
 	}
 	tag.Time = at
+	// The platform's ingress stamps the client that raised the trigger.
+	wire.SetMeta(&tag, runs.MetaClient, client.ID)
+	if c.stampedBy != nil {
+		wire.DeleteMeta(&tag, runs.MetaClient)
+		if *c.stampedBy != "" {
+			wire.SetMeta(&tag, runs.MetaClient, *c.stampedBy)
+		}
+	}
 	runID := runtime.RunID("t", tag.ID)
 	if err := p.Runs.Record(runID, tag, 1); err != nil {
 		t.Fatal(err)
@@ -103,12 +144,12 @@ func hookedEvent(t *testing.T, c hookedCase) (string, error) {
 	}
 	text, _ := json.Marshal(report)
 	n := 0
-	var gh transport.API = api
 	if err := api.SeedPullRequestCommits(ref, c.commits); err != nil {
 		t.Fatal(err)
 	}
-	if c.commitsFail {
-		gh = failingCommits{api}
+	var gh transport.API = withCoAuthors{withCommits: withCommits{Fake: api, fail: c.commitsFail}, emails: c.coAuthors, fail: c.coAuthorsFail}
+	if c.noCoAuthors {
+		gh = withCommits{Fake: api, fail: c.commitsFail}
 	}
 	peer, err := ghconnector.New(ghconnector.Config{API: gh, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
@@ -307,9 +348,9 @@ func TestAResumedAutomaticReviewApprovesOnlyForASecondPerson(t *testing.T) {
 		"a mapped person, commits read":             {by: "ada", byID: 1001, author: "octocat", commits: clean, want: "APPROVE"},
 		"a mapped person, commits unreadable":       {by: "ada", byID: 1001, author: "octocat", commitsFail: true, want: "COMMENT"},
 		"a mapped person with no user ID":           {by: "ada", author: "octocat", commits: clean, want: "COMMENT"},
-		"a mapped person who pushed a commit":       {by: "ada", byID: 1001, author: "octocat", commits: append(clean, transport.PRCommit{SHA: approvalSHA, AuthorID: 1001}), want: "COMMENT"},
+		"a mapped person who pushed a commit":       {by: "ada", byID: 1001, author: "octocat", commits: append(clean, transport.PRCommit{SHA: approvalSHA, AuthorID: 1001, CommitterID: 583231}), want: "COMMENT"},
 		"a mapped person who committed one":         {by: "ada", byID: 1001, author: "octocat", commits: append(clean, transport.PRCommit{SHA: approvalSHA, AuthorID: 583231, CommitterID: 1001}), want: "COMMENT"},
-		"a commit matched to no account":            {by: "ada", byID: 1001, author: "octocat", commits: append(clean, transport.PRCommit{SHA: approvalSHA}), want: "APPROVE"},
+		"a commit matched to no account":            {by: "ada", byID: 1001, author: "octocat", commits: append(clean, transport.PRCommit{SHA: approvalSHA}), want: "COMMENT"},
 		"a stranger":                                {by: "stranger", byID: 4242, author: "octocat", commits: clean, want: "COMMENT"},
 		"the author, renamed since they resumed it": {by: "ada", byID: 1001, author: "ada-new", commits: clean, want: "COMMENT"},
 	} {
@@ -336,30 +377,76 @@ func TestAResumedAutomaticReviewApprovesOnlyForASecondPerson(t *testing.T) {
 
 // A person who asks by a comment or a review request approves only when the
 // client maps them, they did not write the pull request, and the host read
-// its commits and they wrote or committed none of them.
+// its commits and their Co-authored-by trailers, every commit's author and
+// committer is linked to a GitHub account, and the asker wrote, committed
+// or co-authored none of them.
 func TestAnAskerApprovesOnlyWhenTheyWroteNoneOfIt(t *testing.T) {
 	theirs := []transport.PRCommit{{SHA: approvalSHA, AuthorID: 583231, CommitterID: 583231}}
 	many := make([]transport.PRCommit, transport.MaxPullRequestCommits)
 	for i := range many {
 		many[i] = theirs[0]
 	}
+	plus := func(c transport.PRCommit) []transport.PRCommit {
+		return append(append([]transport.PRCommit(nil), theirs...), c)
+	}
 	for name, c := range map[string]struct {
-		requested   bool
-		commits     []transport.PRCommit
-		commitsFail bool
-		want        string
+		requested     bool
+		commits       []transport.PRCommit
+		commitsFail   bool
+		coAuthors     []string
+		coAuthorsFail bool
+		noCoAuthors   bool
+		want          string
 	}{
-		"a comment":                        {commits: theirs, want: "APPROVE"},
-		"a review request":                 {requested: true, commits: theirs, want: "APPROVE"},
-		"a co-author's comment":            {commits: append(theirs, transport.PRCommit{SHA: approvalSHA, AuthorID: 1001, CommitterID: 583231}), want: "COMMENT"},
-		"a co-author's review request":     {requested: true, commits: append(theirs, transport.PRCommit{SHA: approvalSHA, AuthorID: 583231, CommitterID: 1001}), want: "COMMENT"},
-		"commits that cannot be read":      {commitsFail: true, want: "COMMENT"},
-		"commits at saige's bound":         {commits: many, want: "COMMENT"},
-		"a review request, commits unread": {requested: true, commitsFail: true, want: "COMMENT"},
+		"a comment":                                 {commits: theirs, coAuthors: []string{"someone@acme.example"}, want: "APPROVE"},
+		"a review request":                          {requested: true, commits: theirs, want: "APPROVE"},
+		"an author of a commit":                     {commits: plus(transport.PRCommit{SHA: approvalSHA, AuthorID: 1001, CommitterID: 583231}), want: "COMMENT"},
+		"a committer of a commit":                   {requested: true, commits: plus(transport.PRCommit{SHA: approvalSHA, AuthorID: 583231, CommitterID: 1001}), want: "COMMENT"},
+		"a commit whose author has no account":      {commits: plus(transport.PRCommit{SHA: approvalSHA, CommitterID: 583231}), want: "COMMENT"},
+		"a commit whose committer has no account":   {commits: plus(transport.PRCommit{SHA: approvalSHA, AuthorID: 583231}), want: "COMMENT"},
+		"commits without the reviewed one":          {commits: []transport.PRCommit{{SHA: "cd" + approvalSHA[2:], AuthorID: 583231, CommitterID: 583231}}, want: "COMMENT"},
+		"no commits":                                {want: "COMMENT"},
+		"commits that cannot be read":               {commitsFail: true, want: "COMMENT"},
+		"commits at saige's bound":                  {commits: many, want: "COMMENT"},
+		"a review request, commits unread":          {requested: true, commitsFail: true, want: "COMMENT"},
+		"a co-author by the mapped address":         {commits: theirs, coAuthors: []string{"Ada@Acme.example"}, want: "COMMENT"},
+		"a co-author by the no-reply address":       {commits: theirs, coAuthors: []string{"1001+ada@users.noreply.github.com"}, want: "COMMENT"},
+		"a co-author by the older no-reply address": {requested: true, commits: theirs, coAuthors: []string{"ada@users.noreply.github.com"}, want: "COMMENT"},
+		"co-authors that cannot be read":            {commits: theirs, coAuthorsFail: true, want: "COMMENT"},
+		"an API that does not read co-authors":      {commits: theirs, noCoAuthors: true, want: "COMMENT"},
+		"a review request, co-authors not readable": {requested: true, commits: theirs, noCoAuthors: true, want: "COMMENT"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			hc := hookedCase{approvalCase: cleanApproval(), commits: c.commits, commitsFail: c.commitsFail}
+			hc := hookedCase{approvalCase: cleanApproval(), commits: c.commits, commitsFail: c.commitsFail, coAuthors: c.coAuthors, coAuthorsFail: c.coAuthorsFail, noCoAuthors: c.noCoAuthors}
 			hc.asker, hc.requested = "ada", c.requested
+			if got, err := hookedEvent(t, hc); err != nil || got != c.want {
+				t.Fatalf("%s %v, want %s", got, err, c.want)
+			}
+		})
+	}
+}
+
+// Only a trigger the platform's ingress stamped with the GitHub client is
+// trusted to approve, and only its user IDs are believed: one that names no
+// client, or another client, approves nothing, though it says the same.
+func TestOnlyTheClientsOwnTriggerApproves(t *testing.T) {
+	theirs := []transport.PRCommit{{SHA: approvalSHA, AuthorID: 583231, CommitterID: 583231}}
+	for name, c := range map[string]struct {
+		asker  string
+		client string
+		want   string
+	}{
+		"an automatic review the client raised": {client: "gh", want: "APPROVE"},
+		"an automatic review no client stamped": {client: "", want: "COMMENT"},
+		"an automatic review of another client": {client: "other", want: "COMMENT"},
+		"a comment the client raised":           {asker: "ada", client: "gh", want: "APPROVE"},
+		"a comment no client stamped":           {asker: "ada", client: "", want: "COMMENT"},
+		"a comment another client stamped":      {asker: "ada", client: "other", want: "COMMENT"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			hc := hookedCase{approvalCase: cleanApproval(), commits: theirs}
+			hc.asker = c.asker
+			hc.stampedBy = &c.client
 			if got, err := hookedEvent(t, hc); err != nil || got != c.want {
 				t.Fatalf("%s %v, want %s", got, err, c.want)
 			}

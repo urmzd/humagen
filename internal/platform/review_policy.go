@@ -56,7 +56,11 @@ func (p *Platform) reviewGrant(ctx context.Context, c clients.Client, v transpor
 	}
 	trusted, asker, askerID := p.trustedReviewRun(current, run, repo, number)
 	authorID, _ := strconv.ParseInt(wire.Meta(tag)[wire.MetaGitHubAuthorID], 10, 64)
-	return github.ReviewGrant{Policy: policy, Trusted: trusted, Asker: asker, AskerID: askerID, Author: wire.SurfaceOf(tag).GitHubAuthor, AuthorID: authorID}, nil
+	grant := github.ReviewGrant{Policy: policy, Trusted: trusted, Asker: asker, AskerID: askerID, Author: wire.SurfaceOf(tag).GitHubAuthor, AuthorID: authorID}
+	if email := current.GitHub.People[asker]; asker != "" && email != "" {
+		grant.AskerEmails = []string{email}
+	}
+	return grant, nil
 }
 
 // reviewPolicy is an agent's review policy as the presentation reads it.
@@ -94,11 +98,19 @@ func stricterReview(a, b presentation.ReviewPolicy) presentation.ReviewPolicy {
 // requested the review) is one the client maps (its people, or its askers).
 // A run another run called, a rule's run, and a stranger's are not trusted,
 // whatever they say. ReviewEvent also needs the asker's ID.
+//
+// Only a run whose trigger this client's GitHub connector raised is
+// trusted, and its user IDs believed: its origin is GitHub and the
+// platform's ingress stamped it with this client (runs.ClientOf), which it
+// writes over whatever the trigger said.
 func (p *Platform) trustedReviewRun(c clients.Client, run runs.Run, repo string, number int) (bool, string, int64) {
 	if run.Parent != "" || run.Origin != "github" || c.GitHub == nil {
 		return false, "", 0
 	}
 	tag := run.Tag()
+	if runs.ClientOf(tag) != c.ID || run.Client != c.ID {
+		return false, "", 0
+	}
 	if strings.HasPrefix(run.TagID, "autoreview/"+url.PathEscape(c.ID)+"/") && run.Actor.ID == "" && wire.ShapeOf(tag) == wire.ShapeReview {
 		state, ok := p.PullReviewOf(c.Tenant, c.ID, repo, number)
 		if !ok {

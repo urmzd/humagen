@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	ghconnector "github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/reposettings"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
@@ -85,9 +86,9 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	proof.Subject.Head.SHA = approvalSHA
 	proof.Subject.Body = c.prBody
 	proof.Subject.State, proof.Subject.Draft = "open", c.draft
-	proof.Subject.User.Login = c.author
+	proof.Subject.User.Login, proof.Subject.User.ID = c.author, githubID(c.author)
 	if c.githubAuthor != "" {
-		proof.Subject.User.Login = c.githubAuthor
+		proof.Subject.User.Login, proof.Subject.User.ID = c.githubAuthor, githubID(c.githubAuthor)
 	}
 	if err := api.SeedContext(ref, proof); err != nil {
 		t.Fatal(err)
@@ -96,6 +97,10 @@ func postedEvent(t *testing.T, c approvalCase) string {
 		if err := api.SeedCommitCheck("acme", "site", approvalSHA, check); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// The pull request's one commit, written by octocat.
+	if err := api.SeedPullRequestCommits(ref, []transport.PRCommit{{SHA: approvalSHA, AuthorID: githubID("octocat"), CommitterID: githubID("octocat")}}); err != nil {
+		t.Fatal(err)
 	}
 	target := address.MustParse("github://acme/site/pull/7?head_sha=" + approvalSHA)
 	var tag event.Envelope
@@ -115,6 +120,8 @@ func postedEvent(t *testing.T, c approvalCase) string {
 		wire.SetShape(&tag, wire.ShapeReview)
 	}
 	tag.Time = at
+	// The platform's ingress stamps the client that raised the trigger.
+	wire.SetMeta(&tag, runs.MetaClient, client.ID)
 	runID := runtime.RunID("t", tag.ID)
 	if err := p.Runs.Record(runID, tag, 1); err != nil {
 		t.Fatal(err)
@@ -137,7 +144,7 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer, err := ghconnector.New(ghconnector.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
+	peer, err := ghconnector.New(ghconnector.Config{API: withCoAuthors{withCommits: withCommits{Fake: api}}, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
 		ReviewPolicy: func(ctx context.Context, v transport.View) (ghconnector.ReviewGrant, error) {
 			return p.reviewGrant(ctx, client, v)

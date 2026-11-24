@@ -834,7 +834,7 @@ and what it reads itself, and nothing the model or the pull request wrote:
 
 | Event | When |
 | :--- | :--- |
-| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found fewer than 1,000, and every check another app reported passed (success, neutral or skipped), with at least one success; the pull request is open and not a draft, its author is not the app, and the signed event gave the author's GitHub user ID; the app has not approved this commit already; and the run was an automatic review, or was asked or resumed by a person the client maps (`github.people` or `github.askers`) who is known by user ID, is not the author, and wrote or committed none of the pull request's commits |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found fewer than 1,000, and, leaving out every check run of the app's own, whatever its name or run, none is pending or failed (success, neutral or skipped pass) and at least one concluded success; the pull request is open, not a draft and still on the reviewed commit, its author is not the app, and both the signed event and GitHub, read again when the approval is decided, give the author's GitHub user ID, the same one; the app has not approved this commit already, and no change request the app posted for another agent is outstanding; and the run was an automatic review, or was asked (by a comment, or by requesting the review) or resumed by a person the client maps (`github.people` or `github.askers`) who is known by user ID, is not the author, and authored, committed or co-authored none of the pull request's commits |
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 
@@ -852,19 +852,32 @@ from any run, never count as CI. A rule's run, a run another agent started,
 and a run a stranger asked for never approve.
 
 People are told apart by GitHub user ID, never by login, which its owner
-may change. The comment and review-request events saige raises carry no user
-ID yet, and saige reads no pull request's commits yet, so for now only an
-automatic review that nobody resumed approves. An automatic review that a
-person resumed after it paused approves only when the client maps that
-person, the resume carried their user ID, and they neither wrote the pull
-request nor any of its commits.
+may change, and an ID of 0 matches nobody. Only a trigger the GitHub
+client's own connector raised, which the platform's ingress stamps with the
+client, is trusted to approve, and only its user IDs are believed. Who asks
+is the commenter, the person who requested the review, or the person who
+resumed a paused automatic review. Before an asked review approves, the host
+reads the pull request's commits (fewer than 250, the reviewed commit among
+them): every commit's author and committer must be linked to a GitHub
+account, since GitHub links them by email, and the asker must be none of
+them. It also reads the commits' `Co-authored-by` trailers, and an address
+the client maps the asker to, or their GitHub no-reply address, refuses the
+approval. A read that fails, or a GitHub API that cannot read the trailers,
+approves nothing; saige's HTTP API does not read trailers yet, so for now a
+review a person asked for is posted as a comment, and only an automatic
+review that nobody resumed approves.
 
 A new review replaces the same agent's earlier ones on the pull request: an
 approval of an earlier head is dismissed when the new review does not
 approve, and a change request is dismissed when nothing in the new review
-blocks. Each native review carries a hidden line naming its agent, so one
-agent never dismisses another's, and a review from before that line is never
-dismissed. Only the app's own reviews are dismissed, through saige's
+blocks. Each native review carries a hidden line naming its agent, written
+by the host after everything the model wrote; a line like it inside the
+review's text is written so that it names nobody, and only the line at the
+end, followed by nothing but the session link and the transport's markers,
+counts. One agent never dismisses another's review, and a review from before
+that line is never dismissed. Since every agent posts as the app and GitHub
+counts the app's latest review, a review does not approve while a change
+request the app posted for another agent is outstanding. Only the app's own reviews are dismissed, through saige's
 host-only dismissal; no model tool reaches it. A dismissal that fails is
 logged and never stops the new review.
 Review recovery uses an app-owned marker and the durable delivery store to

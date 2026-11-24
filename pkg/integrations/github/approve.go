@@ -32,11 +32,23 @@ type ReviewGrant struct {
 	// known by ID, not the author, and a writer of none of the commits.
 	Asker   string
 	AskerID int64
+	// AskerEmails are the addresses the client maps the asker to. A
+	// Co-authored-by trailer with one of them, or with the asker's GitHub
+	// no-reply address, names the asker.
+	AskerEmails []string
 	// Author is the pull request's author and AuthorID their GitHub user
 	// ID, as the signed event carried them. An author unknown by ID
 	// approves nothing.
 	Author   string
 	AuthorID int64
+}
+
+// CoAuthorsAPI reads the addresses the Co-authored-by trailers of a pull
+// request's commits name, every one of them or an error. An API without it
+// leaves them unread, and a review a person asked for then approves
+// nothing.
+type CoAuthorsAPI interface {
+	PullRequestCoAuthors(ctx context.Context, owner, repo string, number int) ([]string, error)
 }
 
 // reviewDecision is the policy and the facts one review is decided on.
@@ -65,21 +77,66 @@ func reviewDecision(ctx context.Context, cfg Config, v transport.View, report pr
 			facts.ChecksRead, facts.Checks = true, checks
 		}
 	}
-	// Who wrote the commits is read only for a person who asked: a read
-	// that fails, or reaches saige's bound, leaves them unread, and the
-	// review is then not approved. An ID of 0, a commit GitHub matched to
-	// no account, matches nobody.
+	// Who wrote the commits is read only for a person who asked.
 	if grant.AskerID > 0 {
 		if api, readable := cfg.API.(transport.PullRequestCommitsAPI); readable {
 			if commits, err := api.PullRequestCommits(ctx, owner, repo, number); err == nil {
-				facts.CommitsRead = true
-				for _, c := range commits {
-					facts.AskerCommitted = facts.AskerCommitted || c.AuthorID == grant.AskerID || c.CommitterID == grant.AskerID
-				}
+				facts.CommitsRead, facts.AskerCommitted = commitsRead(commits, report.Scope.Commit, grant.AskerID)
+			}
+		}
+		if api, readable := cfg.API.(CoAuthorsAPI); readable {
+			if emails, err := api.PullRequestCoAuthors(ctx, owner, repo, number); err == nil {
+				facts.CoAuthorsRead, facts.AskerCoAuthored = true, coAuthored(emails, grant)
 			}
 		}
 	}
 	return grant.Policy, facts, nil
+}
+
+// commitsRead reads who wrote a pull request's commits for the person who
+// asked, asker by GitHub user ID. read is true only for a whole list: one
+// or more commits, fewer than saige's bound, the reviewed commit among them,
+// and every commit's author and committer linked to a GitHub account
+// (GitHub links them by email, so an unlinked one could be anyone). GitHub's
+// own committer of a merge made on the web is an account of its own, never
+// a person's. committed is true when asker authored or committed one of
+// them. A list that is not read approves nothing.
+func commitsRead(commits []transport.PRCommit, reviewed string, asker int64) (read, committed bool) {
+	if len(commits) == 0 || len(commits) >= transport.MaxPullRequestCommits || asker <= 0 {
+		return false, false
+	}
+	found := false
+	for _, c := range commits {
+		if c.AuthorID <= 0 || c.CommitterID <= 0 {
+			return false, false
+		}
+		found = found || strings.EqualFold(c.SHA, reviewed)
+		committed = committed || c.AuthorID == asker || c.CommitterID == asker
+	}
+	return found, committed
+}
+
+// coAuthored reports whether a Co-authored-by address names the asker: one
+// the client maps them to, or their GitHub no-reply address.
+func coAuthored(emails []string, grant ReviewGrant) bool {
+	theirs := map[string]bool{}
+	for _, e := range grant.AskerEmails {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			theirs[e] = true
+		}
+	}
+	if login := strings.ToLower(strings.TrimSpace(grant.Asker)); login != "" {
+		theirs[login+"@users.noreply.github.com"] = true
+		if grant.AskerID > 0 {
+			theirs[strconv.FormatInt(grant.AskerID, 10)+"+"+login+"@users.noreply.github.com"] = true
+		}
+	}
+	for _, e := range emails {
+		if theirs[strings.ToLower(strings.TrimSpace(e))] {
+			return true
+		}
+	}
+	return false
 }
 
 // pullOf is the pull request a run's channel is on.
@@ -164,9 +221,10 @@ func (a *approvals) take(run, commit string) (pendingApproval, bool) {
 // mayApprove is the transport's MayApprove: it finds the run by the
 // request's RunID, decides its planned approval again, reading the policy
 // and the checks as they are now, with the pull request's author and draft
-// state as the transport read them from GitHub, and says yes only when
-// ReviewEvent still approves, the app has not approved the commit already,
-// and this run wins the commit's durable claim. A request for another pull
+// state as the transport read them from GitHub and the author's user ID read
+// again, and says yes only when ReviewEvent still approves, the app has not
+// approved the commit already, no change request of the app's that another
+// agent posted is outstanding, and this run wins the commit's durable claim. A request for another pull
 // request, or one nothing planned, is no. A grant that cannot be read is an
 // error, which posts nothing and is retried.
 func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.ApprovalRequest) (bool, error) {
@@ -187,6 +245,16 @@ func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.Appro
 			return false, err
 		}
 		facts.Author, facts.Draft = req.Author, req.Draft
+		// The author is compared by the ID GitHub gives now. An author
+		// whose ID differs from the one the run started with is refused.
+		author, err := freshAuthor(ctx, cfg, refOf(req))
+		if err != nil {
+			return false, err
+		}
+		if facts.AuthorID > 0 && author != facts.AuthorID {
+			author = 0
+		}
+		facts.AuthorID = author
 		if presentation.ReviewEvent(p.report, policy, facts) != "APPROVE" {
 			dismissStale(ctx, cfg, a.host(), refOf(req), p.view.Agent, req.Commit, "COMMENT", false)
 			return false, nil
@@ -198,13 +266,32 @@ func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.Appro
 		if err != nil {
 			return false, err
 		}
+		// Every agent posts as the app, and GitHub counts the app's latest
+		// review: an approval would replace another agent's change request.
 		for _, row := range rows {
-			if row.State == "APPROVED" && strings.EqualFold(row.CommitID, req.Commit) {
+			switch {
+			case row.State == "APPROVED" && strings.EqualFold(row.CommitID, req.Commit):
+				return false, nil
+			case row.State == "CHANGES_REQUESTED" && presentation.ReviewAgent(row.Body) != p.view.Agent:
 				return false, nil
 			}
 		}
 		return claimApproval(ctx, cfg, req)
 	}
+}
+
+// freshAuthor is the GitHub user ID of the pull request's author as GitHub
+// gives it now, 0 when it gives none.
+func freshAuthor(ctx context.Context, cfg Config, ref transport.Ref) (int64, error) {
+	api, ok := cfg.API.(transport.ContextAPI)
+	if !ok {
+		return 0, nil
+	}
+	evidence, err := api.ReadContext(ctx, ref, 1)
+	if err != nil {
+		return 0, err
+	}
+	return evidence.Subject.User.ID, nil
 }
 
 // approvalClaims is the namespace an approval's claim is kept in.
@@ -240,16 +327,16 @@ const staleReviewMessage = "A later review of this pull request replaces this on
 // staleReviews are the earlier reviews of agent a new review at commit,
 // posted as event, makes stale: an approval of another commit when the new
 // review does not approve, and a change request when the new review has no
-// finding that blocks. Only reviews that carry agent's mark are named:
-// another agent's review, and one from before reviews were marked, stay.
+// finding that blocks. Only reviews whose host-written mark names agent
+// (presentation.ReviewAgent) are named: another agent's review, and one from
+// before reviews were marked, stay.
 func staleReviews(own []transport.ReviewRecord, agent, commit, event string, blocked bool) []int64 {
-	mark := presentation.AgentMark(agent)
-	if mark == "" {
+	if presentation.AgentMark(agent) == "" {
 		return nil
 	}
 	var out []int64
 	for _, row := range own {
-		if !strings.Contains(row.Body, mark) {
+		if presentation.ReviewAgent(row.Body) != agent {
 			continue
 		}
 		switch {
