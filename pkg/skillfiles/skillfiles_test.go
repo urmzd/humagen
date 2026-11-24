@@ -52,13 +52,29 @@ func TestWritePlacesExactBytesReadOnlyAndRemoveTakesThemAway(t *testing.T) {
 	if info, _ := os.Stat(root); info.Mode().Perm() != 0o700 {
 		t.Fatalf("the root is open to others: %v", info.Mode())
 	}
-	for path, want := range map[string]os.FileMode{"": 0o500, "brief": 0o500, "brief/references": 0o500, "brief/references/style.md": 0o400, "other/notes.txt": 0o400} {
-		if info, err := os.Stat(filepath.Join(dir, path)); err != nil || info.Mode().Perm() != want {
-			t.Errorf("%q: mode %v, %v, want %v", path, info.Mode().Perm(), err, want)
+	modes := map[string]os.FileMode{
+		"": 0o500, "brief": 0o500, "brief/references": 0o500, "brief/assets": 0o500, "other": 0o500,
+		"brief/references/style.md": 0o400, "brief/assets/icon.bin": 0o400, "other/notes.txt": 0o400,
+	}
+	for path, want := range modes {
+		info, err := os.Stat(filepath.Join(dir, path))
+		if err != nil {
+			t.Errorf("%q: %v", path, err)
+			continue
+		}
+		if info.Mode().Perm() != want {
+			t.Errorf("%q: mode %v, want %v", path, info.Mode().Perm(), want)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "brief", "added.md"), []byte("x"), 0o600); err == nil {
-		t.Error("a file was added to a read-only directory")
+	// The modes above are what Write guarantees. Whether the OS then refuses
+	// a write into a read-only directory depends on who asks: a superuser
+	// is not refused, so that is checked only where it applies.
+	if refusesReadOnlyWrites(t) {
+		if err := os.WriteFile(filepath.Join(dir, "brief", "added.md"), []byte("x"), 0o600); err == nil {
+			t.Error("a file was added to a read-only directory")
+		}
+	} else {
+		t.Log("this user may write into a read-only directory, so the OS refusal is not checked")
 	}
 	if err := Remove(dir); err != nil {
 		t.Fatal(err)
@@ -208,4 +224,20 @@ func TestRemoveTakesOnlyADirectoryWriteMade(t *testing.T) {
 	if err := Remove(filepath.Dir(root)); err == nil {
 		t.Error("Remove took a directory outside the root")
 	}
+}
+
+// refusesReadOnlyWrites reports whether the OS refuses this user a new file
+// in a directory of mode 0o555, as it does for anyone but a superuser.
+func refusesReadOnlyWrites(t *testing.T) bool {
+	t.Helper()
+	probe := filepath.Join(t.TempDir(), "probe")
+	if err := os.Mkdir(probe, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(probe, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(probe, 0o700) })
+	err := os.WriteFile(filepath.Join(probe, "probe"), nil, 0o600)
+	return err != nil
 }
