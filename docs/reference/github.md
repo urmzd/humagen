@@ -494,9 +494,11 @@ out. Each part is cut to a bound, and the whole stays under the tool's 12,000
 characters.
 
 A run reads through the GitHub client that raised it when the session's root
-is that client's thread on that issue or pull request, and only when that
-client serves the owner, names the repository in `read_repositories`, or
-covers it by its App installation. Any other run, and a person in the console,
+is that client's thread on that issue or pull request, and only while that
+client serves the repository's owner: its connector reads only the owners it
+serves. When it no longer does, the run gets a note that the client is not
+granted the place, and nothing is read, whatever `read_repositories` or its
+App installation name. Any other run, and a person in the console,
 reads as a cross-surface read: under the workspace's grants and the
 repository's `cross_surface_reads`. Anything else gets a note that the place
 may not be read, and no text.
