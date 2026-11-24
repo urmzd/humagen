@@ -26,12 +26,14 @@ type approvalCase struct {
 	checks    []transport.CommitCheck
 	// asker starts the run as a comment by this login; "" is an automatic
 	// review.
-	asker   string
-	author  string
-	prBody  string
-	verdict string
-	finding string // a finding's severity, "" for none
-	summary string
+	asker string
+	// requested makes the asker's run a review requested from the app.
+	requested bool
+	author    string
+	prBody    string
+	verdict   string
+	finding   string // a finding's severity, "" for none
+	summary   string
 }
 
 const approvalSHA = "abababababababababababababababababababab"
@@ -82,8 +84,12 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	if c.asker == "" {
 		tag = autoReviewTag(client, "pull_request", clients.AutoReviewRequest{Repository: "acme/site", Number: 7, SHA: approvalSHA, Author: c.author}, "")
 	} else {
-		body := event.GitHubIssueCommentCreated{Request: event.Request{Actor: event.Actor{ID: c.asker}, Text: "@humagen review"}, GitHubRef: event.GitHubRef{Owner: "acme", Repo: "site", Number: 7, Pull: true, Sender: c.asker, Author: c.author, HeadSHA: approvalSHA}}
-		tag = event.Envelope{ID: "comment-" + c.asker, Tenant: "t", Agent: "gatekeeper", Source: target.String(), Channel: target.String(), Time: at, Type: body.Type(), Data: body}
+		ref := event.GitHubRef{Owner: "acme", Repo: "site", Number: 7, Pull: true, Sender: c.asker, Author: c.author, HeadSHA: approvalSHA}
+		var body event.Body = event.GitHubIssueCommentCreated{Request: event.Request{Actor: event.Actor{ID: c.asker}, Text: "@humagen review"}, GitHubRef: ref}
+		if c.requested {
+			body = event.GitHubReviewRequested{Request: event.Request{Actor: event.Actor{ID: c.asker}}, GitHubRef: ref, Reviewer: "gatekeeper"}
+		}
+		tag = event.Envelope{ID: "asked-" + c.asker, Tenant: "t", Agent: "gatekeeper", Source: target.String(), Channel: target.String(), Time: at, Type: body.Type(), Data: body}
 		wire.SetShape(&tag, wire.ShapeReview)
 	}
 	tag.Time = at
