@@ -11,6 +11,8 @@ export type ReviewBlockOn = NonNullable<Review["block_on"]>;
 export const REVIEW_DEFAULTS = { approve: "never", block_on: "error" } as const satisfies Review;
 const APPROVALS: readonly ReviewApprove[] = ["never", "when_clean"];
 const BLOCKS: readonly ReviewBlockOn[] = ["error", "warning", "info"];
+/** In `skills.loadable`, alone: any published skill of the run's project chain. */
+const ANY = "*";
 
 /** The review policy the spec holds, with its defaults filled in. */
 export function reviewOf(spec: AgentSpec): { approve: ReviewApprove; block_on: ReviewBlockOn } {
@@ -21,24 +23,47 @@ export function reviewOf(spec: AgentSpec): { approve: ReviewApprove; block_on: R
 }
 
 /**
- * The spec's review policy with `patch` applied. A value equal to its default
- * is left out, as the server leaves it out, so choosing the default again
- * leaves nothing unsaved. Every other field of the spec is kept.
+ * `obj` with `key` set to `value`, in the place the key already holds, so a
+ * draft compared with what was saved differs only where it changed. Undefined
+ * takes the key out.
  */
-export function withReview(spec: AgentSpec, patch: Partial<Review>): AgentSpec {
-  const next = { ...reviewOf(spec), ...patch };
-  const review: Review = {
-    ...(next.approve !== REVIEW_DEFAULTS.approve ? { approve: next.approve } : {}),
-    ...(next.block_on !== REVIEW_DEFAULTS.block_on ? { block_on: next.block_on } : {}),
-  };
-  const { review: _, ...rest } = spec;
-  return Object.keys(review).length ? { ...rest, review } : rest;
+function put<T extends object, K extends keyof T>(obj: T, key: K, value: T[K] | undefined): T {
+  if (value === undefined) {
+    const { [key]: _, ...rest } = obj;
+    return rest as T;
+  }
+  if (!(key in obj)) return { ...obj, [key]: value };
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, k === key ? value : v])) as T;
 }
 
-/** The spec with its loadable skills set. None leaves `skills` out. Every other field is kept. */
-export function withLoadable(spec: AgentSpec, names: string[]): AgentSpec {
-  const { skills: _, ...rest } = spec;
-  return names.length ? { ...rest, skills: { ...spec.skills, loadable: names } } : rest;
+/**
+ * The spec's review policy with `patch` applied. A field the patch does not
+ * name is kept exactly as the spec holds it, written or left out. A patched
+ * value that matches what was saved goes back to its saved form, so changing
+ * a choice and changing it back leaves nothing unsaved. Every other field of
+ * the spec is kept, in its place.
+ */
+export function withReview(spec: AgentSpec, patch: Partial<Review>, saved?: AgentSpec): AgentSpec {
+  let review: Review = spec.review ?? {};
+  for (const key of ["approve", "block_on"] as const) {
+    if (!(key in patch)) continue;
+    const value = patch[key];
+    const back = saved && reviewOf(saved)[key] === value;
+    review = put(review, key, (back ? saved?.review?.[key] : value) as never);
+  }
+  const unchanged = saved && JSON.stringify(review) === JSON.stringify(saved.review ?? {});
+  return put(spec, "review", unchanged ? saved.review : review);
+}
+
+/**
+ * The spec with its loadable skills set, in their place. The names that were
+ * saved go back to their saved form; none leaves `skills` out. Every other
+ * field is kept.
+ */
+export function withLoadable(spec: AgentSpec, names: string[], saved?: AgentSpec): AgentSpec {
+  if (saved && JSON.stringify(names) === JSON.stringify(saved.skills?.loadable ?? []))
+    return put(spec, "skills", saved.skills);
+  return put(spec, "skills", names.length ? put(spec.skills ?? {}, "loadable", names) : undefined);
 }
 
 /**
@@ -48,10 +73,13 @@ export function withLoadable(spec: AgentSpec, names: string[]): AgentSpec {
  */
 export function ReviewSettings({
   spec,
+  saved,
   editable,
   onChange,
 }: {
   spec: AgentSpec;
+  /** The spec as saved, which a choice changed back returns to. */
+  saved?: AgentSpec;
   editable: boolean;
   onChange: (next: AgentSpec) => void;
 }) {
@@ -67,7 +95,7 @@ export function ReviewSettings({
             value={review.approve}
             disabled={!editable}
             onChange={(e) =>
-              onChange(withReview(spec, { approve: e.target.value as ReviewApprove }))
+              onChange(withReview(spec, { approve: e.target.value as ReviewApprove }, saved))
             }
           >
             {APPROVALS.map((a) => (
@@ -84,7 +112,7 @@ export function ReviewSettings({
             value={review.block_on}
             disabled={!editable}
             onChange={(e) =>
-              onChange(withReview(spec, { block_on: e.target.value as ReviewBlockOn }))
+              onChange(withReview(spec, { block_on: e.target.value as ReviewBlockOn }, saved))
             }
           >
             {BLOCKS.map((b) => (
@@ -127,11 +155,14 @@ async function loadableScopes(home: string) {
  */
 export function LoadableSkills({
   spec,
+  saved,
   home = "",
   editable,
   onChange,
 }: {
   spec: AgentSpec;
+  /** The spec as saved, which a list changed back returns to. */
+  saved?: AgentSpec;
   /** The project the agent is homed in, whose library it also loads from. */
   home?: string;
   editable: boolean;
@@ -160,10 +191,32 @@ export function LoadableSkills({
               .then((rows) => rows.map((row) => ({ row, scope: s.label }))),
           ),
         );
+        // A run loads only a published skill. A row is the latest revision, so
+        // one that is a draft is offered when an earlier revision was published.
+        const drafts = lists
+          .flat()
+          .filter(({ row }) => !row.published_at)
+          .slice(0, 32);
+        const published = new Set(
+          lists
+            .flat()
+            .filter(({ row }) => row.published_at)
+            .map(({ row }) => row.id),
+        );
+        await Promise.all(
+          drafts.map(({ row }) =>
+            api
+              .librarySkill(row.id)
+              .then((revisions) => {
+                if (revisions.some((r) => r.published_at)) published.add(row.id);
+              })
+              .catch(() => {}),
+          ),
+        );
         if (!live) return;
         const byName = new Map<string, Pickable>();
         for (const { row, scope } of lists.flat())
-          if (!byName.has(row.name))
+          if (published.has(row.id) && !byName.has(row.name))
             byName.set(row.name, {
               value: row.name,
               label: row.name,
@@ -182,16 +235,21 @@ export function LoadableSkills({
     };
   }, [home, words.failed]);
   const value = spec.skills?.loadable ?? [];
+  const anySkill = value.includes(ANY);
   // A saved name the libraries read here do not hold may be in the library of
   // the project a run is in, so it is kept and said to be elsewhere.
   const known = new Set((options ?? []).map((o) => o.value));
   const kept: Pickable[] = value
     .filter((v) => !known.has(v))
-    .map((v) =>
-      v === "*"
-        ? { value: v, label: words.any }
-        : { value: v, label: v, hint: options && !unreadable ? words.elsewhere : undefined },
-    );
+    .filter((v) => v !== ANY)
+    .map((v) => ({
+      value: v,
+      label: v,
+      hint: options && !unreadable ? words.elsewhere : undefined,
+    }));
+  const any: Pickable = { value: ANY, label: words.any, hint: words.anyHint };
+  // Any skill stands alone: while it is chosen it can only be removed, and
+  // choosing it replaces the names.
   return (
     <Section title={words.title} hint={words.hint}>
       <Problem message={problem} />
@@ -202,8 +260,10 @@ export function LoadableSkills({
         disabled={!editable}
         empty={words.empty}
         value={value}
-        options={[...kept, ...(options ?? [])]}
-        onChange={(next) => onChange(withLoadable(spec, next))}
+        options={anySkill ? [any] : [any, ...kept, ...(options ?? [])]}
+        onChange={(next) =>
+          onChange(withLoadable(spec, next.includes(ANY) && !anySkill ? [ANY] : next, saved))
+        }
       />
     </Section>
   );

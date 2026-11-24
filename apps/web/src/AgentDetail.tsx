@@ -82,6 +82,22 @@ function NamesField({
   );
 }
 
+/** Whether two specs hold the same fields and values, in whatever order their keys are written. */
+function sameSpec(a: AgentSpec, b: AgentSpec): boolean {
+  const sorted = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sorted)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.entries(v)
+              .filter(([, x]) => x !== undefined)
+              .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+              .map(([k, x]) => [k, sorted(x)]),
+          )
+        : v;
+  return JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
+}
+
 /** A rough size. Models count tokens differently, so this is a guide, not a bill. */
 function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -474,7 +490,7 @@ export function AgentDetail({
   const kept = notes.filter((n) => n.status === "approved");
   const proposed = notes.filter((n) => n.status === "pending");
 
-  const dirty = useMemo(() => JSON.stringify(spec) !== JSON.stringify(saved), [spec, saved]);
+  const dirty = useMemo(() => sameSpec(spec, saved) === false, [spec, saved]);
   const myRules = rules.filter((r) => r.agent === name);
   const myOpen = alerts.filter((a) => a.agent === name && !a.acked_by).length;
   const mySuites = suites.filter((s) => s.target === "agent" && s.subject === name);
@@ -987,13 +1003,14 @@ export function AgentDetail({
             {tab === "context" && (
               <LoadableSkills
                 spec={spec}
+                saved={saved}
                 home={builtin ? "" : (home ?? "")}
                 editable={editable}
                 onChange={setSpec}
               />
             )}
             {tab === "review" && (
-              <ReviewSettings spec={spec} editable={editable} onChange={setSpec} />
+              <ReviewSettings spec={spec} saved={saved} editable={editable} onChange={setSpec} />
             )}
             {tab === "context" && (
               <Section

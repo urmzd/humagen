@@ -2581,6 +2581,7 @@ export const defaultCopy = {
     add: "Add Skill",
     empty: "It loads no skills.",
     any: "Any published skill",
+    anyHint: "Replaces the named skills: it may load any published skill of its run's project.",
     elsewhere: "Not in this agent's library. A run loads it from its project's library.",
     unreadable: "Reading the skill library requires access to projects. Saved skills are kept.",
     failed: "The skill library could not be read.",
