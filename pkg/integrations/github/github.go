@@ -155,6 +155,7 @@ func New(cfg Config) (*Connector, error) {
 			if _, ok := cfg.API.(transport.ContextAPI); ok {
 				layouts := newLayouts(cfg)
 				pending := newApprovals(cfg.Clock)
+				pending.host = func() reviewHost { return c.Connector }
 				if cfg.ReviewPolicy != nil {
 					base.MayApprove = pending.mayApprove(cfg)
 				}
@@ -199,7 +200,7 @@ func New(cfg Config) (*Connector, error) {
 					// unless this one blocks.
 					if owner, repo, number, ok := pullOf(v.Channel); ok {
 						ref := transport.Ref{Owner: owner, Repo: repo, Number: number}
-						if err := dismissStale(ctx, cfg, ref, review.CommitID, review.Event, review.Event == "REQUEST_CHANGES"); err != nil {
+						if err := dismissStale(ctx, cfg, c.Connector, ref, review.CommitID, review.Event, review.Event == "REQUEST_CHANGES"); err != nil {
 							return transport.Review{}, true, err
 						}
 					}

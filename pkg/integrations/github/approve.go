@@ -2,7 +2,7 @@ package github
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,6 +97,8 @@ type approvals struct {
 	// run in this process cannot approve one again before GitHub lists
 	// the first approval.
 	granted map[string]time.Time
+	// host is the connector, set once it is built.
+	host func() reviewHost
 }
 
 type pendingApproval struct {
@@ -172,10 +174,10 @@ func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.Appro
 		}
 		facts.Author, facts.Draft = req.Author, req.Draft
 		if presentation.ReviewEvent(p.report, policy, facts) != "APPROVE" {
-			return false, dismissStale(ctx, cfg, refOf(req), req.Commit, "COMMENT", false)
+			return false, dismissStale(ctx, cfg, a.host(), refOf(req), req.Commit, "COMMENT", false)
 		}
 		// One approval for each commit, whichever run posts it.
-		approved, err := a.approvedAlready(ctx, cfg, req)
+		approved, err := a.approvedAlready(ctx, req)
 		if err != nil || approved {
 			return false, err
 		}
@@ -187,7 +189,7 @@ func (a *approvals) mayApprove(cfg Config) func(context.Context, transport.Appro
 // in GitHub's list of the pull request's reviews, or by a yes this hook
 // gave lately, which GitHub may not list yet. The commit is claimed before
 // the list is read, so two runs at once approve once.
-func (a *approvals) approvedAlready(ctx context.Context, cfg Config, req transport.ApprovalRequest) (bool, error) {
+func (a *approvals) approvedAlready(ctx context.Context, req transport.ApprovalRequest) (bool, error) {
 	key := strings.ToLower(req.Owner + "/" + req.Repo + "@" + req.Commit)
 	a.mu.Lock()
 	now := a.now()
@@ -202,11 +204,7 @@ func (a *approvals) approvedAlready(ctx context.Context, cfg Config, req transpo
 	}
 	a.granted[key] = now
 	a.mu.Unlock()
-	history, ok := cfg.API.(transport.ReviewHistoryAPI)
-	if !ok {
-		return true, nil
-	}
-	rows, err := ownReviews(ctx, history, cfg.Login, refOf(req))
+	rows, err := a.host().OwnReviews(ctx, req.Owner, req.Repo, req.Number)
 	if err != nil {
 		a.mu.Lock()
 		delete(a.granted, key)
@@ -219,38 +217,6 @@ func (a *approvals) approvedAlready(ctx context.Context, cfg Config, req transpo
 		}
 	}
 	return false, nil
-}
-
-// maxReviewPages bounds a read of a pull request's reviews, at 100 a page.
-const maxReviewPages = 10
-
-// ownReviews are the reviews the app posted on a pull request, oldest
-// first. A pull request with more than the bound is an error, so nothing is
-// decided on a part of its reviews.
-func ownReviews(ctx context.Context, api transport.ReviewHistoryAPI, login string, ref transport.Ref) ([]transport.ReviewRecord, error) {
-	var out []transport.ReviewRecord
-	for page := 1; page <= maxReviewPages; page++ {
-		rows, err := api.ListReviews(ctx, ref, page)
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			if strings.EqualFold(row.User.Login, login) {
-				out = append(out, row)
-			}
-		}
-		if len(rows) < 100 {
-			return out, nil
-		}
-	}
-	return nil, fmt.Errorf("github: pull request has more than %d reviews", maxReviewPages*100)
-}
-
-// ReviewDismissAPI dismisses one of the app's own reviews. saige's host-only
-// review dismissal provides it; until an API implements it, nothing is
-// dismissed.
-type ReviewDismissAPI interface {
-	DismissReview(ctx context.Context, ref transport.Ref, id int64, message string) error
 }
 
 // staleReviewMessage is what a dismissed review says it was dismissed for.
@@ -273,19 +239,26 @@ func staleReviews(own []transport.ReviewRecord, commit, event string, blocked bo
 	return out
 }
 
-// dismissStale dismisses the reviews staleReviews names, when the API can.
-func dismissStale(ctx context.Context, cfg Config, ref transport.Ref, commit, event string, blocked bool) error {
-	dismiss, ok := cfg.API.(ReviewDismissAPI)
-	history, readable := cfg.API.(transport.ReviewHistoryAPI)
-	if !ok || !readable {
+// reviewHost is what the hook and the review sink use of the transport's
+// host-only review calls: the app's own reviews on a pull request, and the
+// dismissal of one of them.
+type reviewHost interface {
+	OwnReviews(ctx context.Context, owner, repo string, number int) ([]transport.ReviewRecord, error)
+	DismissReview(ctx context.Context, owner, repo string, number int, reviewID int64, message string) error
+}
+
+// dismissStale dismisses the reviews staleReviews names. An API that cannot
+// dismiss dismisses nothing.
+func dismissStale(ctx context.Context, cfg Config, host reviewHost, ref transport.Ref, commit, event string, blocked bool) error {
+	if _, ok := cfg.API.(transport.ReviewDismissAPI); !ok || host == nil {
 		return nil
 	}
-	own, err := ownReviews(ctx, history, cfg.Login, ref)
+	own, err := host.OwnReviews(ctx, ref.Owner, ref.Repo, ref.Number)
 	if err != nil {
 		return err
 	}
 	for _, id := range staleReviews(own, commit, event, blocked) {
-		if err := dismiss.DismissReview(ctx, ref, id, staleReviewMessage); err != nil {
+		if err := host.DismissReview(ctx, ref.Owner, ref.Repo, ref.Number, id, staleReviewMessage); err != nil && !errors.Is(err, transport.ErrNotOwnReview) {
 			return err
 		}
 	}

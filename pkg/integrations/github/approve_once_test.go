@@ -55,17 +55,6 @@ func TestTwoRunsOnOneCommitApproveOnce(t *testing.T) {
 	}
 }
 
-// dismissals records the reviews dismissed through the API.
-type dismissals struct {
-	*transport.Fake
-	ids []int64
-}
-
-func (d *dismissals) DismissReview(_ context.Context, _ transport.Ref, id int64, _ string) error {
-	d.ids = append(d.ids, id)
-	return nil
-}
-
 // A review on a new head dismisses the app's earlier reviews it replaces: an
 // approval of another head when it does not approve, and a change request
 // when nothing in it blocks.
@@ -92,7 +81,6 @@ func TestALaterReviewDismissesTheAppsStaleReviews(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			fake := github.NewFake()
-			api := &dismissals{Fake: fake}
 			ref := transport.Ref{Owner: "acme", Repo: "repo", Number: 7}
 			seed := func(sha string) {
 				snapshot := transport.Context{}
@@ -106,24 +94,28 @@ func TestALaterReviewDismissesTheAppsStaleReviews(t *testing.T) {
 				}
 			}
 			clean := github.ReviewGrant{Policy: presentation.ReviewPolicy{Approve: presentation.ApproveWhenClean}, Trusted: true, Author: "octocat"}
-			conn, err := github.New(github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
+			conn, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, Tenant: "tenant", Login: "humagen[bot]", DeliveryState: deliverystate.NewMemory(), DeliveryScope: "s",
 				ReviewPolicy: func(context.Context, transport.View) (github.ReviewGrant, error) { return clean, nil }})
 			if err != nil {
 				t.Fatal(err)
 			}
 			for i, step := range []struct{ sha, verdict, sev string }{{old, c.first, c.firstSev}, {head, c.then, c.thenSev}} {
 				seed(step.sha)
-				if i == 1 {
-					api.ids = nil
-				}
 				target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", step.sha)
 				env := event.Envelope{Tenant: "tenant", Run: fmt.Sprint("run-", i), Seq: 1, Channel: target.String(), Type: event.TypeCompleted, Data: event.Completed{Text: report(step.sha, step.verdict, step.sev)}}
 				if err := conn.Deliver(t.Context(), target, env); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if len(api.ids) != c.want {
-				t.Fatalf("dismissed %v, want %d; posted %+v", api.ids, c.want, fake.SubmittedReviews())
+			reviews := fake.SubmittedReviews()
+			dismissed := 0
+			for _, r := range reviews {
+				if r.Dismissal != "" {
+					dismissed++
+				}
+			}
+			if len(reviews) != 2 || dismissed != c.want || reviews[1].Dismissal != "" {
+				t.Fatalf("dismissed %d, want %d of the first: %+v", dismissed, c.want, reviews)
 			}
 		})
 	}

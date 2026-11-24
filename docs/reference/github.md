@@ -846,8 +846,8 @@ request.
 A new review replaces the app's earlier ones on the pull request: an
 approval of an earlier head is dismissed when the new review does not
 approve, and a change request is dismissed when nothing in the new review
-blocks. This waits on saige's host-only review dismissal; until a release
-provides it, nothing is dismissed.
+blocks. Only the app's own reviews are dismissed, through saige's host-only
+dismissal; no model tool reaches it.
 Review recovery uses an app-owned marker and the durable delivery store to
 avoid duplicate reviews. Before it posts, the host records in the delivery
 store that the review is in the current layout. A review with no record was
