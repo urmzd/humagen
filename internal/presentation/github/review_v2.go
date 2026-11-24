@@ -239,6 +239,12 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 // agentName is an agent's name as a review's mark carries it.
 var agentName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 
+// agentMarkOpen and agentMarkClose enclose the agent's name in its mark.
+const (
+	agentMarkOpen  = "<!-- humagen.review.agent "
+	agentMarkClose = " -->"
+)
+
 // AgentMark is the hidden line a native review carries to name the agent
 // that wrote it, so the host dismisses only that agent's stale reviews. It is
 // "" for a name that is not an agent's.
@@ -246,7 +252,47 @@ func AgentMark(agent string) string {
 	if !agentName.MatchString(agent) {
 		return ""
 	}
-	return "<!-- humagen.review.agent " + agent + " -->"
+	return agentMarkOpen + agent + agentMarkClose
+}
+
+// WithAgentMark is a review's body with the agent's mark on a line of its
+// own at its end. Anything in body that would read as a mark, such as a
+// code change quoted in a finding, is written so that it does not: only
+// the host's line names the agent. A name that is not an agent's adds no
+// mark.
+func WithAgentMark(body, agent string) string {
+	mark := AgentMark(agent)
+	if mark == "" {
+		return body
+	}
+	return strings.ReplaceAll(body, agentMarkOpen, "&lt;"+agentMarkOpen[1:]) + "\n\n" + mark
+}
+
+// postedTail is what may follow the host's mark in a posted review: the
+// session footer, then the two markers the transport adds when it posts a
+// review (its run marker and its payload digest).
+var postedTail = regexp.MustCompile("^(" + regexp.QuoteMeta(sessionFooterOpen) + "[^\n]*" + regexp.QuoteMeta(sessionFooterClose) + ")?" +
+	"(\n\n<!-- humagen-review:[0-9a-f]{64} -->\n\n<!-- humagen-review-payload:[0-9a-f]{64} -->)?$")
+
+// ReviewAgent is the agent named by the mark WithAgentMark put at the end of
+// a review's body, followed by nothing but the session footer and the
+// transport's markers. A mark anywhere else names nobody, and a body
+// without one is "".
+func ReviewAgent(body string) string {
+	i := strings.LastIndex(body, agentMarkOpen)
+	if i < 2 || body[i-2:i] != "\n\n" {
+		return ""
+	}
+	rest := body[i+len(agentMarkOpen):]
+	end := strings.Index(rest, agentMarkClose)
+	if end < 0 {
+		return ""
+	}
+	name, tail := rest[:end], rest[end+len(agentMarkClose):]
+	if !agentName.MatchString(name) || !postedTail.MatchString(tail) {
+		return ""
+	}
+	return name
 }
 
 // ApproveWhenClean is the one review policy that may approve. Any other
@@ -291,29 +337,45 @@ type ReviewFacts struct {
 	Trusted bool
 	Asker   string
 	AskerID int64
-	// CommitsRead says the host read the pull request's commits, and
-	// AskerCommitted that the asker authored or committed one of them.
+	// CommitsRead says the host read the pull request's commits, every one
+	// linked to a GitHub account, and AskerCommitted that the asker
+	// authored or committed one of them.
 	CommitsRead    bool
 	AskerCommitted bool
+	// CoAuthorsRead says the host read the Co-authored-by trailers of
+	// those commits, and AskerCoAuthored that one names the asker.
+	CoAuthorsRead   bool
+	AskerCoAuthored bool
 }
 
 // checksPassed reports whether the host read the commit's checks and they
-// show CI that passed: every check another app reported passed, at least one
-// of them concluded success, and saige's AllPassed accepts the list (fewer
-// than the read's bound). The app's own checks, from this run or an earlier
-// one, are never CI: they say only that a review ran.
+// show CI that passed. The app's own check runs, from this run or an
+// earlier one and whatever their name, are left out: they say only that a
+// review ran. Of the rest, none may be pending or failed (only success,
+// neutral and skipped pass), at least one must have concluded success, and
+// the read must be below saige's bound.
 func (f ReviewFacts) checksPassed() bool {
 	app := loginOf(f.App)
-	own := func(c transport.CommitCheck) bool { return app != "" && loginOf(c.App) == app }
-	if !f.ChecksRead || !transport.AllPassed(f.Checks, own) {
+	if !f.ChecksRead || app == "" || len(f.Checks) >= transport.MaxCommitChecks {
 		return false
 	}
+	success := false
 	for _, c := range f.Checks {
-		if !own(c) && c.Conclusion == "success" {
-			return true
+		if loginOf(c.App) == app {
+			continue
+		}
+		if c.Status != "completed" {
+			return false
+		}
+		switch c.Conclusion {
+		case "success":
+			success = true
+		case "neutral", "skipped":
+		default:
+			return false
 		}
 	}
-	return false
+	return success
 }
 
 // loginOf is a login or app slug in one form: "Humagen[bot]" and "humagen"
@@ -324,8 +386,8 @@ func loginOf(s string) string {
 
 // peopleKnown reports whether the people an approval depends on are told
 // apart by GitHub user ID, and the asker, if any, is a second pair of eyes:
-// not the pull request's author, under any login, and the author or
-// committer of none of its commits, as the host read them.
+// not the pull request's author, under any login, and the author, committer
+// or co-author of none of its commits, as the host read them.
 func (f ReviewFacts) peopleKnown() bool {
 	if f.AuthorID <= 0 {
 		return false
@@ -333,7 +395,8 @@ func (f ReviewFacts) peopleKnown() bool {
 	if f.Asker == "" && f.AskerID == 0 {
 		return true
 	}
-	return f.AskerID > 0 && f.AskerID != f.AuthorID && loginOf(f.Asker) != loginOf(f.Author) && f.CommitsRead && !f.AskerCommitted
+	return f.AskerID > 0 && f.AskerID != f.AuthorID && loginOf(f.Asker) != loginOf(f.Author) &&
+		f.CommitsRead && !f.AskerCommitted && f.CoAuthorsRead && !f.AskerCoAuthored
 }
 
 // authorNotApp reports whether the pull request's author is known and is

@@ -88,6 +88,23 @@ func TestReviewEventApprovesOnlyWhenEveryGuardHolds(t *testing.T) {
 			earlier.ExternalID, earlier.Status, earlier.Conclusion = "earlier-run", "completed", "success"
 			f.Checks = []transport.CommitCheck{earlier, ownCheck(), {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "skipped"}}
 		}, want: "COMMENT"},
+		"the app's earlier checks, neutral and failed, beside a success": {facts: func(f *ReviewFacts) {
+			neutral, failed := ownCheck(), ownCheck()
+			neutral.ExternalID, neutral.Status, neutral.Conclusion = "earlier-run", "completed", "neutral"
+			failed.Name, failed.ExternalID, failed.Status, failed.Conclusion = "fiber/other-agent", "older-run", "completed", "failure"
+			f.Checks = []transport.CommitCheck{neutral, failed, passed("test")}
+		}, want: "APPROVE"},
+		"the app's earlier neutral checks alone": {facts: func(f *ReviewFacts) {
+			neutral := ownCheck()
+			neutral.ExternalID, neutral.Status, neutral.Conclusion = "earlier-run", "completed", "neutral"
+			f.Checks = []transport.CommitCheck{neutral, {Kind: transport.CheckKindRun, Name: "lint", Status: "completed", Conclusion: "neutral"}}
+		}, want: "COMMENT"},
+		"a check of the app under any name": {facts: func(f *ReviewFacts) {
+			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "build", Status: "completed", Conclusion: "success", App: "humagen"}}
+		}, want: "COMMENT"},
+		"a status with an unknown state": {facts: func(f *ReviewFacts) {
+			f.Checks = append(f.Checks, transport.CommitCheck{Kind: transport.CheckKindStatus, Name: "ci", Status: "completed", Conclusion: "error"})
+		}, want: "COMMENT"},
 		"every check skipped or neutral": {facts: func(f *ReviewFacts) {
 			f.Checks = []transport.CommitCheck{{Kind: transport.CheckKindRun, Name: "test", Status: "completed", Conclusion: "skipped"}, {Kind: transport.CheckKindStatus, Name: "lint", Status: "completed", Conclusion: "neutral"}}
 		}, want: "COMMENT"},
@@ -96,13 +113,19 @@ func TestReviewEventApprovesOnlyWhenEveryGuardHolds(t *testing.T) {
 			other.App, other.Status, other.Conclusion = "someone-else", "completed", "success"
 			f.Checks = []transport.CommitCheck{other}
 		}, want: "APPROVE"},
-		"the asker wrote the pull request":     {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "Octocat", 583231, true }, want: "COMMENT"},
-		"the author renamed, the same ID":      {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "octocat-renamed", 583231, true }, want: "COMMENT"},
-		"an asker with no ID":                  {facts: func(f *ReviewFacts) { f.Asker, f.CommitsRead = "ada", true }, want: "COMMENT"},
-		"an author with no ID":                 {facts: func(f *ReviewFacts) { f.AuthorID = 0 }, want: "COMMENT"},
-		"commits not read":                     {facts: func(f *ReviewFacts) { f.Asker, f.AskerID = "ada", 7 }, want: "COMMENT"},
-		"the asker committed":                  {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead, f.AskerCommitted = "ada", 7, true, true }, want: "COMMENT"},
-		"a mapped asker other than the author": {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "ada", 7, true }, want: "APPROVE"},
+		"the asker wrote the pull request": {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "Octocat", 583231, true }, want: "COMMENT"},
+		"the author renamed, the same ID":  {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "octocat-renamed", 583231, true }, want: "COMMENT"},
+		"an asker with no ID":              {facts: func(f *ReviewFacts) { f.Asker, f.CommitsRead, f.CoAuthorsRead = "ada", true, true }, want: "COMMENT"},
+		"an author with no ID":             {facts: func(f *ReviewFacts) { f.AuthorID = 0 }, want: "COMMENT"},
+		"commits not read":                 {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CoAuthorsRead = "ada", 7, true }, want: "COMMENT"},
+		"co-authors not read":              {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead = "ada", 7, true }, want: "COMMENT"},
+		"the asker committed": {facts: func(f *ReviewFacts) {
+			f.Asker, f.AskerID, f.CommitsRead, f.CoAuthorsRead, f.AskerCommitted = "ada", 7, true, true, true
+		}, want: "COMMENT"},
+		"the asker co-authored": {facts: func(f *ReviewFacts) {
+			f.Asker, f.AskerID, f.CommitsRead, f.CoAuthorsRead, f.AskerCoAuthored = "ada", 7, true, true, true
+		}, want: "COMMENT"},
+		"a mapped asker other than the author": {facts: func(f *ReviewFacts) { f.Asker, f.AskerID, f.CommitsRead, f.CoAuthorsRead = "ada", 7, true, true }, want: "APPROVE"},
 		"must-fix and failed check":            {report: func(r *ReviewReport) { r.Findings[0].Severity = "error" }, facts: func(f *ReviewFacts) { *f = failed("failure") }, want: "REQUEST_CHANGES"},
 		"never and untrusted and no checks":    {policy: ReviewPolicy{Approve: "never"}, facts: func(f *ReviewFacts) { f.Trusted, f.Checks = false, nil }, want: "COMMENT"},
 		"request_changes under never":          {report: func(r *ReviewReport) { r.Verdict = "request_changes" }, policy: ReviewPolicy{Approve: "never"}, want: "REQUEST_CHANGES"},
@@ -187,7 +210,7 @@ func TestPeopleAreToldApartByID(t *testing.T) {
 		"ada-unknown":     {0, "COMMENT"},
 	} {
 		f := cleanFacts()
-		f.Asker, f.AskerID, f.CommitsRead = asker, c.id, true
+		f.Asker, f.AskerID, f.CommitsRead, f.CoAuthorsRead = asker, c.id, true, true
 		if got := ReviewEvent(cleanReport(), ReviewPolicy{Approve: ApproveWhenClean}, f); got != c.want {
 			t.Errorf("asker %q (%d): %s, want %s", asker, c.id, got, c.want)
 		}

@@ -57,5 +57,11 @@ func SessionFooter(session string) string {
 		return ""
 	}
 	dest := strings.NewReplacer("(", "%28", ")", "%29", "<", "%3C", ">", "%3E", "|", "%7C", " ", "%20", "\n", "%0A", "\r", "%0D").Replace(u.String())
-	return "\n\n<sub>[View the session in Humagen ↗](" + dest + ")</sub>"
+	return sessionFooterOpen + dest + sessionFooterClose
 }
+
+// sessionFooterOpen and sessionFooterClose enclose a session footer's link.
+const (
+	sessionFooterOpen  = "\n\n<sub>[View the session in Humagen ↗]("
+	sessionFooterClose = ")</sub>"
+)
