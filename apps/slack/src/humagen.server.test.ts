@@ -83,8 +83,11 @@ async function standInModel(): Promise<{ server: Server; base: string }> {
   return { server: s, base: `http://127.0.0.1:${(s.address() as { port: number }).port}/v1` };
 }
 
-/** The spec the server starts with: the stand-in model, lead and helper, and lead as the default. */
-const specFor = (modelBase: string) => `api_version: humagen/v1
+/**
+ * The spec the server starts with: the stand-in model, a model server on a
+ * loopback port nothing listens on, lead and helper, and lead as the default.
+ */
+const specFor = (modelBase: string, closedBase: string) => `api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:
@@ -92,6 +95,9 @@ spec:
     - name: stand-in
       kind: openai
       openai: {base_url: "${modelBase}"}
+    - name: unreachable
+      kind: openai
+      openai: {base_url: "${closedBase}"}
   workspace:
     agents: {enable: ["*"], default: lead}
   agents:
@@ -150,7 +156,9 @@ before(async () => {
   const stand = await standInModel();
   model = stand.server;
   const spec = join(dir, "humagen.yaml");
-  writeFileSync(spec, specFor(stand.base));
+  // A port taken and given back: nothing listens on it, so every call to it is refused.
+  const closed = `http://127.0.0.1:${await freePort()}/v1`;
+  writeFileSync(spec, specFor(stand.base, closed));
   // The built-in policy, and the person the app's client maps granted
   // operator by subject: the Slack app asks for a person the client maps,
   // and that person must hold runs:write by what the policy grants them.
@@ -445,7 +453,9 @@ test(
   { skip: !enabled, timeout: 120_000 },
   async () => {
     const c = client();
-    // An agent on a local model server that has no such model fails every attempt without leaving the machine.
+    // An agent on a model server nothing listens on: every attempt's call is
+    // refused, which a retry may get past, so each attempt fails and is retried
+    // until the ledger ends the run, without leaving the machine.
     const made = await asAdmin("/api/agents", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -453,7 +463,7 @@ test(
         name: "nomodel",
         description: "fails on every attempt",
         model: "no-such-model",
-        provider: "openai",
+        provider: "unreachable",
         system_prompt: "x",
       }),
     });
@@ -513,7 +523,7 @@ test(
   async () => {
     const c = appHumagen();
     const me = (await c.getMe()).principal;
-    // A local model server that is not there keeps the model call retrying, so the run is in flight.
+    // A model server nothing listens on keeps the run retrying its turn, so the run is in flight.
     const made = await asAdmin("/api/agents", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -521,7 +531,7 @@ test(
         name: "stalling",
         description: "never answers",
         model: "no-such-model",
-        provider: "openai",
+        provider: "unreachable",
         system_prompt: "x",
       }),
     });
