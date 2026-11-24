@@ -5477,6 +5477,14 @@ export interface GitHubRef {
   labels?: string[];
   draft?: boolean;
   installation_id?: number;
+  /** The GitHub user ID of `sender`; a login can be renamed, an ID cannot. Left out when the payload has none. */
+  sender_id?: number;
+  /** The GitHub user ID of `author`. Left out when the payload has none. */
+  author_id?: number;
+  /** On a review request, the login the review was requested from. */
+  requested_reviewer?: string;
+  /** On a review request, the GitHub user ID of `requested_reviewer`. */
+  requested_reviewer_id?: number;
 }
 
 /** The body of a GitHub issue or pull request event that carries nothing of its own. */

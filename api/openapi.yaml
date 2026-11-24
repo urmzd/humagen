@@ -20210,6 +20210,21 @@ components:
           items: {type: string}
         draft: {type: boolean}
         installation_id: {type: integer, format: int64}
+        sender_id:
+          description: The GitHub user ID of `sender`; a login can be renamed, an ID cannot. Left out when the payload has none.
+          type: integer
+          format: int64
+        author_id:
+          description: The GitHub user ID of `author`. Left out when the payload has none.
+          type: integer
+          format: int64
+        requested_reviewer:
+          description: On a review request, the login the review was requested from.
+          type: string
+        requested_reviewer_id:
+          description: On a review request, the GitHub user ID of `requested_reviewer`.
+          type: integer
+          format: int64
     GitHubIssuePayload:
       description: The body of a GitHub issue or pull request event that carries nothing of its own.
       allOf:
