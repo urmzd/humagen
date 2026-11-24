@@ -251,6 +251,9 @@ const (
 	// MetaGitHubAuthorID is the GitHub user ID of the pull request's
 	// author, where the host read it from a signed payload.
 	MetaGitHubAuthorID = "github_author_id"
+	// MetaGitHubSenderID is the GitHub user ID of who sent a GitHub event:
+	// the commenter, or who requested a review.
+	MetaGitHubSenderID = "github_sender_id"
 	MetaGitHubHeadSHA  = "github_head_sha"
 	MetaCronSchedule   = "cron_schedule"
 	MetaCronExpression = "cron_expression"

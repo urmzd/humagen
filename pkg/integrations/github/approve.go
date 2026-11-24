@@ -39,19 +39,6 @@ type ReviewGrant struct {
 	AuthorID int64
 }
 
-// PullCommit is who wrote one commit of a pull request, by GitHub user ID:
-// 0 for a commit GitHub matched to no account.
-type PullCommit struct {
-	AuthorID, CommitterID int64
-}
-
-// PullCommitsAPI reads who wrote each commit of a pull request, every one
-// of them or an error. An API without it leaves the commits unread, and a
-// review a person asked for then approves nothing.
-type PullCommitsAPI interface {
-	PullCommits(ctx context.Context, ref transport.Ref) ([]PullCommit, error)
-}
-
 // reviewDecision is the policy and the facts one review is decided on.
 // Checks and commits are read only when an approval is possible, so a
 // review that cannot approve costs no API call.
@@ -78,9 +65,13 @@ func reviewDecision(ctx context.Context, cfg Config, v transport.View, report pr
 			facts.ChecksRead, facts.Checks = true, checks
 		}
 	}
+	// Who wrote the commits is read only for a person who asked: a read
+	// that fails, or reaches saige's bound, leaves them unread, and the
+	// review is then not approved. An ID of 0, a commit GitHub matched to
+	// no account, matches nobody.
 	if grant.AskerID > 0 {
-		if api, readable := cfg.API.(PullCommitsAPI); readable {
-			if commits, err := api.PullCommits(ctx, transport.Ref{Owner: owner, Repo: repo, Number: number}); err == nil {
+		if api, readable := cfg.API.(transport.PullRequestCommitsAPI); readable {
+			if commits, err := api.PullRequestCommits(ctx, owner, repo, number); err == nil {
 				facts.CommitsRead = true
 				for _, c := range commits {
 					facts.AskerCommitted = facts.AskerCommitted || c.AuthorID == grant.AskerID || c.CommitterID == grant.AskerID

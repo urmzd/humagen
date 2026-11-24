@@ -87,13 +87,13 @@ func stricterReview(a, b presentation.ReviewPolicy) presentation.ReviewPolicy {
 }
 
 // trustedReviewRun reports whether a signal that may approve started run,
-// and the login and GitHub user ID of the person who asked, if one did. An
-// automatic review is trusted unless a person the client does not map
-// resumed it last. A comment and a review request are trusted when the
-// person who asked is one the client maps (its people, or its askers); the
-// events saige raises for them carry no user ID, so ReviewEvent approves
-// neither yet. A run another run called, a rule's run, and a stranger's are
-// not trusted, whatever they say.
+// and the login and GitHub user ID of the person who asked, if one did, as
+// the signed event carried them. An automatic review is trusted unless a
+// person the client does not map resumed it last. A comment and a review
+// request are trusted when the person who asked (the commenter, or who
+// requested the review) is one the client maps (its people, or its askers).
+// A run another run called, a rule's run, and a stranger's are not trusted,
+// whatever they say. ReviewEvent also needs the asker's ID.
 func (p *Platform) trustedReviewRun(c clients.Client, run runs.Run, repo string, number int) (bool, string, int64) {
 	if run.Parent != "" || run.Origin != "github" || c.GitHub == nil {
 		return false, "", 0
@@ -116,8 +116,17 @@ func (p *Platform) trustedReviewRun(c clients.Client, run runs.Run, repo string,
 	if run.Actor.Bot || login == "" {
 		return false, "", 0
 	}
-	return mappedAsker(c, login), login, 0
+	// The sender's ID is the asker's only when the sender is the asker.
+	var id int64
+	if sender := wire.Meta(tag)[metaGitHubSender]; strings.EqualFold(sender, login) {
+		id, _ = strconv.ParseInt(wire.Meta(tag)[wire.MetaGitHubSenderID], 10, 64)
+	}
+	return mappedAsker(c, login), login, id
 }
+
+// metaGitHubSender is the trigger key saige writes a GitHub event's sender
+// under.
+const metaGitHubSender = "github_sender"
 
 // mappedAsker reports whether login is a person the client maps: one in
 // its people, or one of its askers.
