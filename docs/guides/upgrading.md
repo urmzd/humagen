@@ -219,3 +219,72 @@ A session whose runs carry no time has a `github session not dated` line
 and is left with the times it has. So does a session whose first run never
 reached an ending, such as one that stopped while it ran, unless that run
 is the mention that opened the session: its line names the run.
+
+## Journaling each request as it was asked
+
+From this release, the thread journal records each turn's request as it was
+asked: the trigger's context, then the request's text, with its
+attachments. Each turn retrieves its own passages from its knowledge sources
+for its own request, and they stay on that turn's record. A turn from before
+this release journaled its request together with the passages it retrieved,
+and later turns in the same thread are shown that text as the conversation
+so far. `humagen migrate journal` rewrites each journaled request to the
+request as it was asked, once.
+
+```
+humagen migrate journal -state postgres [-tenant NAME] [-unmatched leave|replace] [-apply]
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `-state` | `postgres` when `$HUMAGEN_POSTGRES_URL` is set, else `memory` | The stores to read and write. The command refuses `memory`, and a database that holds no runs. It writes through the stores, never with SQL |
+| `-tenant` | every tenant the run index holds | One tenant only |
+| `-unmatched` | `leave` | What to do with a request that is not matched to its run: `leave` lists it and leaves it, `replace` sets it to `[the request is not kept]` |
+| `-apply` | off | Write the changes. Without it the command writes nothing and prints what it would do |
+| `-allow-empty-store` | off | For tests only: run against the in-memory store or an empty database |
+
+### What it changes
+
+| Journal entry | What the command does |
+|---------------|-----------------------|
+| A request journaled with the passages its turn retrieved | Sets it to the request as it was asked, read from the run's input in the run ledger. Every record of the entry (its place in the thread, its index by run, and its index by surface message when it has one) is written together, each at the version read |
+| A request already as it was asked | Leaves it |
+| A request whose run the ledger does not hold, or whose text is neither of these | Lists it as `request not matched` with the reason, and leaves it. With `-unmatched replace` it sets it to `[the request is not kept]`, which keeps the entry's place in the thread and its attachments |
+| An answer, and a message that no run journaled | Leaves it |
+| Every entry in a thread that holds a run the ledger has not ended, such as one that is running or waiting on an answer | Leaves it, and lists the thread once as `thread left: a run has not ended` with that run. Run the command again after the run has ended |
+| An entry that changed while the command read it | Leaves it, and lists it as `entry changed while read`. The next run decides it again |
+
+The output names the store, what is done with an unmatched request and the
+tenants it read. For each tenant it says how many requests it read, then one
+line for each entry it changes or leaves and each thread it leaves, by
+record key and run id, then the counts of each kind. It never prints the
+text of an entry. The last line says how many changes it wrote, or would
+write.
+
+### Running it
+
+1. Back up the database.
+2. Run the dry run. It writes nothing:
+
+   ```sh
+   HUMAGEN_POSTGRES_URL=... humagen migrate journal -state postgres
+   ```
+
+3. Read the output. `store:` and `tenants:` must name the production
+   database and workspaces. Check the `request not matched` lines and decide
+   whether to leave those requests or replace them.
+4. Apply it:
+
+   ```sh
+   HUMAGEN_POSTGRES_URL=... humagen migrate journal -state postgres -apply
+   ```
+
+   Add `-unmatched replace` to replace the requests that are not matched.
+5. Run the dry run again. It must end with `would write 0 changes`, unless a
+   thread was left because a run had not ended: run the apply again once
+   that run has ended.
+
+It is safe to run again. A second apply writes nothing, and an apply that
+stopped part of the way is finished by the next one. The servers can keep
+running: the command reads one tenant at a time, a page at a time, and
+writes each entry at the version it read.
