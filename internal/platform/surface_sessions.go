@@ -84,6 +84,7 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		if th.Session == nil {
 			return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 		}
+		// Found by sf, so this holds; checked here in the same order as below.
 		if err := surfaceRoot(th, sf); err != nil {
 			return SessionView{}, false, err
 		}

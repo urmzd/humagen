@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"sync"
@@ -159,4 +160,140 @@ grant operator to subject "vic"
 	if !p.SeesSession(vic, root) {
 		t.Fatal("vic does not read the root he joined")
 	}
+}
+
+// builtInRoom is placeRoom's workspace with the private channel's root
+// started by the app's surface built into the server, rather than the
+// app's machine. It returns the store, the app's machine and the root's id.
+func builtInRoom(t *testing.T) (*platform.Platform, state.Store, auth.Principal, string) {
+	t.Helper()
+	st := state.NewMemory()
+	p, machine := slackRoomOn(t, startWith(t, platform.Config{Backends: platform.Backends{State: st}}), func(in *platform.ClientInput) {
+		in.Slack.People["U0BEN"] = "ben"
+	})
+	seePeople(t, p, auth.Principal{Subject: "ben"})
+	workIn(t, p, "Initech", auth.Principal{Subject: "ana"}, auth.Principal{Subject: "ben"}, auth.Principal{Subject: "vic"})
+	ref := placeRef(placeThread, "U0ANA", "U0BEN")
+	ref.User = "U0ANA"
+	out, err := p.SendSurfaceMessages(t.Context(), placeOperator("ana", tenant), sayIn("@helper status?", ref))
+	if err != nil || !out.Created {
+		t.Fatalf("the private channel's root = %+v, %v", out, err)
+	}
+	for _, r := range out.Posted.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
+	return p, st, machine, out.Root
+}
+
+// deliveredThrough is the client a root's kept delivery names.
+func deliveredThrough(t *testing.T, st state.Store, root string) string {
+	t.Helper()
+	it, err := state.NewTable[struct {
+		Client string `json:"client"`
+	}](st, "root-deliveries").Lookup(tenant, root)
+	if err != nil {
+		t.Fatalf("the root's delivery: %v", err)
+	}
+	return it.Value.Client
+}
+
+// checkOtherClientRefused sends app2's messages for the private channel's
+// thread, through its built-in surface and from its machine, and checks
+// that the root at root keeps nothing of them.
+func checkOtherClientRefused(t *testing.T, p *platform.Platform, st state.Store, two auth.Principal, root string) {
+	t.Helper()
+	before := keptOf(t, p, st, root)
+	ref := placeRef("1700000000.000600", "U0ANA", "U0VIC")
+	ref.Client, ref.User = "app2", "U0ANA"
+	if out, err := p.SendSurfaceMessages(t.Context(), placeOperator("ana", tenant), sayIn("@helper what was said?", ref)); !errors.Is(err, threads.ErrInvalid) || out.Root != "" {
+		t.Fatalf("app2's message at app's root = %+v, %v; want refused", out, err)
+	}
+	if after := keptOf(t, p, st, root); !sameKept(before, after) {
+		t.Fatalf("after app2's message the root kept %+v, want it as it was: %+v", after, before)
+	}
+	if got := deliveredThrough(t, st, root); got != "app" {
+		t.Fatalf("the root answers through %q, want app", got)
+	}
+	if p.SeesSession(placeOperator("vic", tenant), root) {
+		t.Fatal("vic reads the root")
+	}
+	in := withAudience(slackSession(placeChannel, placeThread, "1700000000.000650", "<@UAPP> hi"), platform.ChannelPrivate, "U0ANA", "U0VIC")
+	in.ActAs.Client, in.Surface.Client = "app2", "app2"
+	if v, _, err := p.StartSurfaceSession(t.Context(), two, in); err == nil && v.ID == root {
+		t.Fatalf("app2's machine posted to app's root %s", root)
+	}
+	// On a root without a surface record, app2's machine opens its own root
+	// beside it, so only the root's own records are compared.
+	after := keptOf(t, p, st, root)
+	after.Events = before.Events
+	if !sameKept(before, after) {
+		t.Fatalf("after app2's machine the root kept %+v, want it as it was: %+v", after, before)
+	}
+	if got := deliveredThrough(t, st, root); got != "app" {
+		t.Fatalf("after app2's machine the root answers through %q, want app", got)
+	}
+}
+
+// checkOwnClientLands sends the app's next message for the thread through
+// its built-in surface and checks that it lands in root.
+func checkOwnClientLands(t *testing.T, p *platform.Platform, st state.Store, root string) {
+	t.Helper()
+	before := keptOf(t, p, st, root)
+	ref := placeRef("1700000000.000700", "U0ANA", "U0BEN")
+	ref.User = "U0ANA"
+	out, err := p.SendSurfaceMessages(t.Context(), placeOperator("ana", tenant), sayIn("@helper and now?", ref))
+	if err != nil || out.Root != root {
+		t.Fatalf("app's message = %+v, %v; want it in %s", out, err, root)
+	}
+	for _, r := range out.Posted.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
+	if after := keptOf(t, p, st, root); after.Messages <= before.Messages || !slices.Equal(after.People, []string{"ana", "ben"}) {
+		t.Fatalf("after app's message the root keeps %+v, from %+v", after, before)
+	}
+	if got := deliveredThrough(t, st, root); got != "app" {
+		t.Fatalf("the root answers through %q, want app", got)
+	}
+}
+
+func TestARootABuiltInSurfaceStartedIsKeptByItsClient(t *testing.T) {
+	p, st, machine, root := builtInRoom(t)
+	th, err := p.Threads.Get(tenant, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (threads.Surface{Client: "app", Channel: placeChannel, TS: placeThread}); th.Surface == nil || *th.Surface != want {
+		t.Fatalf("the root's surface = %+v, want %+v", th.Surface, want)
+	}
+	checkOtherClientRefused(t, p, st, secondClient(t, p, machine), root)
+	checkOwnClientLands(t, p, st, root)
+	// The app's machine posts to the same root.
+	v, started, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession(placeChannel, placeThread, "1700000000.000800", "<@UAPP> anything else?"), platform.ChannelPrivate, "U0ANA", "U0BEN"))
+	if err != nil || started || v.ID != root {
+		t.Fatalf("app's machine's message = %q, started %v, %v; want it in %s", v.ID, started, err, root)
+	}
+}
+
+// TestAStoredRootWithoutASurfaceIsKeptByItsClient covers a root kept before
+// roots recorded their surface: it answers through the client that started it.
+func TestAStoredRootWithoutASurfaceIsKeptByItsClient(t *testing.T) {
+	p, st, machine, root := builtInRoom(t)
+	// Store the root as it was kept before: no surface, and no record of one.
+	heads := state.NewTable[map[string]json.RawMessage](st, "threads")
+	it, err := heads.Lookup(tenant, "t:"+root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(it.Value, "surface")
+	if err := heads.Put(tenant, "t:"+root, it.Value); err != nil {
+		t.Fatal(err)
+	}
+	if err := heads.Delete(tenant, "s:app:"+placeChannel+":"+placeThread); err != nil {
+		t.Fatal(err)
+	}
+	if th, err := p.Threads.Get(tenant, root); err != nil || th.Surface != nil {
+		t.Fatalf("the stored root = %+v, %v; want no surface", th.Surface, err)
+	}
+	checkOtherClientRefused(t, p, st, secondClient(t, p, machine), root)
+	checkOwnClientLands(t, p, st, root)
 }
