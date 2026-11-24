@@ -296,6 +296,10 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 		value, _ := json.Marshal(r.BlockOn)
 		metadata = append(metadata, "  humagen_review_block_on: "+string(value))
 	}
+	if skills := normalizeSkills(spec.Skills); skills != nil {
+		loadable, _ := json.Marshal(strings.Join(skills.Loadable, ","))
+		metadata = append(metadata, "  humagen_skills_loadable: "+string(loadable))
+	}
 	if len(metadata) > 0 {
 		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n"+strings.Join(metadata, "\n")+"\n", 1)
 	}

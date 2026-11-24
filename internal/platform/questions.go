@@ -257,7 +257,7 @@ type addressee struct {
 // narrowed to whom the agent asked when that is one of them. to says whom
 // that is, in a way a surface can say it.
 func (p *Platform) addressOf(ctx context.Context, run runs.Run, q event.Question) (audience, excluded []string, to addressee) {
-	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
+	rev, err := p.approvalRevision(ctx, run)
 	if err != nil {
 		p.log.Warn("platform: a question's rules could not be read, so it is addressed to nobody", "run", run.ID, "question", q.ID, "error", err)
 		return []string{nobody}, nil, addressee{kind: ForNobody}
@@ -891,7 +891,7 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 	if err != nil {
 		return false, err
 	}
-	rev, err := p.Catalog().Get(ctx, tenant, run.Agent, run.Rev)
+	rev, err := p.approvalRevision(ctx, run)
 	if err != nil {
 		return false, fmt.Errorf("%w: the rules of this run cannot be read, so nobody approves its calls", ErrForbidden)
 	}

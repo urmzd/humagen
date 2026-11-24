@@ -166,7 +166,8 @@ func (p *Platform) entrySpawn(ctx context.Context, tenant string) ([]string, err
 			return nil, err
 		}
 		for _, r := range rows {
-			if r.Spec.Name == p.cfg.EntryAgent || legacy.IsBuiltinAgent(r.Spec.Name) {
+			// skill-runner runs only what use_skill loads, never a call.
+			if r.Spec.Name == p.cfg.EntryAgent || r.Spec.Name == BuiltinSkillRunner || legacy.IsBuiltinAgent(r.Spec.Name) {
 				continue
 			}
 			heads = append(heads, head{r.Spec.Name, r.Rev})

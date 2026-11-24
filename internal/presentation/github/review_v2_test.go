@@ -181,7 +181,7 @@ func TestFoundByNamesTheSpecialistOnEachFinding(t *testing.T) {
 	if !strings.Contains(review.Body, "found by security-reviewer</sub>") || strings.Contains(review.Body, "#a") {
 		t.Fatalf("the body does not say who found it: %s", review.Body)
 	}
-	for _, bad := range []string{"@everyone", "Security Reviewer", "a b", strings.Repeat("x", 65), "x#" + strings.Repeat("y", 33)} {
+	for _, bad := range []string{"@everyone", "Security Reviewer", "a b", strings.Repeat("x", 65), "x#" + strings.Repeat("y", 65)} {
 		r.Findings[0].FoundBy = bad
 		if _, err := FormatReview(r); err == nil {
 			t.Fatalf("found_by %q accepted", bad)

@@ -25,11 +25,20 @@ import (
 
 // ActionDecision tightens existing grants. An unspecified rule grants nothing.
 func (p *Platform) ActionDecision(tenant, project, agent, person string, c operations.Category) operations.Level {
+	return p.actionDecision(tenant, project, []string{agent}, person, c)
+}
+
+// actionDecision is ActionDecision held to the rules of every agent named:
+// a run a skill was loaded for is held to its own agent's and its caller's
+// (actingAgents), so the stricter of the two decides.
+func (p *Platform) actionDecision(tenant, project string, agents []string, person string, c operations.Category) operations.Level {
 	scopes := []operations.Scope{{Kind: "workspace"}}
 	for _, pr := range p.Projects.Tree(tenant).Chain(project) {
 		scopes = append(scopes, operations.Scope{Kind: "project", Name: pr.Name})
 	}
-	scopes = append(scopes, operations.Scope{Kind: "agent", Name: legacy.BuiltinAgent(agent)})
+	for _, agent := range agents {
+		scopes = append(scopes, operations.Scope{Kind: "agent", Name: legacy.BuiltinAgent(agent)})
+	}
 	if person != "" {
 		scopes = append(scopes, operations.Scope{Kind: "personal", Name: person})
 	}
@@ -111,7 +120,7 @@ func (p *Platform) operationPlace(req runtime.Request) (project, person string) 
 }
 func (p *Platform) operationDecision(req runtime.Request, c operations.Category) operations.Level {
 	project, person := p.operationPlace(req)
-	level := p.ActionDecision(req.Tenant, project, req.Agent(), person, c)
+	level := p.actionDecision(req.Tenant, project, p.actingAgents(req.Tenant, req.RunID, req.Agent()), person, c)
 	force := p.operationForced(req)
 	if force && level != operations.Never {
 		return operations.Ask
@@ -132,6 +141,16 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 		req.Definition.Spec.Access.Spawn = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Access.Spawn), func(agent string) bool {
 			return !legacy.AgentToolNamed(allowed, agent)
 		})
+	}
+	// A run a skill was loaded for waits for a person wherever its caller
+	// would, and its caller's approvers answer it.
+	caller, loaded, err := p.callerRevision(context.Background(), req.Tenant, req.RunID)
+	if err != nil {
+		return req, err
+	}
+	if loaded {
+		spec := &req.Definition.Spec
+		spec.Approvals, spec.Approvers, spec.Answerers, spec.SelfApproval = heldAsCaller(spec.Approvals, caller.Spec, spec.Tools)
 	}
 	control, err := p.AgentControl(req.Tenant, req.Agent())
 	if err != nil {
@@ -328,8 +347,13 @@ const policyApprovalWait = 24 * time.Hour
 func (p *Platform) agentApprovers(req runtime.Request) []string {
 	approvers := slices.Clone(req.Definition.Spec.Approvers)
 	if len(approvers) == 0 {
-		// Without the control, the fallback approvers still answer.
-		control, _ := p.AgentControl(req.Tenant, req.Agent())
+		// Without the control, the fallback approvers still answer. A run
+		// a skill was loaded for is its caller's to manage.
+		agent := req.Agent()
+		if caller, ok := p.loadedCaller(req.Tenant, req.RunID); ok {
+			agent = caller
+		}
+		control, _ := p.AgentControl(req.Tenant, agent)
 		approvers = slices.Clone(fallbackApprovers)
 		if control.Manager != "" {
 			approvers = append(approvers, control.Manager)

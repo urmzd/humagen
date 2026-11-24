@@ -285,10 +285,17 @@ workspace that may route to its agent.
 A read of another repository is answered by that repository or not at all:
 when GitHub answers it with a redirect, as it does for a renamed repository
 or a transferred issue, the redirect is not followed and the read fails. A
-read of the run's own repository follows a redirect within it, and one to
-another repository only when that repository passes the same grants as a read
-of it by name. The console's reads, and the labels it shows, follow no
-redirect.
+read of the run's own repository follows a redirect only when the redirect
+names a repository by owner and name (`/repos/<owner>/<repo>/...`) and that
+repository is the run's own or passes the same grants as a read of it by
+name. A redirect that names a repository any other way is not followed,
+including the ones GitHub gives for a renamed or transferred repository,
+which name it by id (`/repositories/<id>/...`): read a renamed repository by
+its current name. This holds for a client that signs in with a personal
+token; a client that signs in as a GitHub App installation follows no
+redirect for any read, and a redirected read fails with the same hint to use
+the repository's current name. The console's reads, and the labels it shows,
+follow no redirect.
 
 `read_repositories` adds exact repository names to that. It is optional. Use
 it for a client that signs in with a personal token, which has no installation
@@ -487,9 +494,11 @@ out. Each part is cut to a bound, and the whole stays under the tool's 12,000
 characters.
 
 A run reads through the GitHub client that raised it when the session's root
-is that client's thread on that issue or pull request, and only when that
-client serves the owner, names the repository in `read_repositories`, or
-covers it by its App installation. Any other run, and a person in the console,
+is that client's thread on that issue or pull request, and only while that
+client serves the repository's owner: its connector reads only the owners it
+serves. When it no longer does, the run gets a note that the client is not
+granted the place, and nothing is read, whatever `read_repositories` or its
+App installation name. Any other run, and a person in the console,
 reads as a cross-surface read: under the workspace's grants and the
 repository's `cross_surface_reads`. Anything else gets a note that the place
 may not be read, and no text.

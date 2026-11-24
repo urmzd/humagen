@@ -29,8 +29,9 @@ type ReviewLocation struct {
 var fullCommit = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 
 // foundBy is empty or the agent that found a finding, with its session label:
-// security-reviewer or security-reviewer#a.
-var foundBy = regexp.MustCompile(`^([a-z0-9][a-z0-9._-]{0,63}(#[A-Za-z0-9._-]{1,32})?)?$`)
+// security-reviewer, security-reviewer#a, or skill-runner#<skill> for a
+// loaded skill, whose name is up to 64 characters.
+var foundBy = regexp.MustCompile(`^([a-z0-9][a-z0-9._-]{0,63}(#[A-Za-z0-9._-]{1,64})?)?$`)
 
 // The bounds on a v2 report's free text, in characters. The text itself is
 // free: it is escaped when rendered, so it cannot change the layout.

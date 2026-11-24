@@ -94,6 +94,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		w.Run.Preferences.Model != "anthropic/claude-sonnet-4-5" || f.Run.Ceilings.Depth(5) != 1 || len(f.Run.Ceilings.Tools) != 3 || f.Run.Preferences.CompactionTokens != 120000 {
 		t.Fatalf("the example's run settings = %+v %+v", w.Run, f.Run)
 	}
+	if lead := cfg.Platforms[0].Spec.Agents[0].Spec; lead == nil || lead.Name != "lead" || !lead.Loads("secure-review") || lead.Loads("other") {
+		t.Fatalf("the example's lead loads %+v", lead)
+	}
 	if f := w.Projects[1]; len(w.Skills) != 1 || len(f.Skills) != 1 || f.Skills[0].Name != "review" || f.Skills[0].ArgumentHint != "[account]" ||
 		len(w.MentionKinds) != 1 || w.MentionKinds[0].Resolves != "role" {
 		t.Fatalf("the example's skills and mention kinds = %+v %+v %+v", w.Skills, f.Skills, w.MentionKinds)

@@ -826,15 +826,16 @@ anyone in the workspace approve, except the person who asked.
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
   output?: AgentOutput;
+  skills?: AgentSkills;
   review?: AgentReview;
 }
 
 /** How the agent's pull request reviews decide. The host chooses the
 event from the report and this policy, never from the model's words.
 It approves only with `approve: when_clean`, a verdict that approves,
-no finding at or above `block_on`, every check on the reviewed commit
+no finding at or above `block_on`, CI on the reviewed commit that
 passed, an author other than the app, and a run that was an automatic
-review, a review request, or asked by a mapped person. A verdict of
+review or asked by a mapped person who did not write the change. A verdict of
 `request_changes`, or any finding at or above `block_on`, requests
 changes. Anything else is a comment.
  */
@@ -843,6 +844,18 @@ export interface AgentReview {
   approve?: "never" | "when_clean";
   /** The least severity whose findings request changes. Absent is `error`. */
   block_on?: "error" | "warning" | "info";
+}
+
+/** What the agent may do with the skill library beyond the skills a
+person names. Left out, it loads none.
+ */
+export interface AgentSkills {
+  /** The library skills the agent may load with `use_skill`, each run
+as a subagent of its own (`skill-runner`): skill names, or `*`
+alone for any published skill of the run's project chain. A
+personal skill never loads. Empty loads none.
+ */
+  loadable?: string[];
 }
 
 /** The shape of the agent's answer. The model is asked for structured

@@ -117,6 +117,13 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 		return
 	}
 	alwaysAsk := agentApprovals(rev.Spec.Approvals)
+	// What the agent that loaded a skill always asks about, its run asks
+	// about too.
+	if caller, loaded, err := p.callerRevision(ctx, run.Tenant, run.ID); err != nil {
+		return
+	} else if loaded {
+		alwaysAsk = append(alwaysAsk, agentApprovals(caller.Spec.Approvals)...)
+	}
 	if q.Tool != nil && legacy.ToolName(q.Tool.Name) == ToolAgent && slices.Contains(alwaysAsk, tagTool+targetOf(q.Tool.Arguments)) {
 		// The agent holds its calls to this one agent itself.
 		alwaysAsk = append(alwaysAsk, q.Tool.Name)
@@ -124,7 +131,7 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 	forced := wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	level := operations.Never
 	if q.Tool != nil {
-		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), p.categoryOf(q.Tool.Name))
+		level = p.actionDecision(run.Tenant, run.Project, p.actingAgents(run.Tenant, run.ID, run.Agent), runs.AskedBy(run), p.categoryOf(q.Tool.Name))
 	}
 	if ok, why := autoApprovable(q, alwaysAsk, forced, level); !ok {
 		p.log.Info("platform: an approval was left for a person", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "why", why)

@@ -127,6 +127,9 @@ func (p *Platform) registerRunTools() error {
 		// (start_review.go).
 		{Name: ToolStartReview, Category: other, Run: acting(p.startReviewTool)},
 		{Name: ToolShell, Category: write, Destructive: true, Run: acting(p.shellTool)},
+		// A library skill run as a subagent (use_skill.go): an agent call
+		// the host makes, to skill-runner.
+		{Name: ToolUseSkill, Category: operations.CallAgents, Parallel: true, Run: acting(p.useSkillTool)},
 
 		// The public web, read from the server (pkg/webtools).
 		reads(SystemTool{Name: ToolWebSearch, Category: read, Run: of(p.webSearchTool)}),
