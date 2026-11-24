@@ -291,8 +291,11 @@ repository is the run's own or passes the same grants as a read of it by
 name. A redirect that names a repository any other way is not followed,
 including the ones GitHub gives for a renamed or transferred repository,
 which name it by id (`/repositories/<id>/...`): read a renamed repository by
-its current name. The console's reads, and the labels it shows, follow no
-redirect.
+its current name. This holds for a client that signs in with a personal
+token; a client that signs in as a GitHub App installation follows no
+redirect for any read, and a redirected read fails with the same hint to use
+the repository's current name. The console's reads, and the labels it shows,
+follow no redirect.
 
 `read_repositories` adds exact repository names to that. It is optional. Use
 it for a client that signs in with a personal token, which has no installation

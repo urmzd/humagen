@@ -15,7 +15,10 @@ import (
 // the read grants (Config.Owners, ReadRefused, ReadRepositories, MayRead),
 // as the transport decides for a run's own read. A redirect that names a
 // repository by id, as GitHub's for a renamed or transferred repository do,
-// is not followed.
+// is not followed. This holds for an API that follows redirects, such as
+// one with a personal token; the GitHub App client follows none for any
+// read (appReads), so a redirected read through it fails with
+// ErrReadRedirected.
 // It is for the reads the host makes for a run on that place; whether the
 // place is readable at all is the caller's to decide.
 func (c *Connector) PlaceReader() ContextAPI { return placeReader{c: c} }
