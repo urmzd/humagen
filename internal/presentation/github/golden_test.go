@@ -75,7 +75,7 @@ func goldenReport(verdict, summary string, findings ...ReviewFinding) ReviewRepo
 // and each line comment, with the session link the host adds.
 func goldenReview(t *testing.T, report ReviewReport) string {
 	t.Helper()
-	review, err := NativeReview(report, goldenFiles(), goldenTarget)
+	review, err := NativeReview(report, goldenFiles(), goldenTarget, ReviewPolicy{}, ReviewFacts{})
 	if err != nil {
 		t.Fatal(err)
 	}

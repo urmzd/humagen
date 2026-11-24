@@ -164,7 +164,7 @@ func New(cfg Config) (*Connector, error) {
 						review, err := presentation.LegacyRecoveredReview(report, files, "")
 						return review, true, err
 					}
-					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel))
+					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel), presentation.ReviewPolicy{}, presentation.ReviewFacts{})
 					if err != nil {
 						return transport.Review{}, true, err
 					}

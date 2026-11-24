@@ -156,31 +156,48 @@ func validLocation(l *ReviewLocation) error {
 	return nil
 }
 
-// NativeReview prepares a real pull request review at t. A finding whose
-// location is a line of the diff gets its own line comment; any other is
-// in the body alone, with its change. The transport checks every anchor
-// against the actual diff again. Agents never approve: an approve verdict is
-// posted as a comment, and a person approves and merges.
-func NativeReview(report ReviewReport, files []transport.ContextFile, t Target) (transport.Review, error) {
+// NativeReview prepares a real pull request review at t, with the event
+// ReviewEvent chooses from the report, policy and facts. A finding whose
+// location is a line of the diff gets its own line comment; any other is in
+// the body alone, with its change. The transport checks every anchor against
+// the actual diff again. An APPROVE is returned prepared as a comment would
+// be: only the transport's review sink posts it, after the host's MayApprove
+// hook agrees, and a no posts it as a comment.
+func NativeReview(report ReviewReport, files []transport.ContextFile, t Target, policy ReviewPolicy, facts ReviewFacts) (transport.Review, error) {
 	r, err := nativeReview(report, files, t)
 	if err != nil {
 		return transport.Review{}, err
 	}
-	return transport.PrepareReview(r, files)
+	event := ReviewEvent(report, policy, facts)
+	if event == "APPROVE" {
+		r.Event = "COMMENT"
+	} else {
+		r.Event = event
+	}
+	r, err = transport.PrepareReview(r, files)
+	if err != nil {
+		return transport.Review{}, err
+	}
+	r.Event = event
+	return r, nil
 }
 
 // RecoveredReview reproduces a review already posted, so a retried delivery
-// matches it instead of posting another. disposition is the posted event. An
-// approval posted before agents stopped approving is reproduced as one; the
-// transport prepares it and never submits a new one.
+// matches it instead of posting another. disposition is the posted event: a
+// comment or a change request is reproduced as posted, and an approval only
+// for a report whose verdict approves. The transport prepares it and never
+// submits a new one.
 func RecoveredReview(report ReviewReport, files []transport.ContextFile, t Target, disposition string) (transport.Review, error) {
 	r, err := nativeReview(report, files, t)
 	if err != nil {
 		return transport.Review{}, err
 	}
-	if disposition == "APPROVE" && report.Verdict == "approve" {
+	switch {
+	case disposition == "APPROVE" && report.Verdict == "approve":
 		r.Event = disposition
 		return r, nil
+	case disposition == "COMMENT", disposition == "REQUEST_CHANGES":
+		r.Event = disposition
 	}
 	return transport.PrepareReview(r, files)
 }
@@ -193,10 +210,7 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 		return transport.Review{}, err
 	}
 	t.Head = report.Scope.Commit
-	r := transport.Review{CommitID: report.Scope.Commit, Event: "COMMENT"}
-	if report.Verdict == "request_changes" {
-		r.Event = "REQUEST_CHANGES"
-	}
+	r := transport.Review{CommitID: report.Scope.Commit, Event: ReviewEvent(report, ReviewPolicy{}, ReviewFacts{})}
 	anchored := map[string]bool{}
 	for _, f := range ordered(report.Findings) {
 		if f.Location == nil {
@@ -219,6 +233,101 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 		return transport.Review{}, fmt.Errorf("the review is too long for one GitHub review; shorten the findings and keep their evidence")
 	}
 	return r, nil
+}
+
+// ApproveWhenClean is the one review policy that may approve. Any other
+// value, "never" and "" among them, approves nothing.
+const ApproveWhenClean = "when_clean"
+
+// DefaultBlockOn is the severity a policy that names none blocks on: a
+// finding that must be fixed requests changes.
+const DefaultBlockOn = "error"
+
+// ReviewPolicy is how an agent's reviews decide, as the host narrowed it:
+// the agent's own policy, then the repository's settings, which only make it
+// stricter. The zero value never approves and blocks on DefaultBlockOn.
+type ReviewPolicy struct {
+	// Approve is ApproveWhenClean, or anything else for never.
+	Approve string
+	// BlockOn is the least severity that requests changes: error, warning
+	// or info. "" is DefaultBlockOn, and an unknown one blocks on every
+	// finding.
+	BlockOn string
+}
+
+// ReviewFacts are what the host read for itself about a review, never what
+// the model wrote. The zero value approves nothing.
+type ReviewFacts struct {
+	// ChecksRead says the host read the reviewed commit's checks, all of
+	// them, into Checks.
+	ChecksRead bool
+	Checks     []transport.CommitCheck
+	// Author is the pull request's author and App the app's own login. Both
+	// must be known and differ: the app never approves its own pull request.
+	Author, App string
+	// Trusted says the run was an automatic review, a review request, or
+	// started by a person the client maps.
+	Trusted bool
+}
+
+// checksPassed reports whether the host read at least one check on the
+// commit, fewer than the read's bound, and every one passed. A read at the
+// bound may have left checks out, so it is not passed.
+func (f ReviewFacts) checksPassed() bool {
+	if !f.ChecksRead || len(f.Checks) == 0 || len(f.Checks) >= transport.MaxCommitChecks {
+		return false
+	}
+	for _, c := range f.Checks {
+		if !c.Passed() {
+			return false
+		}
+	}
+	return true
+}
+
+// authorNotApp reports whether the pull request's author is known and is
+// not the app.
+func (f ReviewFacts) authorNotApp() bool {
+	login := func(s string) string { return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "[bot]")) }
+	return login(f.Author) != "" && login(f.App) != "" && login(f.Author) != login(f.App)
+}
+
+// blocks reports whether a finding is at or above the policy's severity.
+func (p ReviewPolicy) blocks(f ReviewFinding) bool {
+	on := p.BlockOn
+	if on == "" {
+		on = DefaultBlockOn
+	}
+	limit, ok := severities[on]
+	if !ok {
+		limit = len(severities)
+	}
+	rank, ok := severities[f.Severity]
+	return !ok || rank <= limit
+}
+
+// ReviewEvent is the GitHub event a review is posted with. It reads the
+// report's verdict and findings, the host's policy and the facts the host
+// read, and nothing else: no text the model wrote chooses the event.
+//
+// APPROVE needs every guard at once: the policy is ApproveWhenClean, the
+// verdict approves, no finding is at or above the policy's severity, the
+// host read at least one check and all passed, the author is not the app,
+// and the run was trusted to approve. REQUEST_CHANGES is a verdict that
+// requests changes, or any finding at or above the severity. Anything else
+// is COMMENT.
+func ReviewEvent(report ReviewReport, policy ReviewPolicy, facts ReviewFacts) string {
+	blocked := report.Verdict == "request_changes"
+	for _, f := range report.Findings {
+		blocked = blocked || policy.blocks(f)
+	}
+	switch {
+	case blocked:
+		return "REQUEST_CHANGES"
+	case policy.Approve == ApproveWhenClean && report.Verdict == "approve" && facts.checksPassed() && facts.authorNotApp() && facts.Trusted:
+		return "APPROVE"
+	}
+	return "COMMENT"
 }
 
 // onDiff reports whether the transport would post comment on a line of the

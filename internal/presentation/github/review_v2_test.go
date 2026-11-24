@@ -100,7 +100,7 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 	r.Findings[0].Location = &ReviewLocation{Path: "a.go", Line: 2}
 	r.Findings[0].Change = &replacement
 	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
-	review, err := NativeReview(r, files, Target{})
+	review, err := NativeReview(r, files, Target{}, ReviewPolicy{}, ReviewFacts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 		t.Fatalf("suggestion missing: %+v", review)
 	}
 	r.Findings[0].Location.Line = 100
-	review, err = NativeReview(r, files, Target{})
+	review, err = NativeReview(r, files, Target{}, ReviewPolicy{}, ReviewFacts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,8 +116,15 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 	if len(review.Comments) != 0 || !strings.Contains(review.Body, "Suggested change") || strings.Contains(review.Body, "location unverified") || strings.Count(review.Body, "Duplicate write") != 1 {
 		t.Fatalf("outside diff did not degrade: %s", review.Body)
 	}
+	// With no policy, an approve verdict is posted as a plain comment, and
+	// a finding that must be fixed requests changes whatever the verdict.
 	r.Verdict = "approve"
-	review, err = NativeReview(r, files, Target{})
+	review, err = NativeReview(r, files, Target{}, ReviewPolicy{}, ReviewFacts{})
+	if err != nil || review.Event != "REQUEST_CHANGES" {
+		t.Fatalf("a must-fix finding did not request changes: %+v %v", review, err)
+	}
+	r.Findings = r.Findings[1:]
+	review, err = NativeReview(r, files, Target{}, ReviewPolicy{}, ReviewFacts{})
 	if err != nil || review.Event != "COMMENT" || strings.Contains(review.Body, "policy") {
 		t.Fatalf("an approve verdict was not posted as a plain comment: %+v %v", review, err)
 	}
@@ -137,8 +144,8 @@ func TestTheTransportRefusesAnApprovingReview(t *testing.T) {
 	}
 }
 
-// Agents never approve. Recovery reproduces an approval posted before that
-// rule, so a retried delivery matches it, and reproduces anything else as new.
+// Recovery reproduces what was posted, so a retried delivery matches it: an
+// approval only for a report whose verdict approves.
 func TestRecoveredReviewReproducesWhatWasPosted(t *testing.T) {
 	r := reviewV2()
 	r.Verdict = "approve"
@@ -150,8 +157,11 @@ func TestRecoveredReviewReproducesWhatWasPosted(t *testing.T) {
 		t.Fatalf("a posted comment was not reproduced: %+v %v", review, err)
 	}
 	r.Verdict = "comment"
-	if review, err := RecoveredReview(r, files, Target{}, "APPROVE"); err != nil || review.Event != "COMMENT" {
+	if review, err := RecoveredReview(r, files, Target{}, "APPROVE"); err != nil || review.Event == "APPROVE" {
 		t.Fatalf("a comment verdict became an approval: %+v %v", review, err)
+	}
+	if review, err := RecoveredReview(r, files, Target{}, "COMMENT"); err != nil || review.Event != "COMMENT" {
+		t.Fatalf("a comment posted under an earlier rule was not reproduced: %+v %v", review, err)
 	}
 }
 
@@ -160,7 +170,7 @@ func TestFoundByNamesTheSpecialistOnEachFinding(t *testing.T) {
 	r.Findings[0].FoundBy = "security-reviewer#a"
 	r.Findings[0].Location = &ReviewLocation{Path: "a.go", Line: 2}
 	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
-	review, err := NativeReview(r, files, Target{})
+	review, err := NativeReview(r, files, Target{}, ReviewPolicy{}, ReviewFacts{})
 	if err != nil {
 		t.Fatal(err)
 	}
