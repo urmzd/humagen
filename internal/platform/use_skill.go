@@ -256,6 +256,27 @@ func (p *Platform) useSkill(ctx context.Context, parent runtime.Request, id, ski
 	return skillFindings(skill, answer), nil
 }
 
+// loadedCaller is the agent that loaded the skill a run runs, from the
+// run's record: false for any run that was not loaded.
+func (p *Platform) loadedCaller(tenant, runID string) (string, bool) {
+	run, err := p.runRecordOf(tenant, runID)
+	if err != nil {
+		return "", false
+	}
+	l, ok := loadedOf(wire.Meta(run.Tag()))
+	return l.Caller, ok
+}
+
+// actingAgents is the agents whose action rules hold a run: its own, and
+// for a run a skill was loaded for, its caller's too, since it acts in the
+// caller's place.
+func (p *Platform) actingAgents(tenant, runID, agent string) []string {
+	if caller, ok := p.loadedCaller(tenant, runID); ok {
+		return []string{agent, caller}
+	}
+	return []string{agent}
+}
+
 // pinnedSpec is the agent revision a run is pinned to, as the registry
 // keeps it.
 func (p *Platform) pinnedSpec(req runtime.Request) (wire.AgentSpec, error) {
