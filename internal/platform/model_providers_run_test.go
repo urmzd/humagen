@@ -2,11 +2,17 @@ package platform_test
 
 import (
 	"context"
+	"errors"
+	"runtime/debug"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -14,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // A provider an administrator set up runs a real turn: the runtime humagen
@@ -57,5 +64,117 @@ func TestATurnOnAWorkspaceProviderAnswers(t *testing.T) {
 	defer mu.Unlock()
 	if len(keys) == 0 || keys[0] != "sk-team" {
 		t.Fatalf("keys = %v", keys)
+	}
+}
+
+// A run whose agent names no enabled model provider fails on its first
+// attempt: a retry cannot enable one, so it is not attempted again.
+func TestARunWithoutAModelProviderFailsOnce(t *testing.T) {
+	p := startWith(t, platform.Config{ConfiguredModelsOnly: true})
+	ctx := t.Context()
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "writer", Provider: "team", Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := p.Subscribe(ctx, tenant, platform.EventFilter{Agent: "writer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stream.Close() }()
+	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-none", Agent: "writer", Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := await(t, p, r.ID, runs.Failed)
+	if !strings.Contains(done.Error, "needs a model provider") {
+		t.Fatalf("error = %q", done.Error)
+	}
+	var failed []event.Failed
+	for {
+		recvCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		e, err := stream.Recv(recvCtx)
+		cancel()
+		if err != nil {
+			break
+		}
+		if f, ok := e.Data.(event.Failed); ok && e.Run == r.ID {
+			failed = append(failed, f)
+		}
+	}
+	if len(failed) != 1 || !failed[0].Terminal || failed[0].Attempt > 1 {
+		t.Fatalf("run.failed events = %+v, want one terminal failure of the first attempt", failed)
+	}
+}
+
+// onceUnreadSettings is a store whose next read of a tenant's settings made
+// while a turn chooses its model fails, once it is armed.
+type onceUnreadSettings struct {
+	state.Store
+	armed atomic.Bool
+}
+
+func (s *onceUnreadSettings) Lookup(ctx context.Context, ns, tenant, key string) (state.Record, error) {
+	if ns == "settings" && strings.Contains(string(debug.Stack()), "(*Platform).resolveModel") && s.armed.CompareAndSwap(true, false) {
+		return state.Record{}, errors.New("settings store unavailable")
+	}
+	return s.Store.Lookup(ctx, ns, tenant, key)
+}
+
+// Settings that cannot be read while a turn chooses its model say nothing
+// about which providers are enabled: the run is retried, and completes on
+// the provider the workspace set up once they can be read.
+func TestARunWhoseSettingsCannotBeReadIsRetried(t *testing.T) {
+	store := &onceUnreadSettings{Store: state.NewMemory()}
+	p := startWith(t, platform.Config{
+		ConfiguredModelsOnly: true,
+		Backends:             platform.Backends{Shared: store},
+		Backoff:              func(int) time.Duration { return 10 * time.Millisecond },
+		ModelKinds: platform.ModelKinds{Build: func(string, string, spec.ModelBlock, platform.KeyFunc) native.ProviderFunc {
+			return func(native.Spec) (saigetypes.Provider, error) {
+				return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("answered")}}, nil
+			}
+		}},
+	})
+	ctx := t.Context()
+	admin := auth.Principal{Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
+	if _, err := p.SetModelProvider(ctx, admin, "team", platform.ModelProviderInput{Kind: platform.KindAnthropic, Key: "sk-team"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "writer", Provider: "team", Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := p.Subscribe(ctx, tenant, platform.EventFilter{Agent: "writer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stream.Close() }()
+	store.armed.Store(true)
+	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-unread", Agent: "writer", Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := await(t, p, r.ID, runs.Completed)
+	if done.Answer != "answered" {
+		t.Fatalf("answer = %q", done.Answer)
+	}
+	if store.armed.Load() {
+		t.Fatal("no settings read failed while the turn chose its model")
+	}
+	var failed []event.Failed
+	for {
+		recvCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		e, err := stream.Recv(recvCtx)
+		cancel()
+		if err != nil {
+			break
+		}
+		if f, ok := e.Data.(event.Failed); ok && e.Run == r.ID {
+			failed = append(failed, f)
+		}
+	}
+	// The console reads this sentence (packages/adapter/src/run.ts): it names
+	// the read, never a provider to enable.
+	want := `runtime: run ` + r.ID + `: agent "writer" version 1.0.0: platform: @writer: the workspace's settings could not be read to choose a model: platform: read settings: settings store unavailable`
+	if len(failed) != 1 || failed[0].Terminal || failed[0].Error != want {
+		t.Fatalf("run.failed events = %+v, want one retried failure %q", failed, want)
 	}
 }

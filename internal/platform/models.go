@@ -205,19 +205,32 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 		}
 	}
 	// Pass over disabled providers and, when configured models are required,
-	// names no one has set up. A chain with none reports what it needs.
+	// names no one has set up. A chain with none reports what it needs. The
+	// workspace's providers are read once, so the chain is decided on one
+	// view of them.
+	stored, readErr := p.settings.get(req.Tenant)
+	providers := stored.withDefaults().ModelProviders
 	chain := append([]native.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
 	kept := slices.DeleteFunc(slices.Clone(chain), func(m native.ModelRef) bool {
-		return !p.enabled(req.Tenant, m.Provider)
+		return !p.enabledIn(providers, m.Provider)
 	})
 	if len(kept) == 0 {
+		// Settings that could not be read read as the defaults, which set up
+		// no provider: the run is retried, since the next read may find one,
+		// and its error names the read rather than a provider to enable.
+		if readErr != nil {
+			return req, fmt.Errorf("platform: @%s: the workspace's settings could not be read to choose a model: %w", spec.Name, readErr)
+		}
 		var named []string
 		for _, m := range chain {
 			if !slices.Contains(named, m.Provider) {
 				named = append(named, m.Provider)
 			}
 		}
-		return req, fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", "))
+		// Read as they are stored, the settings enable none of the chain.
+		// Retrying cannot enable one, so the run fails on its first attempt
+		// rather than repeat a turn that ends the same way.
+		return req, turn.WithRepeats(fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", ")), true)
 	}
 	if p.cfg.ConfiguredModelsOnly || len(kept) != len(chain) {
 		spec.Provider, spec.Model = kept[0].Provider, kept[0].Model
@@ -243,15 +256,16 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	return req, nil
 }
 
-// enabled reports whether a provider can run in tenant's workspace: the
-// deployment declares it, the workspace set it up and left it on, or the
-// platform allows providers beyond those configured for the workspace.
-func (p *Platform) enabled(tenant, name string) bool {
+// enabledIn reports whether a provider can run in a workspace whose
+// providers are those given: the deployment declares it, the workspace set
+// it up and left it on, or the platform allows providers beyond those
+// configured for the workspace.
+func (p *Platform) enabledIn(providers []ModelProvider, name string) bool {
 	if p.cfg.Ext.Providers[name] != nil {
 		return true
 	}
-	if m, ok := p.workspaceProvider(tenant, name); ok {
-		return !m.Disabled
+	if i := slices.IndexFunc(providers, func(m ModelProvider) bool { return m.Name == name }); i >= 0 {
+		return !providers[i].Disabled
 	}
 	return !p.cfg.ConfiguredModelsOnly
 }
