@@ -217,7 +217,9 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 				named = append(named, m.Provider)
 			}
 		}
-		return req, fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", "))
+		// Retrying cannot enable a provider, so a run fails on its first
+		// attempt rather than repeat a turn that ends the same way.
+		return req, turn.WithRepeats(fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", ")), true)
 	}
 	if p.cfg.ConfiguredModelsOnly || len(kept) != len(chain) {
 		spec.Provider, spec.Model = kept[0].Provider, kept[0].Model
