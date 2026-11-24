@@ -217,9 +217,21 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 				named = append(named, m.Provider)
 			}
 		}
-		// Retrying cannot enable a provider, so a run fails on its first
+		err := fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", "))
+		// Settings that could not be read read as the defaults, which set up
+		// no provider: the run is retried, since the next read may find one.
+		stored, readErr := p.settings.get(req.Tenant)
+		if readErr != nil {
+			return req, fmt.Errorf("%w (the workspace's settings could not be read: %w)", err, readErr)
+		}
+		// Read as they are stored, the settings enable none of the chain
+		// either. Retrying cannot enable one, so the run fails on its first
 		// attempt rather than repeat a turn that ends the same way.
-		return req, turn.WithRepeats(fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", ")), true)
+		providers := stored.withDefaults().ModelProviders
+		if !slices.ContainsFunc(chain, func(m native.ModelRef) bool { return p.enabledIn(providers, m.Provider) }) {
+			return req, turn.WithRepeats(err, true)
+		}
+		return req, err
 	}
 	if p.cfg.ConfiguredModelsOnly || len(kept) != len(chain) {
 		spec.Provider, spec.Model = kept[0].Provider, kept[0].Model
@@ -254,6 +266,17 @@ func (p *Platform) enabled(tenant, name string) bool {
 	}
 	if m, ok := p.workspaceProvider(tenant, name); ok {
 		return !m.Disabled
+	}
+	return !p.cfg.ConfiguredModelsOnly
+}
+
+// enabledIn is enabled for a workspace whose providers are those given.
+func (p *Platform) enabledIn(providers []ModelProvider, name string) bool {
+	if p.cfg.Ext.Providers[name] != nil {
+		return true
+	}
+	if i := slices.IndexFunc(providers, func(m ModelProvider) bool { return m.Name == name }); i >= 0 {
+		return !providers[i].Disabled
 	}
 	return !p.cfg.ConfiguredModelsOnly
 }
