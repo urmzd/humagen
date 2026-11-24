@@ -993,8 +993,8 @@ A review approves only when all of these hold:
    `approve: never`.
 2. The verdict is `approve`, and no finding is at or above `block_on`.
 3. The host read every check on the reviewed commit itself, fewer than
-   1,000. Leaving out the app's own check runs, none is pending or failed
-   (success, neutral or skipped pass), and at least one concluded success.
+   1,000. Leaving out the app's own checks, none is pending or failed, and
+   at least one concluded success (saige's `ChecksAllow`).
 4. The pull request is open, not a draft and still on the reviewed commit,
    and its author is not the app.
 5. The run was an automatic review, or asked (by a comment or a review

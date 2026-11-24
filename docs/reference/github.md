@@ -834,7 +834,7 @@ and what it reads itself, and nothing the model or the pull request wrote:
 
 | Event | When |
 | :--- | :--- |
-| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found fewer than 1,000, and, leaving out every check run of the app's own, whatever its name or run, none is pending or failed (success, neutral or skipped pass) and at least one concluded success; the pull request is open, not a draft and still on the reviewed commit, its author is not the app, and both the signed event and GitHub, read again when the approval is decided, give the author's GitHub user ID, the same one; the app has not approved this commit already, and no change request the app posted for another agent is outstanding; and the run was an automatic review, or was asked (by a comment, or by requesting the review) or resumed by a person the client maps (`github.people` or `github.askers`) who is known by user ID, is not the author, and authored, committed or co-authored none of the pull request's commits |
+| Approve | All of these hold: the agent's `review.approve` is `when_clean` and the repository's settings do not say `approve: never`; the verdict is `approve`; no finding is at or above `review.block_on`; the host read the reviewed commit's checks, found fewer than 1,000, and saige's `ChecksAllow` accepts them: leaving out every check of the app's own (a check run or suite of its app ID or slug, or a status its bot set), whatever its name or run, none is pending or failed (a check suite still running is pending; another app's check run that concluded neutral or skipped neither passes nor fails) and at least one concluded success; the pull request is open, not a draft and still on the reviewed commit, the app did not open it, and both the signed event and GitHub, when the approval is decided, give the author's GitHub user ID, the same one; the app has not approved this commit already, and every change request the app has outstanding is one the host recorded for this agent; and the run was an automatic review, or was asked (by a comment, or by requesting the review) or resumed by a person the client maps (`github.people` or `github.askers`) who is known by user ID, is not the author, and authored, committed or co-authored none of the pull request's commits |
 | Request changes | The verdict is `request_changes`, or a finding is at or above `review.block_on` (`error` when the agent sets none) |
 | Comment | Anything else |
 
@@ -860,12 +860,13 @@ resumed a paused automatic review. Before an asked review approves, the host
 reads the pull request's commits (fewer than 250, the reviewed commit among
 them): every commit's author and committer must be linked to a GitHub
 account, since GitHub links them by email, and the asker must be none of
-them. It also reads the commits' `Co-authored-by` trailers, and an address
-the client maps the asker to, or their GitHub no-reply address, refuses the
-approval. A read that fails, or a GitHub API that cannot read the trailers,
-approves nothing; saige's HTTP API does not read trailers yet, so for now a
-review a person asked for is posted as a comment, and only an automatic
-review that nobody resumed approves.
+them. A commit GitHub's `web-flow` account committed, a merge or an edit
+made on the web, is read by its author alone. Each `Co-authored-by` trailer
+must name someone the host can tell: an address the client maps a person
+by (`github.people`), or a GitHub no-reply address. A trailer with no
+address, or one nobody is known by, refuses the approval, and so does one
+that is the asker's. A read that fails approves nothing. Commits need not
+be signed.
 
 A new review replaces the same agent's earlier ones on the pull request: an
 approval of an earlier head is dismissed when the new review does not
@@ -884,8 +885,11 @@ the `github_create_review` tool is written the same way, in its body and in
 each inline comment, and is no agent's. One agent never dismisses another's
 review, and a review from before that line is never dismissed. Since every
 agent posts as the app and GitHub counts the app's latest review, a review
-does not approve while a change request the app posted that is not the
-same agent's is outstanding, one posted through the tool included. Only the
+does not approve while the app has a change request outstanding that the
+host did not record for the same agent. The host records which agent wrote
+each review the sink posts, by the sink's delivery marker
+(`ReviewMarker`), in the store every replica shares, before it posts; a
+review posted through the tool has no marker and is no agent's. Only the
 app's own reviews are dismissed, through saige's host-only dismissal; no
 model tool reaches it. A dismissal that fails is logged and never stops the
 new review.

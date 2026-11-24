@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connectors"
@@ -586,6 +588,13 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		// One approval of each commit is claimed in the store every
 		// replica shares; without it nothing approves.
 		cfg.ApprovalClaims, cfg.Log = p.approvalClaims, p.log
+		// The app's own checks are told apart by its ID as well as its
+		// login; a client that is no GitHub App has none.
+		if app {
+			if id, err := strconv.ParseInt(strings.TrimSpace(c.Identity.AppID), 10, 64); err == nil && id > 0 {
+				cfg.AppID = id
+			}
+		}
 		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
 		installed := p.installedRepos(c, api, app)
 		if installed != nil {

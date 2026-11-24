@@ -144,7 +144,7 @@ func postedEvent(t *testing.T, c approvalCase) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer, err := ghconnector.New(ghconnector.Config{API: withCoAuthors{withCommits: withCommits{Fake: api}}, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
+	peer, err := ghconnector.New(ghconnector.Config{API: withCommits{Fake: api}, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1, ApprovalClaims: state.NewMemory(),
 		AsksReview: func(v transport.View) (bool, error) { return p.asksReview(client, v) },
 		ReviewPolicy: func(ctx context.Context, v transport.View) (ghconnector.ReviewGrant, error) {
 			return p.reviewGrant(ctx, client, v)
