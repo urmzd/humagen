@@ -23,14 +23,17 @@ import (
 const skillFound = `{"summary":"Checked the change.","findings":[{"id":"f1","severity":"warning","title":"Token logged","suggestion":"Drop the log line.","found_by":"someone-else"}]}`
 
 // loading is a platform whose agents are a cast, with skill-runner shipped
-// on the offline model and answering skillFound, and the Review package
-// installed. loads sets each agent's skills.loadable.
-func loading(t *testing.T, c *cast, loads map[string][]string, lim call.Limits) *platform.Platform {
+// on the offline model, answering skillFound unless the cast says
+// otherwise, and the Review package installed. loads sets each agent's
+// skills.loadable.
+func loading(t *testing.T, c *cast, loads map[string][]string, cfg platform.Config) *platform.Platform {
 	t.Helper()
 	if c.says == nil {
 		c.says = map[string][][]saigetypes.Delta{}
 	}
-	c.says[platform.BuiltinSkillRunner] = [][]saigetypes.Delta{say(skillFound)}
+	if c.says[platform.BuiltinSkillRunner] == nil {
+		c.says[platform.BuiltinSkillRunner] = [][]saigetypes.Delta{say(skillFound)}
+	}
 	if c.tools == nil {
 		c.tools = map[string][]string{}
 	}
@@ -41,7 +44,8 @@ func loading(t *testing.T, c *cast, loads map[string][]string, lim call.Limits) 
 		c.tools[agent] = append(c.tools[agent], platform.ToolUseSkill)
 		c.shape[agent] = func(s *wire.AgentSpec) { s.Skills = &wire.Skills{Loadable: names} }
 	}
-	p := stage(t, c, platform.Config{Limits: lim, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
+	cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
+	p := stage(t, c, cfg)
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +119,7 @@ func TestALoadedSkillRunsAsSkillRunnerWithThatSkillAlone(t *testing.T) {
 	c := &cast{says: map[string][][]saigetypes.Delta{
 		"lead": {loadingSkill("load-1", "secure-review"), say("Merged the findings.")},
 	}}
-	p := loading(t, c, map[string][]string{"lead": {"secure-review"}}, call.Limits{MaxDepth: 2, MaxFanOut: 4})
+	p := loading(t, c, map[string][]string{"lead": {"secure-review"}}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	workspace := library.Scope{Kind: "workspace"}
 	publishSkill(t, p, admin.Subject, workspace, "secure-review", "FOLLOW THE SECURE REVIEW CHECKLIST", []string{platform.ToolFileRead})
 	publishSkill(t, p, admin.Subject, workspace, "named-one", "THE SKILL THE PERSON NAMED", nil)
@@ -160,7 +164,7 @@ func TestOnlyALoadableSkillThePersonMayReadLoads(t *testing.T) {
 		},
 		"none": {loadingSkill("none-1", "go-style"), say("Done.")},
 	}, tools: map[string][]string{"none": {platform.ToolUseSkill}}}
-	p := loading(t, c, map[string][]string{"named": {"secure-review"}, "any": {wire.AnySkill}}, call.Limits{MaxDepth: 2, MaxFanOut: 4})
+	p := loading(t, c, map[string][]string{"named": {"secure-review"}, "any": {wire.AnySkill}}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	publishSkill(t, p, admin.Subject, library.Scope{Kind: "workspace"}, "go-style", "GO STYLE", nil)
 	publishSkill(t, p, "bob", library.Scope{Kind: "personal", Subject: "bob"}, "bob-notes", "BOB'S OWN NOTES", nil)
 	if _, err := p.Projects.Create(tenant, projects.Project{Name: "Other", Members: []projects.Entry{{Who: admin.Subject, Role: projects.Owner}}}, platform.WriterOf(admin), time.Now()); err != nil {
@@ -218,7 +222,7 @@ func TestALoadIsHeldToTheCallLimitsAndIsTheOnlyWayToSkillRunner(t *testing.T) {
 		},
 		spawn: map[string][]string{"boss": {"deep"}, "rogue": {platform.BuiltinSkillRunner}},
 	}
-	p := loading(t, c, map[string][]string{"lead": {wire.AnySkill}, "deep": {wire.AnySkill}}, call.Limits{MaxDepth: 1, MaxFanOut: 1})
+	p := loading(t, c, map[string][]string{"lead": {wire.AnySkill}, "deep": {wire.AnySkill}}, platform.Config{Limits: call.Limits{MaxDepth: 1, MaxFanOut: 1}})
 	publishSkill(t, p, admin.Subject, library.Scope{Kind: "workspace"}, "go-style", "GO STYLE", nil)
 	for _, agent := range []string{"lead", "boss", "rogue"} {
 		first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "limits-" + agent, Agent: agent, Text: "Review it."})
