@@ -220,7 +220,7 @@ func TestAllChecksSkipped(t *testing.T) {
 // request.
 func TestTheAuthorRequestsReviewOfTheirOwnPR(t *testing.T) {
 	c := hookedCase{approvalCase: cleanApproval()}
-	c.asker, c.requested, c.author = "mallory", true, "mallory"
+	c.asker, c.requested, c.author = "other", true, "other"
 	got, err := hookedEvent(t, c)
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestTheAuthorRequestsReviewOfTheirOwnPR(t *testing.T) {
 // an unmapped person comments "@humagen review" on their own PR.
 func TestUnmappedAuthorComments(t *testing.T) {
 	c := hookedCase{approvalCase: cleanApproval()}
-	c.asker, c.author = "mallory", "mallory"
+	c.asker, c.author = "other", "other"
 	got, err := hookedEvent(t, c)
 	if err != nil || got == "APPROVE" {
 		t.Fatalf("unmapped commenter: %s %v", got, err)
