@@ -383,3 +383,31 @@ func dismissStale(ctx context.Context, cfg Config, host reviewHost, ref transpor
 func refOf(req transport.ApprovalRequest) transport.Ref {
 	return transport.Ref{Owner: req.Owner, Repo: req.Repo, Number: req.Number}
 }
+
+// DismissApprovalsBefore dismisses the app's approvals of a pull request
+// that are on a commit other than head, once a push moved it there. Only a
+// review whose host-written mark names an agent is dismissed. A read or a
+// dismissal that fails is logged; an API that cannot dismiss dismisses
+// nothing.
+func (c *Connector) DismissApprovalsBefore(ctx context.Context, owner, repo string, number int, head string) {
+	if _, ok := c.cfg.API.(transport.ReviewDismissAPI); !ok || c.Connector == nil {
+		return
+	}
+	log := c.cfg.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	own, err := c.OwnReviews(ctx, owner, repo, number)
+	if err != nil {
+		log.Warn("github: earlier approvals could not be read, so none were dismissed", "repository", owner+"/"+repo, "pull", number, "error", err)
+		return
+	}
+	for _, row := range own {
+		if row.State != "APPROVED" || strings.EqualFold(row.CommitID, head) || presentation.ReviewAgent(row.Body) == "" {
+			continue
+		}
+		if err := c.DismissReview(ctx, owner, repo, number, row.ID, staleReviewMessage); err != nil && !errors.Is(err, transport.ErrNotOwnReview) {
+			log.Warn("github: an approval of an earlier commit could not be dismissed", "repository", owner+"/"+repo, "pull", number, "review", row.ID, "error", err)
+		}
+	}
+}

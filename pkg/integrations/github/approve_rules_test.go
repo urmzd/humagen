@@ -164,3 +164,22 @@ func TestOnlyAnOpenReadyPullRequestIsApproved(t *testing.T) {
 		})
 	}
 }
+
+// A push to the pull request dismisses the app's approvals of earlier
+// commits, and keeps an approval of the new head.
+func TestAPushDismissesApprovalsOfEarlierCommits(t *testing.T) {
+	old, head := strings.Repeat("5", 40), strings.Repeat("6", 40)
+	b := newRuleBench(t, 583231)
+	b.head(t, old)
+	b.review(t, "run-1", "gatekeeper", old, "approve", false)
+	b.head(t, head)
+	b.review(t, "run-2", "security", head, "approve", false)
+	b.conn.DismissApprovalsBefore(t.Context(), "acme", "repo", 7, head)
+	reviews := b.fake.SubmittedReviews()
+	if len(reviews) != 2 || reviews[0].Review.Event != "APPROVE" || reviews[1].Review.Event != "APPROVE" {
+		t.Fatalf("posted %+v, want two approvals", reviews)
+	}
+	if reviews[0].Dismissal == "" || reviews[1].Dismissal != "" {
+		t.Fatalf("dismissed %q and %q, want only the earlier commit's", reviews[0].Dismissal, reviews[1].Dismissal)
+	}
+}

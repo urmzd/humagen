@@ -141,3 +141,39 @@ func TestAMentionOnAPullRequestIsFound(t *testing.T) {
 		}
 	}
 }
+
+// A push to a pull request the client serves is reported whatever its
+// automatic review says, with the new head in lower case.
+func TestPullPushedReportsANewHead(t *testing.T) {
+	sha := strings.Repeat("A", 40)
+	gh := githubOf("gh", "acme")
+	gh.GitHub = &GitHubOptions{}
+	for _, tc := range []struct {
+		name string
+		kind string
+		body []byte
+		want bool
+	}{
+		{"push", "pull_request", pullEvent("synchronize", "acme/site", 7, sha, false, "open"), true},
+		{"push to a draft", "pull_request", pullEvent("synchronize", "acme/site", 7, sha, true, "open"), true},
+		{"opened", "pull_request", pullEvent("opened", "acme/site", 7, sha, false, "open"), false},
+		{"another account", "pull_request", pullEvent("synchronize", "globex/site", 7, sha, false, "open"), false},
+		{"short commit", "pull_request", pullEvent("synchronize", "acme/site", 7, "abc123", false, "open"), false},
+		{"no number", "pull_request", pullEvent("synchronize", "acme/site", 0, sha, false, "open"), false},
+		{"another event", "issues", pullEvent("synchronize", "acme/site", 7, sha, false, "open"), false},
+		{"not json", "pull_request", []byte("{"), false},
+	} {
+		repo, number, head, ok := gh.PullPushed(tc.kind, tc.body)
+		if ok != tc.want {
+			t.Errorf("%s: ok = %v", tc.name, ok)
+			continue
+		}
+		if ok && (repo != "acme/site" || number != 7 || head != strings.ToLower(sha)) {
+			t.Errorf("%s: %s#%d at %s", tc.name, repo, number, head)
+		}
+	}
+	slack := slackOf("s", "A1", "T1")
+	if _, _, _, ok := slack.PullPushed("pull_request", pullEvent("synchronize", "acme/site", 7, sha, false, "open")); ok {
+		t.Error("a Slack client reported a push")
+	}
+}

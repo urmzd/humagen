@@ -870,7 +870,9 @@ review that nobody resumed approves.
 A new review replaces the same agent's earlier ones on the pull request: an
 approval of an earlier head is dismissed when the new review does not
 approve, and a change request is dismissed when nothing in the new review
-blocks. Each native review carries a hidden line naming its agent, written
+blocks. A push to the pull request dismisses the app's approvals of earlier
+commits at once, whether or not the new commit is reviewed. Each native
+review carries a hidden line naming its agent, written
 by the host after everything the model wrote; a line like it inside the
 review's text is written so that it names nobody, and only the line at the
 end, followed by nothing but the session link and the transport's markers,
