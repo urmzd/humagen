@@ -6,6 +6,7 @@ import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { AgentHealth, AgentStats } from "./AgentHealth.tsx";
 import { AgentHomeTab } from "./AgentHomeTab.tsx";
 import { AgentLookEditor } from "./AgentLookEditor.tsx";
+import { LoadableSkills, ReviewSettings } from "./AgentReviewSettings.tsx";
 import { AgentGeneral, AgentSettingsNav, type SettingsTab } from "./AgentSettings.tsx";
 import { AgentSlackApp } from "./AgentSlackApp.tsx";
 import {
@@ -424,7 +425,9 @@ export function AgentDetail({
   const [own, setOwn] = useState<Tab>(wanted);
   const asked = onTab ? wanted : own;
   const tab: Tab =
-    revision || ["prompt", "model", "access", "context"].includes(asked) ? asked : "prompt";
+    revision || ["prompt", "model", "access", "context", "review"].includes(asked)
+      ? asked
+      : "prompt";
   const setTab = (next: Tab) => (onTab ? onTab(next) : setOwn(next));
   const [newSource, setNewSource] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -546,7 +549,12 @@ export function AgentDetail({
 
   // A new agent has only the sections its spec holds; a saved one has them all.
   const has = (t: SettingsTab) =>
-    !!revision || t === "prompt" || t === "model" || t === "access" || t === "context";
+    !!revision ||
+    t === "prompt" ||
+    t === "model" ||
+    t === "access" ||
+    t === "context" ||
+    t === "review";
   const counts: Partial<Record<SettingsTab, number>> = {
     access: spawn.length,
     queue: waiting,
@@ -975,6 +983,17 @@ export function AgentDetail({
                 agentRevision={revision.rev}
                 canWrite={canWrite}
               />
+            )}
+            {tab === "context" && (
+              <LoadableSkills
+                spec={spec}
+                home={builtin ? "" : (home ?? "")}
+                editable={editable}
+                onChange={setSpec}
+              />
+            )}
+            {tab === "review" && (
+              <ReviewSettings spec={spec} editable={editable} onChange={setSpec} />
             )}
             {tab === "context" && (
               <Section

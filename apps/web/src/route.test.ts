@@ -145,6 +145,8 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
   assert.deepEqual(at("/agents/lead/slack"), { page: "agent", name: "lead", tab: "slack" });
   assert.equal(href({ page: "agent", name: "lead", tab: "slack" }), "/agents/lead/slack");
   assert.equal(href({ page: "agent", name: "lead", tab: "look" }), "/agents/lead/look");
+  assert.deepEqual(at("/agents/lead/review"), { page: "agent", name: "lead", tab: "review" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "review" }), "/agents/lead/review");
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });
 

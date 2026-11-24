@@ -38,6 +38,7 @@ test("every section is in exactly one group, and each keeps its own address", ()
   );
   assert.equal(groupOf("slack"), "access");
   assert.equal(groupOf("memory"), "behavior");
+  assert.equal(groupOf("review"), "behavior");
   const picked: string[] = [];
   render(
     <AgentSettingsNav

@@ -2403,6 +2403,7 @@ export const defaultCopy = {
       queue: "Approvals",
       context: "Skills and Knowledge",
       model: "Model",
+      review: "Reviews",
       memory: "Memory",
       evals: "Evals",
       alerts: "Rules",
@@ -2559,6 +2560,30 @@ export const defaultCopy = {
     items: (count: number) => `${count} updates`,
     description:
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",
+  },
+  agentReview: {
+    title: "Pull request reviews",
+    hint: "How the agent's reviews end. The host chooses from the findings and this policy. Saved with the next revision.",
+    approve: "Approve pull requests",
+    approves: { never: "Never", when_clean: "When clean" },
+    approveHint: {
+      never: "Reviews comment or request changes, and never approve.",
+      when_clean:
+        "The host approves only when the review is clean, checks pass and policy allows. The model never approves.",
+    },
+    blockOn: "Block on",
+    blockOnHint: "Findings at or above this level request changes.",
+    severities: { error: "Error", warning: "Warning", info: "Info" },
+  },
+  agentLoadableSkills: {
+    title: "Loadable skills",
+    hint: "Library skills the agent can run as sub-agents when a task needs one. Saved with the next revision.",
+    add: "Add Skill",
+    empty: "It loads no skills.",
+    any: "Any published skill",
+    elsewhere: "Not in this agent's library. A run loads it from its project's library.",
+    unreadable: "Reading the skill library requires access to projects. Saved skills are kept.",
+    failed: "The skill library could not be read.",
   },
   agentSkillDefaults: {
     inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
