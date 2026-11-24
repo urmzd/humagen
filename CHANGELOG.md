@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.201.0 (2026-11-24)
+
+### Features
+
+- **platform**: use_skill runs a loadable library skill as skill-runner ([8a086c4](https://github.com/urmzd/humagen/commit/8a086c4a0493b404850b262474a6892ff34c2c61))
+- **wire**: skills.loadable on the agent spec ([e019fbe](https://github.com/urmzd/humagen/commit/e019fbe16f4bf6a187f63b9369d6d08bfd3012e1))
+
+### Bug Fixes
+
+- **platform**: a loaded skill waits where its caller would, for its caller's approvers ([e6c836e](https://github.com/urmzd/humagen/commit/e6c836ede69126ede5df7f44eedb25abfb26a8d6))
+- **platform**: a loaded skill is held to its caller's action rules and pause ([c53c71f](https://github.com/urmzd/humagen/commit/c53c71f1451f3641d8219064f00ab1955b5eaaae))
+- **platform**: a loaded skill reads its caller's place as its own ([b2ae890](https://github.com/urmzd/humagen/commit/b2ae890e1a42048e7473c31a0469e382a249897b))
+
+### Misc
+
+- count skill-runner in the review package and bound found_by labels at 64 ([9e3afcc](https://github.com/urmzd/humagen/commit/9e3afcc1921a4a95286b875207082fe64681d915))
+- **platform**: use_skill loads only what the spec and the person allow ([6942a5c](https://github.com/urmzd/humagen/commit/6942a5cd09db3530e5cf15e3eb5182cefe6aa39b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.6...v0.201.0)
+
+
 ## 0.200.6 (2026-11-24)
 
 ### Bug Fixes
