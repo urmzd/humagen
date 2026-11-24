@@ -22,7 +22,7 @@ export const SETTINGS_GROUPS: readonly { id: SettingsGroup; tabs: readonly Setti
   { id: "general", tabs: ["general", "look", "prompt"] },
   { id: "access", tabs: ["access", "slack", "queue"] },
   { id: "tools", tabs: ["context", "model"] },
-  { id: "behavior", tabs: ["memory", "evals", "alerts", "revisions"] },
+  { id: "behavior", tabs: ["review", "memory", "evals", "alerts", "revisions"] },
 ];
 
 /** The group a section is in. */

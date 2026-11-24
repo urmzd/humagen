@@ -203,6 +203,10 @@ export interface AgentSpec {
   tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
+  /** Library skills it may load as sub-agents. */
+  skills?: { loadable?: string[] };
+  /** How its reviews decide; absent is never and error. */
+  review?: { approve?: "never" | "when_clean"; block_on?: "error" | "warning" | "info" };
 }
 
 export interface Revision {

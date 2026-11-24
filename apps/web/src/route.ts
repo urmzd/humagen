@@ -21,6 +21,7 @@ export type AgentTab =
   | "slack"
   | "queue"
   | "context"
+  | "review"
   | "memory"
   | "evals"
   | "alerts"
@@ -35,6 +36,7 @@ export const AGENT_TABS: AgentTab[] = [
   "slack",
   "queue",
   "context",
+  "review",
   "memory",
   "evals",
   "alerts",
