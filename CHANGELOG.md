@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.205.0 (2026-11-25)
+
+### Features
+
+- **web**: divide the fixed sidebar links from the session list ([186dc69](https://github.com/urmzd/humagen/commit/186dc6957e3a7ede30d1bfc58898d2301512edd9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.204.1...v0.205.0)
+
+
 ## 0.204.1 (2026-11-25)
 
 ### Bug Fixes
