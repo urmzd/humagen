@@ -69,7 +69,7 @@ func TestCoAuthorsAreReadOnlyWhenEachIsKnown(t *testing.T) {
 		"a mapped person's login-only no-reply":     {commits: with(transport.CoAuthor{Email: "octocat@users.noreply.github.com"}), read: true},
 		"a login-only no-reply nobody maps":         {commits: with(transport.CoAuthor{Email: "ada-old@users.noreply.github.com"})},
 		"another account's ID under a mapped login": {commits: with(transport.CoAuthor{Email: "42+ada@users.noreply.github.com"}), read: true},
-		"no address":                                {commits: with(transport.CoAuthor{Name: "Someone"})},
+		"no address": {commits: with(transport.CoAuthor{Name: "Someone"})},
 	} {
 		read, coAuthored := coAuthorsRead(c.commits, grant)
 		if read != c.read || coAuthored != c.coAuthors {
