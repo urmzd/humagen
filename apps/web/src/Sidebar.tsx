@@ -1377,9 +1377,8 @@ export function Sidebar({
           aria-label="Sections"
           className="aui-scroll flex min-h-0 flex-1 flex-col short:overflow-x-hidden short:overflow-y-auto short:overscroll-contain"
         >
-          {/* The list scrolls; if short, the nav. */}
           <div
-            className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}
+            className={`flex shrink-0 flex-col gap-1 border-aui-border border-b pb-2 ${open ? "px-2" : "items-center"}`}
             data-sidebar-start
           >
             {can("runs:write") && (
