@@ -55,6 +55,8 @@ body {
  * column with room for two fields side by side. Anywhere else they fold behind one control.
  * One variant says both halves, so what folds and what takes its place cannot disagree.
  */
+@custom-variant short (@media (height <= 600px));
+
 @custom-variant filter-row {
   @media (width >= 48rem) {
     @container (width >= 26rem) {

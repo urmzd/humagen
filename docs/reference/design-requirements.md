@@ -223,8 +223,10 @@ connection control is implied.
 
 - The console fills the dynamic viewport. Main content scrolls inside its own
   column without moving the sidebar or the document.
-- Navigation and conversations scroll inside the sidebar only when that area
-  is scrolled. Reaching its boundary must not scroll the main content.
+- New, Search and the section links stay fixed. Only the session lists
+  scroll, and only when that area is scrolled. Below 600px of viewport height
+  the fixed block would leave the lists no room, so the whole navigation
+  scrolls instead. Reaching the boundary must not scroll the main content.
 - Keep the sidebar header and account controls visible while its lists scroll,
   including in the phone drawer.
 - Evidence: `App.tsx`, `Sidebar.tsx`, and `styles.css` constrain the shell and

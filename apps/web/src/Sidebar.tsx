@@ -1373,8 +1373,11 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav aria-label="Sections" className="flex min-h-0 flex-1 flex-col">
-          {/* Starting and finding work stay in reach while the session list scrolls. */}
+        <nav
+          aria-label="Sections"
+          className="aui-scroll flex min-h-0 flex-1 flex-col short:overflow-x-hidden short:overflow-y-auto short:overscroll-contain"
+        >
+          {/* The list scrolls; if short, the nav. */}
           <div
             className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}
             data-sidebar-start
@@ -1407,28 +1410,25 @@ export function Sidebar({
                 )}
               </button>
             )}
+            {entries
+              .filter((entry) => entry.show)
+              .map((entry) => (
+                <Item
+                  key={entry.label}
+                  icon={entry.icon}
+                  label={entry.label}
+                  href={href(entry.to)}
+                  open={open}
+                  active={entry.active}
+                  badge={entry.badge}
+                  onClick={() => go(entry.to)}
+                />
+              ))}
           </div>
           <div
             data-sidebar-scroll
-            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
+            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain short:flex-none short:overflow-visible"
           >
-            <div className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}>
-              {entries
-                .filter((entry) => entry.show)
-                .map((entry) => (
-                  <Item
-                    key={entry.label}
-                    icon={entry.icon}
-                    label={entry.label}
-                    href={href(entry.to)}
-                    open={open}
-                    active={entry.active}
-                    badge={entry.badge}
-                    onClick={() => go(entry.to)}
-                  />
-                ))}
-            </div>
-
             {open && view !== "archived" && participatedRows.length > 0 && (
               <section
                 aria-label={defaultCopy.sidebar.participated}

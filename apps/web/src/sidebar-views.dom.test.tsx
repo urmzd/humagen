@@ -128,6 +128,13 @@ test("Recent lists sessions newest first with their source, time, and compact st
     null,
     "starting work stays outside the scrolling list",
   );
+  const sessions = screen.getByRole("link", { name: "Sessions" });
+  assert.ok(sessions.closest("[data-sidebar-start]"));
+  assert.equal(
+    sessions.closest("[data-sidebar-scroll]"),
+    null,
+    "the section links stay fixed; only the session list scrolls",
+  );
   assert.ok(screen.getByRole("button", { name: "Filter conversations" }));
   assert.equal(
     screen.getByRole("region", { name: "Sessions" }).getAttribute("data-view"),
