@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.204.1 (2026-11-25)
+
+### Bug Fixes
+
+- **web**: keep Home within its source budget ([7a61639](https://github.com/urmzd/humagen/commit/7a616392fefa609b28d96f5ae5831aa433ba5a6b))
+- **web**: scroll the whole sidebar nav below 600px of height ([1205a30](https://github.com/urmzd/humagen/commit/1205a30b81b4e8dcfb7a2629e27fd8cc2703eaf0))
+- **web**: keep sidebar sections fixed while recents scroll ([44366d5](https://github.com/urmzd/humagen/commit/44366d51386542d7249f3be22854c5557c448936))
+
+### Misc
+
+- revert gofmt change; CI and go.mod use Go 1.26 gofmt ([ff33f29](https://github.com/urmzd/humagen/commit/ff33f29926e470ba4ce8b837366dfb7db66e9419))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.204.0...v0.204.1)
+
+
 ## 0.204.0 (2026-11-24)
 
 ### Features
