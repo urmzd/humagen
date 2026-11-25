@@ -48,6 +48,15 @@ const (
 	MaxToolServers = 16
 	// MaxURL bounds a tool server's address.
 	MaxURL = 500
+	// MaxToolServerBytes bounds a person's tool servers as written, approved
+	// tool lists and their input schemas included. One Google Workspace
+	// server's list is about 48 KiB, so this leaves room for every server a
+	// person may add.
+	MaxToolServerBytes = 512 << 10
+	// MaxPinnedBytes bounds the same servers as a run pins them (Pinned):
+	// without input schemas. pkg/runctx keeps room for the rest of a run's
+	// context beside it.
+	MaxPinnedBytes = 192 << 10
 	// maxSubject bounds a subject, as pkg/credentials does.
 	maxSubject = 200
 )
@@ -66,6 +75,24 @@ type ToolServer struct {
 	// Credential is a reference to where the server's credential is kept
 	// (env:, keychain: or op://). Empty, the server is reached without one.
 	Credential string `json:"credential,omitempty"`
+}
+
+// Pinned is t as a run keeps it: each approved tool's name, description,
+// class and schema hash, without its input schema. The hash still binds the
+// schema the person approved. A run reads the schema itself from the
+// person's own context when it connects, after checking that list is still
+// this one.
+func (t ToolServer) Pinned() ToolServer {
+	if t.Tools == nil {
+		return t
+	}
+	tools := make([]toolprovider.Tool, len(t.Tools))
+	for i, tool := range t.Tools {
+		tool.InputSchema = nil
+		tools[i] = tool
+	}
+	t.Tools = tools
+	return t
 }
 
 // Host is the server's host, as a run's tool_servers ceiling lists it.
@@ -116,8 +143,15 @@ func (in Input) Check() error {
 		return fmt.Errorf("%w: at most %d MCPs", ErrInvalid, MaxToolServers)
 	}
 	raw, _ := json.Marshal(in.ToolServers)
-	if len(raw) > 48<<10 {
-		return fmt.Errorf("%w: MCPs exceed 48 KiB", ErrInvalid)
+	if len(raw) > MaxToolServerBytes {
+		return fmt.Errorf("%w: MCPs exceed %d KiB", ErrInvalid, MaxToolServerBytes>>10)
+	}
+	pinned := make([]ToolServer, len(in.ToolServers))
+	for i, t := range in.ToolServers {
+		pinned[i] = t.Pinned()
+	}
+	if raw, _ := json.Marshal(pinned); len(raw) > MaxPinnedBytes {
+		return fmt.Errorf("%w: MCPs' tool names and descriptions exceed %d KiB", ErrInvalid, MaxPinnedBytes>>10)
 	}
 	for i, t := range in.ToolServers {
 		if len(t.Tools) > 64 {
