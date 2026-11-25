@@ -1373,8 +1373,12 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav aria-label="Sections" className="flex min-h-0 flex-1 flex-col">
-          {/* Starting work, finding work and the sections stay fixed while the session list scrolls. */}
+        <nav
+          aria-label="Sections"
+          className="aui-scroll flex min-h-0 flex-1 flex-col [@media(max-height:600px)]:overflow-x-hidden [@media(max-height:600px)]:overflow-y-auto [@media(max-height:600px)]:overscroll-contain"
+        >
+          {/* Starting work, finding work and the sections stay fixed while the session list scrolls.
+              Below 600px of height that block would leave the list no room, so the whole nav scrolls. */}
           <div
             className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}
             data-sidebar-start
@@ -1424,7 +1428,7 @@ export function Sidebar({
           </div>
           <div
             data-sidebar-scroll
-            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
+            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain [@media(max-height:600px)]:flex-none [@media(max-height:600px)]:overflow-visible"
           >
             {open && view !== "archived" && participatedRows.length > 0 && (
               <section
