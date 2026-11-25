@@ -3,8 +3,8 @@ import type { Page } from "playwright-core";
 
 /**
  * Stress the real shell with long content, then wheel each column separately.
- * In the sidebar the top row, New and Search (`data-sidebar-start`) and the
- * account stay put while everything under New and Search scrolls.
+ * In the sidebar the top row, New, Search and the section links
+ * (`data-sidebar-start`) and the account stay put while the session list scrolls.
  */
 export async function sidebarScroll(page: Page): Promise<void> {
   const phone = (page.viewportSize()?.width ?? 0) < 768;
@@ -34,7 +34,10 @@ export async function sidebarScroll(page: Page): Promise<void> {
   const geometry = () =>
     sidebar.evaluate((element) => {
       const box = element.getBoundingClientRect();
-      const header = element.firstElementChild?.getBoundingClientRect();
+      // The resize handle comes first when the sidebar is open; the header is the first other child.
+      const header = [...element.children]
+        .find((child) => child.getAttribute("role") !== "separator")
+        ?.getBoundingClientRect();
       const footer = element.lastElementChild?.getBoundingClientRect();
       const start = element.querySelector("[data-sidebar-start]")?.getBoundingClientRect();
       return {
@@ -60,7 +63,11 @@ export async function sidebarScroll(page: Page): Promise<void> {
     0,
     "sidebar scroll leaves content still",
   );
-  assert.deepEqual(await geometry(), initial, "sidebar chrome, New and Search stay fixed");
+  assert.deepEqual(
+    await geometry(),
+    initial,
+    "sidebar chrome, New, Search and the sections stay fixed",
+  );
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
