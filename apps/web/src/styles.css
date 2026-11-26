@@ -41,8 +41,8 @@ body {
 :root {
   /* The open sidebar's width on a wide screen; sidebarState.ts sets the one a person dragged to. */
   --humagen-sidebar-w: 296px;
-  /* A row's dot for an answer the reader has not read: a calm blue, apart from the accent, the warning and red. */
-  --humagen-unread: oklch(0.55 0.15 250);
+  /* A row's dot for an answer the reader has not read: the info blue, apart from the warning and red. */
+  --humagen-unread: var(--aui-info);
   --humagen-keyboard: 0px;
   --humagen-app-height: 100dvh;
 }
@@ -76,13 +76,13 @@ body {
 
 :root {
   /* The sidebar's plane and a panel's plane, each one step off the page. */
-  --humagen-plane: oklch(0.975 0 0);
+  --humagen-plane: oklch(0.972 0.004 var(--aui-tint-h));
   --humagen-panel: oklch(1 0 0);
-  --humagen-rule: oklch(0.07 0 0 / 9%);
+  --humagen-rule: oklch(0.17 0.012 var(--aui-tint-h) / 9%);
   /* Finished work is drawn in ink. Color is kept for what needs a look. */
-  --humagen-ink: oklch(0.07 0 0 / 42%);
-  --humagen-ink-faint: oklch(0.07 0 0 / 14%);
-  --humagen-glass-border: oklch(0.2 0 0 / 12%);
+  --humagen-ink: oklch(0.17 0.012 var(--aui-tint-h) / 42%);
+  --humagen-ink-faint: oklch(0.17 0.012 var(--aui-tint-h) / 14%);
+  --humagen-glass-border: oklch(0.2 0.012 var(--aui-tint-h) / 12%);
   --humagen-bevel: inset 0 1px 0 oklch(1 0 0 / 60%);
   /* Lightness of an agent's color, set so it reads on either surface. */
   --humagen-mark-l: 0.5;
@@ -107,9 +107,8 @@ body {
 }
 html[data-theme="dark"],
 html[data-theme="dark"] [data-theme="dark"] {
-  --humagen-plane: oklch(0.205 0 0);
-  --humagen-unread: oklch(0.72 0.13 250);
-  --humagen-panel: oklch(0.22 0 0);
+  --humagen-plane: oklch(0.205 0.006 var(--aui-tint-h));
+  --humagen-panel: oklch(0.22 0.006 var(--aui-tint-h));
   --humagen-rule: oklch(1 0 0 / 9%);
   --humagen-ink: oklch(1 0 0 / 46%);
   --humagen-ink-faint: oklch(1 0 0 / 13%);

@@ -1,17 +1,21 @@
 /*
  * humagen tokens.
  *
- * Base: neutral black/white (chroma 0). Primary actions are black in light
- * mode and near-white in dark mode; color never carries the brand on its own.
+ * Base: a neutral ramp with a trace of the brand's hue (--aui-tint-h), so
+ * the grays belong to the accent beside them. The page itself is white.
  *
- * Accent: red by default, with yellow and green companion presets. Existing
- * purple, blue and teal choices remain available through data-accent. Set
- * --aui-accent-h directly to customize the hue, and
+ * Accent: cobalt blue by default, the brand's color. It marks what a person
+ * can act on or has chosen: the primary action, a link, focus, a selection,
+ * the open tab. Red, yellow, green, purple and teal remain available
+ * through data-accent. Set --aui-accent-h directly to customize the hue, and
  * nudge any preset with --aui-accent-shift (degrees). Lightness and chroma
  * are tuned per mode so every preset keeps contrast.
  *
  * Status tones (ok/warn/bad/info/neutral) identify labeled state. Green marks
- * success, gold marks attention and red marks failure. `info` follows the accent.
+ * success, gold marks attention and red marks failure. `info` is its own
+ * blue and does not follow the accent, so a person's accent preset never
+ * turns a status into another status. The accent is never a status hue by
+ * default: a red accent would say "failed" wherever it said "chosen".
  * Waiting on a person is always `warn`, never the accent or an agent's hue.
  *
  * Theme: data-theme="light|dark" on any ancestor, else the OS preference.
@@ -63,46 +67,54 @@
   --aui-chrome-saturate: 160%;
   --aui-chrome-sheen: 55%;
   --aui-chrome-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 16px 40px -20px oklch(0 0 0 / 0.22);
-  --aui-accent-h: 27;
+  /* The brand's hue. The accent takes it, and the neutral ramp carries a trace of it. */
+  --aui-brand-h: 262;
+  --aui-accent-h: var(--aui-brand-h);
+  --aui-tint-h: var(--aui-brand-h);
   --aui-accent-shift: 0;
   --aui-mode-accent-l: 0.5;
-  --aui-mode-accent-c: 0.17;
+  --aui-mode-accent-c: 0.2;
   --aui-mode-accent-fg: oklch(1 0 0);
 
   --aui-bg: oklch(1 0 0);
-  --aui-surface: oklch(0.99 0 0);
-  --aui-fg: oklch(0.07 0 0);
-  --aui-muted: oklch(0.35 0 0);
-  --aui-subtle: oklch(0.93 0 0);
-  --aui-border: oklch(0.93 0 0);
-  --aui-code-bg: oklch(0.96 0 0);
-  --aui-primary: oklch(0.17 0 0);
-  --aui-primary-fg: oklch(1 0 0);
-  --aui-ring: oklch(0.55 0 0);
+  --aui-surface: oklch(0.99 0.002 var(--aui-tint-h));
+  --aui-fg: oklch(0.17 0.012 var(--aui-tint-h));
+  --aui-muted: oklch(0.46 0.012 var(--aui-tint-h));
+  --aui-subtle: oklch(0.945 0.004 var(--aui-tint-h));
+  --aui-border: oklch(0.92 0.004 var(--aui-tint-h));
+  /* A control's edge: a step firmer than a rule, so a field reads as a field. */
+  --aui-input: oklch(0.87 0.008 var(--aui-tint-h));
+  --aui-code-bg: oklch(0.965 0.003 var(--aui-tint-h));
+  --aui-ring: oklch(0.55 0.01 var(--aui-tint-h));
 
   --aui-ok: oklch(0.5 0.13 152);
   --aui-warn: oklch(0.5 0.11 88);
   --aui-bad: oklch(0.5 0.18 27);
-  --aui-neutral: oklch(0.55 0 0);
+  --aui-info-l: 0.5;
+  --aui-neutral: oklch(0.55 0.01 var(--aui-tint-h));
   --aui-bad-fg: oklch(1 0 0);
 
   /* Elevation and states, from the same neutral ramp. */
-  --aui-hover: oklch(0.07 0 0 / 4%);
+  --aui-hover: oklch(0.17 0.012 var(--aui-tint-h) / 5%);
   --aui-pop: oklch(1 0 0);
-  --aui-shadow-sm: 0 1px 2px 0 oklch(0.07 0 0 / 0.05);
-  --aui-shadow-md: 0 1px 3px 0 oklch(0.07 0 0 / 0.05), 0 4px 12px -2px oklch(0.07 0 0 / 0.08);
-  --aui-shadow-pop: 0 1px 3px 0 oklch(0.07 0 0 / 0.06), 0 12px 32px -4px oklch(0.07 0 0 / 0.14);
+  --aui-shadow-sm: 0 1px 2px 0 oklch(0.17 0.012 var(--aui-tint-h) / 0.05);
+  --aui-shadow-md:
+    0 1px 3px 0 oklch(0.17 0.012 var(--aui-tint-h) / 0.05),
+    0 4px 12px -2px oklch(0.17 0.012 var(--aui-tint-h) / 0.08);
+  --aui-shadow-pop:
+    0 1px 3px 0 oklch(0.17 0.012 var(--aui-tint-h) / 0.06),
+    0 12px 32px -4px oklch(0.17 0.012 var(--aui-tint-h) / 0.14);
 
   /* Terminal stays dark in both themes: it reads as a terminal, not page content. */
-  --aui-term-bg: oklch(0.17 0 0);
+  --aui-term-bg: oklch(0.17 0.006 var(--aui-tint-h));
   --aui-term-fg: oklch(0.93 0 0);
   --aui-term-muted: oklch(0.7 0 0);
   --aui-term-border: oklch(1 0 0 / 10%);
 
   /* Floating layers (popovers, the jump pill): translucent glass. */
   --aui-glass-bg: oklch(1 0 0 / 94%);
-  --aui-glass-border: oklch(0.07 0 0 / 8%);
-  --aui-glass-shadow: 0 8px 32px oklch(0.07 0 0 / 0.08);
+  --aui-glass-border: oklch(0.17 0.012 var(--aui-tint-h) / 8%);
+  --aui-glass-shadow: 0 8px 32px oklch(0.17 0.012 var(--aui-tint-h) / 0.08);
   --aui-glass-blur: 16px;
   --aui-scrollbar-thumb: oklch(0.7 0 0 / 25%);
 
@@ -112,66 +124,66 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --aui-mode-accent-l: 0.72;
-    --aui-mode-accent-c: 0.16;
-    --aui-mode-accent-fg: oklch(0.07 0 0);
-    --aui-bg: oklch(0.18 0 0);
-    --aui-surface: oklch(0.23 0 0);
-    --aui-fg: oklch(1 0 0);
-    --aui-muted: oklch(0.82 0 0);
-    --aui-subtle: oklch(0.25 0 0);
+    --aui-mode-accent-c: 0.14;
+    --aui-mode-accent-fg: oklch(0.15 0.012 var(--aui-tint-h));
+    --aui-bg: oklch(0.18 0.006 var(--aui-tint-h));
+    --aui-surface: oklch(0.23 0.006 var(--aui-tint-h));
+    --aui-fg: oklch(0.97 0.003 var(--aui-tint-h));
+    --aui-muted: oklch(0.74 0.01 var(--aui-tint-h));
+    --aui-subtle: oklch(0.25 0.006 var(--aui-tint-h));
     --aui-border: oklch(1 0 0 / 10%);
-    --aui-code-bg: oklch(0.22 0 0);
-    --aui-primary: oklch(0.9 0 0);
-    --aui-primary-fg: oklch(0.07 0 0);
-    --aui-ring: oklch(0.6 0 0);
+    --aui-input: oklch(1 0 0 / 16%);
+    --aui-code-bg: oklch(0.22 0.006 var(--aui-tint-h));
+    --aui-ring: oklch(0.6 0.01 var(--aui-tint-h));
     --aui-ok: oklch(0.74 0.14 152);
     --aui-warn: oklch(0.8 0.14 88);
     --aui-bad: oklch(0.72 0.16 27);
-    --aui-hover: oklch(0.28 0 0);
-    --aui-pop: oklch(0.2 0 0);
+    --aui-info-l: 0.72;
+    --aui-hover: oklch(0.28 0.006 var(--aui-tint-h));
+    --aui-pop: oklch(0.2 0.006 var(--aui-tint-h));
     --aui-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
     --aui-shadow-md: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 4px 12px -2px oklch(0 0 0 / 0.35);
     --aui-shadow-pop: 0 1px 3px 0 oklch(0 0 0 / 0.4), 0 12px 32px -4px oklch(0 0 0 / 0.5);
-    --aui-term-bg: oklch(0.12 0 0);
-    --aui-bad-fg: oklch(0.12 0 0);
-    --aui-glass-bg: oklch(0.2 0 0 / 94%);
+    --aui-term-bg: oklch(0.12 0.006 var(--aui-tint-h));
+    --aui-bad-fg: oklch(0.15 0.012 var(--aui-tint-h));
+    --aui-glass-bg: oklch(0.2 0.006 var(--aui-tint-h) / 94%);
     --aui-glass-border: oklch(1 0 0 / 8%);
     --aui-glass-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
     --aui-chrome-sheen: 6%;
-    --aui-scrollbar-thumb: oklch(0.4 0 0 / 50%);
+    --aui-scrollbar-thumb: oklch(0.4 0.006 var(--aui-tint-h) / 50%);
     color-scheme: dark;
   }
 }
 
 [data-theme="dark"] {
   --aui-mode-accent-l: 0.72;
-  --aui-mode-accent-c: 0.16;
-  --aui-mode-accent-fg: oklch(0.07 0 0);
-  --aui-bg: oklch(0.18 0 0);
-  --aui-surface: oklch(0.23 0 0);
-  --aui-fg: oklch(1 0 0);
-  --aui-muted: oklch(0.82 0 0);
-  --aui-subtle: oklch(0.25 0 0);
+  --aui-mode-accent-c: 0.14;
+  --aui-mode-accent-fg: oklch(0.15 0.012 var(--aui-tint-h));
+  --aui-bg: oklch(0.18 0.006 var(--aui-tint-h));
+  --aui-surface: oklch(0.23 0.006 var(--aui-tint-h));
+  --aui-fg: oklch(0.97 0.003 var(--aui-tint-h));
+  --aui-muted: oklch(0.74 0.01 var(--aui-tint-h));
+  --aui-subtle: oklch(0.25 0.006 var(--aui-tint-h));
   --aui-border: oklch(1 0 0 / 10%);
-  --aui-code-bg: oklch(0.22 0 0);
-  --aui-primary: oklch(0.9 0 0);
-  --aui-primary-fg: oklch(0.07 0 0);
-  --aui-ring: oklch(0.6 0 0);
+  --aui-input: oklch(1 0 0 / 16%);
+  --aui-code-bg: oklch(0.22 0.006 var(--aui-tint-h));
+  --aui-ring: oklch(0.6 0.01 var(--aui-tint-h));
   --aui-ok: oklch(0.74 0.14 152);
   --aui-warn: oklch(0.8 0.14 88);
   --aui-bad: oklch(0.72 0.16 27);
-  --aui-hover: oklch(0.28 0 0);
-  --aui-pop: oklch(0.2 0 0);
+  --aui-info-l: 0.72;
+  --aui-hover: oklch(0.28 0.006 var(--aui-tint-h));
+  --aui-pop: oklch(0.2 0.006 var(--aui-tint-h));
   --aui-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
   --aui-shadow-md: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 4px 12px -2px oklch(0 0 0 / 0.35);
   --aui-shadow-pop: 0 1px 3px 0 oklch(0 0 0 / 0.4), 0 12px 32px -4px oklch(0 0 0 / 0.5);
-  --aui-term-bg: oklch(0.12 0 0);
-  --aui-bad-fg: oklch(0.12 0 0);
-  --aui-glass-bg: oklch(0.2 0 0 / 94%);
+  --aui-term-bg: oklch(0.12 0.006 var(--aui-tint-h));
+  --aui-bad-fg: oklch(0.15 0.012 var(--aui-tint-h));
+  --aui-glass-bg: oklch(0.2 0.006 var(--aui-tint-h) / 94%);
   --aui-glass-border: oklch(1 0 0 / 8%);
   --aui-glass-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
   --aui-chrome-sheen: 6%;
-  --aui-scrollbar-thumb: oklch(0.4 0 0 / 50%);
+  --aui-scrollbar-thumb: oklch(0.4 0.006 var(--aui-tint-h) / 50%);
   color-scheme: dark;
 }
 [data-theme="light"] {
@@ -187,6 +199,7 @@
 }
 [data-accent="red"] {
   --aui-accent-h: 27;
+  --aui-accent-c: 0.17;
 }
 [data-accent="green"] {
   --aui-accent-h: 152;
@@ -196,7 +209,7 @@
   --aui-accent-h: 305;
 }
 [data-accent="blue"] {
-  --aui-accent-h: 255;
+  --aui-accent-h: var(--aui-brand-h);
 }
 [data-accent="teal"] {
   --aui-accent-h: 185;
@@ -226,7 +239,11 @@
     var(--aui-accent-l) var(--aui-accent-c) calc(var(--aui-accent-h) + var(--aui-accent-shift)) /
       14%
   );
-  --aui-info: var(--aui-accent);
+  /* Running, merged, a note: one blue, whatever accent a person chose. */
+  --aui-info: oklch(var(--aui-info-l) 0.17 var(--aui-brand-h));
+  /* The primary action is the accent's. */
+  --aui-primary: var(--aui-accent);
+  --aui-primary-fg: var(--aui-accent-fg);
   --aui-brand-red: oklch(var(--aui-mode-accent-l) 0.16 27);
   --aui-brand-yellow: oklch(var(--aui-mode-accent-l) 0.12 88);
   --aui-brand-green: oklch(var(--aui-mode-accent-l) 0.13 152);
@@ -252,7 +269,7 @@
   --accent-foreground: var(--aui-fg);
   --destructive: var(--aui-bad);
   --border: var(--aui-border);
-  --input: var(--aui-border);
+  --input: var(--aui-input);
   --ring: var(--aui-accent);
   --radius: 0.6rem;
 }
