@@ -3239,7 +3239,7 @@ key. A settings write keeps them as they are; they change through
   prompts?: PromptLayers;
 }
 
-/** The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, red when its branding sets none. */
+/** The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, cobalt blue when its branding sets none. */
 export type Accent = "workspace" | "red" | "yellow" | "green" | "purple" | "blue" | "teal";
 
 export type Theme = "system" | "light" | "dark";

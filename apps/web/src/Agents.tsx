@@ -157,25 +157,34 @@ export function Agents({
         <p className="text-aui-sm text-aui-muted">{`No agent matches “${query.trim()}”.`}</p>
       ) : (
         // One table, so agents compare at a glance: health, model and the day's numbers line up.
-        <div className="-mx-1 overflow-x-auto">
+        // Its rows are DataTable's: a rule under each, a fill while the pointer is on it.
+        <div className="overflow-x-auto">
           <table className="w-full min-w-[48rem] table-fixed border-collapse text-left text-aui-sm">
             <thead>
-              <tr className="border-aui-border border-b text-aui-2xs text-aui-muted">
-                <th scope="col" className="px-1 py-2 font-normal">
+              <tr className="h-9 border-aui-border border-b text-aui-muted text-aui-xs">
+                <th scope="col" className="py-2 pr-3 pl-2 font-normal">
                   Agent
                 </th>
                 {operational && (
-                  <th scope="col" className="w-32 px-2 py-2 font-normal">
+                  <th scope="col" className="w-32 px-3 py-2 font-normal">
                     Health
                   </th>
                 )}
                 {[words.working, words.waiting].map((label) => (
-                  <th key={label} scope="col" className="w-20 px-2 py-2 text-right font-normal">
+                  <th
+                    key={label}
+                    scope="col"
+                    className="w-[5.5rem] whitespace-nowrap px-3 py-2 text-right font-normal last:pr-2"
+                  >
                     {label}
                   </th>
                 ))}
                 {[words.runs, words.success, words.median].map((label) => (
-                  <th key={label} scope="col" className="w-20 px-2 py-2 text-right font-normal">
+                  <th
+                    key={label}
+                    scope="col"
+                    className="w-[5.5rem] whitespace-nowrap px-3 py-2 text-right font-normal last:pr-2"
+                  >
                     {label}
                   </th>
                 ))}
@@ -209,9 +218,9 @@ export function Agents({
                   <tr
                     key={name}
                     onClick={() => onOpen(name)}
-                    className="humagen-enter cursor-pointer border-aui-border border-b align-middle transition-colors hover:bg-aui-hover"
+                    className="humagen-enter cursor-pointer border-aui-border border-b align-middle transition-colors last:border-0 hover:bg-aui-hover"
                   >
-                    <td className="px-1 py-3">
+                    <td className="py-3 pr-3 pl-2">
                       <div className="flex min-w-0 items-center gap-3">
                         <AgentMark name={name} size={28} />
                         <div className="min-w-0 flex-1">
@@ -242,7 +251,7 @@ export function Agents({
                       </div>
                     </td>
                     {operational && (
-                      <td className="whitespace-nowrap px-2 py-3">
+                      <td className="whitespace-nowrap px-3 py-3">
                         {h && (h.samples > 0 || h.status === "needs_review") && (
                           <Pill tone={h.status === "needs_review" ? "warn" : "ok"}>
                             {healthLabel(h.status)}
@@ -259,7 +268,7 @@ export function Agents({
                     ).map(([status, count]) => (
                       <td
                         key={status}
-                        className="whitespace-nowrap px-2 py-3 text-right tabular-nums"
+                        className="whitespace-nowrap px-3 py-3 text-right tabular-nums"
                       >
                         {count > 0 ? (
                           <a
@@ -277,7 +286,7 @@ export function Agents({
                     {figures.map((value, i) => (
                       <td
                         key={[words.runs, words.success, words.median][i]}
-                        className={`whitespace-nowrap px-2 py-3 text-right tabular-nums ${value === "–" ? "text-aui-muted" : "text-aui-fg"}`}
+                        className={`whitespace-nowrap px-3 py-3 text-right tabular-nums last:pr-2 ${value === "–" ? "text-aui-muted" : "text-aui-fg"}`}
                       >
                         {value}
                       </td>

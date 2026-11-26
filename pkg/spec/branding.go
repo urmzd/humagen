@@ -249,8 +249,8 @@ func Contrast(a, b Color) float64 {
 // The console's own surface and text, as near as hex comes, which a palette
 // that sets only one of them is checked against.
 var (
-	DefaultSurface = Pair{Light: "#ffffff", Dark: "#121212"}
-	DefaultText    = Pair{Light: "#010101", Dark: "#ffffff"}
+	DefaultSurface = Pair{Light: "#ffffff", Dark: "#101214"}
+	DefaultText    = Pair{Light: "#0d0f15", Dark: "#f4f5f7"}
 )
 
 // The least contrast a palette may have: text on its surface (WCAG AA for

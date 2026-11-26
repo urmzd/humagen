@@ -2,7 +2,7 @@
 
 /*
  * Humagen's own look, as withhumagen.com wears it: the console tokens in
- * packages/render-web/src/theme.css (neutral black and white, a red accent)
+ * packages/render-web/src/theme.css (a neutral ramp with a trace of the brand's blue, a cobalt accent)
  * and the type in fonts.css. Zensical sets 1rem to 20px, so sizes here are
  * the site's pixel sizes divided by 20.
  */
@@ -10,15 +10,15 @@ body[data-md-color-scheme][data-md-color-primary] {
   --md-text-font: "IBM Plex Sans Variable";
   --md-code-font: "IBM Plex Mono";
   --guide-bg: oklch(1 0 0);
-  --guide-surface: oklch(0.99 0 0);
-  --guide-fg: oklch(0.07 0 0);
-  --guide-muted: oklch(0.35 0 0);
-  --guide-subtle: oklch(0.93 0 0);
-  --guide-border: oklch(0.93 0 0);
-  --guide-code-bg: oklch(0.96 0 0);
-  --guide-hover: oklch(0.07 0 0 / 4%);
-  --guide-accent: oklch(0.5 0.17 27);
-  --guide-accent-soft: oklch(0.5 0.17 27 / 14%);
+  --guide-surface: oklch(0.99 0.002 262);
+  --guide-fg: oklch(0.17 0.012 262);
+  --guide-muted: oklch(0.46 0.012 262);
+  --guide-subtle: oklch(0.945 0.004 262);
+  --guide-border: oklch(0.92 0.004 262);
+  --guide-code-bg: oklch(0.965 0.003 262);
+  --guide-hover: oklch(0.17 0.012 262 / 5%);
+  --guide-accent: oklch(0.5 0.2 262);
+  --guide-accent-soft: oklch(0.5 0.2 262 / 14%);
   --md-default-bg-color: var(--guide-bg);
   --md-default-bg-color--light: color-mix(in oklab, var(--guide-bg) 74%, transparent);
   --md-default-fg-color: var(--guide-fg);
@@ -49,16 +49,16 @@ body[data-md-color-scheme="default"][data-md-color-primary] {
 }
 
 body[data-md-color-scheme="slate"][data-md-color-primary] {
-  --guide-bg: oklch(0.18 0 0);
-  --guide-surface: oklch(0.23 0 0);
-  --guide-fg: oklch(1 0 0);
-  --guide-muted: oklch(0.82 0 0);
-  --guide-subtle: oklch(0.25 0 0);
+  --guide-bg: oklch(0.18 0.006 262);
+  --guide-surface: oklch(0.23 0.006 262);
+  --guide-fg: oklch(0.97 0.003 262);
+  --guide-muted: oklch(0.74 0.01 262);
+  --guide-subtle: oklch(0.25 0.006 262);
   --guide-border: oklch(1 0 0 / 10%);
-  --guide-code-bg: oklch(0.22 0 0);
-  --guide-hover: oklch(0.28 0 0);
-  --guide-accent: oklch(0.72 0.16 27);
-  --guide-accent-soft: oklch(0.72 0.16 27 / 14%);
+  --guide-code-bg: oklch(0.22 0.006 262);
+  --guide-hover: oklch(0.28 0.006 262);
+  --guide-accent: oklch(0.72 0.14 262);
+  --guide-accent-soft: oklch(0.72 0.14 262 / 14%);
 }
 
 body {

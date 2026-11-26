@@ -122,7 +122,7 @@ export function applyCopy(target: object, overrides: Record<string, string>): vo
 
 /**
  * The data-accent a person's accent choice is drawn with. workspace, and no
- * choice yet, is the workspace's branded accent, which is red without one.
+ * choice yet, is the workspace's branded accent, which is cobalt blue without one.
  */
 export function accentAttribute(accent?: string): string {
   return !accent || accent === "workspace" ? "brand" : accent;

@@ -45,7 +45,7 @@ export function HomePage({
     >
       <div className="flex w-full min-w-0 flex-1 flex-col md:block md:flex-none">
         {banner && <AnnouncementBanner announcement={banner} />}
-        <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg max-md:mt-[clamp(1rem,16dvh,9rem)]">
+        <h1 className="humagen-display px-6 pb-6 text-center text-aui-3xl font-semibold text-aui-fg max-md:mt-[clamp(1rem,16dvh,9rem)]">
           {greeting}
         </h1>
         {!canRun ? (

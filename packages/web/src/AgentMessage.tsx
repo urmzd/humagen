@@ -274,7 +274,7 @@ function CallAsk({ task, copy }: { task: Task; copy: Copy }) {
 /** Who speaks next, where other agents spoke in between: the agent's mark and name, as on its first words. */
 function Speaker({ agent }: { agent: Turn["agent"] }) {
   return (
-    <p data-aui="speaker" className="flex min-h-7 min-w-0 items-center gap-x-2 text-aui-sm">
+    <p data-aui="speaker" className="flex min-h-7 min-w-0 items-center gap-x-3 text-aui-sm">
       <AgentAvatar agent={agent} />
       <span className="max-w-full break-words font-semibold text-aui-fg">
         {useContext(AgentNameContext)(agent.name)}
@@ -893,7 +893,7 @@ export function AgentMessage({
     >
       <div className="flex min-w-0 flex-col gap-2">
         {!embedded && (
-          <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
+          <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-aui-sm">
             <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
               <AgentAvatar agent={turn.agent} state={orb} />
             </StoppableMark>

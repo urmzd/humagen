@@ -732,7 +732,7 @@ export function Composer({
           e.preventDefault();
           send(false);
         }}
-        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-1.5 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
+        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-1.5 transition-colors focus-within:border-aui-accent motion-reduce:transition-none"
       >
         {mic && (
           <LazyFrame fallback={null} instead={null} resetKey={lit}>
@@ -1084,7 +1084,7 @@ export function Composer({
               disabled={!ready || held}
               aria-label="Send message"
               title={defaultCopy.dock.sendHint(mac)}
-              className={`${tool} humagen-composer-send text-aui-fg disabled:text-aui-muted`}
+              className={`${tool} humagen-composer-send text-aui-accent disabled:text-aui-muted`}
             >
               <Glyph d={RETURN} />
             </button>

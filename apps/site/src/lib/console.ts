@@ -49,7 +49,7 @@ export function mark(size = 23): string {
 
 export { agentInitials };
 
-/** The console's primary action, in the accent (red by default). */
+/** The console's primary action, in the accent (cobalt blue by default). */
 export const primaryButton = cn(
   buttonVariants({ size: "lg" }),
   "site-btn bg-aui-accent text-aui-accent-fg hover:bg-aui-accent/90",
