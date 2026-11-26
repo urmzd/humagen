@@ -254,6 +254,12 @@ export function adapter(
     /** An agent's colour, 0 to 360, so a call to it reads as that agent. */
     hue?: (agent: string) => number;
     /**
+     * Say on a step how much of its call the model has written so far. A
+     * surface that redraws a step cheaply sets it; one that pays for every
+     * update (a Slack message) leaves it off.
+     */
+    writing?: boolean;
+    /**
      * Where a platform path such as `/api/artifacts/a1/content` is reached from
      * this surface. The console is served by the platform, so it leaves paths
      * as they are. A surface elsewhere returns an absolute address, or
@@ -413,9 +419,17 @@ export function adapter(
         if (!t?.id) return [];
         tools.set(t.id, t.name ?? "tool");
         if (t.phase === "executing" && Number.isFinite(Date.parse(e.time))) toolStarted.set(t.id, Date.parse(e.time));
+        // While the model writes the call, the event says how much it has
+        // written; once the call runs, its arguments are whole.
+        const written =
+          t.phase === "requested"
+            ? opts.writing && typeof t.arguments_bytes === "number" && t.arguments_bytes > 0
+              ? { writtenBytes: t.arguments_bytes }
+              : {}
+            : { writtenBytes: undefined };
         const out: TurnEvent[] = [
           { type: "activity", activity: doing(t.name) },
-          { type: "task.upserted", task: task(t.id, t.name, { ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(toolStarted.has(t.id) ? { startedAt: new Date(toolStarted.get(t.id) as number).toISOString() } : {}) }) },
+          { type: "task.upserted", task: task(t.id, t.name, { ...written, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(toolStarted.has(t.id) ? { startedAt: new Date(toolStarted.get(t.id) as number).toISOString() } : {}) }) },
         ];
         if (t.name && (delegateOf(t.name) || CALL_AGENTS.has(t.name))) {
           const pending = calling.get(t.name) ?? [];
@@ -442,7 +456,7 @@ export function adapter(
         return [
           ...unpublished,
           { type: "activity", activity: "thinking" },
-          { type: "task.upserted", task: task(t.id, name, { status: t.error || FAILED_RESULT.test(t.result ?? "") ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
+          { type: "task.upserted", task: task(t.id, name, { writtenBytes: undefined, status: t.error || FAILED_RESULT.test(t.result ?? "") ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
         ];
       }
       case "run.action.taken.v1": {

@@ -186,6 +186,24 @@ test("a published file is one card that goes from generating to ready", () => {
   });
 });
 
+test("a step says how much of its call the model has written, until the call runs", () => {
+  const stepOf = (events: ReturnType<ReturnType<typeof adapter>>) => {
+    const upsert = events.find((e) => e.type === "task.upserted");
+    return upsert?.type === "task.upserted" ? upsert.task : undefined;
+  };
+  const to = adapter({ writing: true });
+  assert.equal(stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested" }, 1)))?.writtenBytes, undefined);
+  assert.equal(stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 1024 }, 2)))?.writtenBytes, 1024);
+  assert.equal(stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 3072 }, 3)))?.writtenBytes, 3072);
+  // The call runs: its arguments are whole, and their size is no longer progress.
+  const running = stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "executing", arguments_bytes: 9000 }, 4)));
+  assert.equal(running?.writtenBytes, undefined);
+  assert.equal(stepOf(to(ev("run.delta.tool.done.v1", { id: "t1", name: "file_write", result: "ok" }, 5)))?.writtenBytes, undefined);
+  // A surface that did not ask for it, such as a Slack message, is told nothing more.
+  const quiet = adapter();
+  assert.equal(stepOf(quiet(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 2048 }, 1)))?.writtenBytes, undefined);
+});
+
 test("a publish that is refused shows a failed file with the reason", () => {
   const to = adapter();
   to(ev("run.delta.tool.call.v1", { id: "t1", name: "publish_artifact" }));

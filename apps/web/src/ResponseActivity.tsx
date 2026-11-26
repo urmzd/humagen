@@ -27,7 +27,7 @@ import type { Run } from "./adapter.ts";
 import { api, call } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import { useCallFiles } from "./callFiles.ts";
-import { useCallLive } from "./callLive.ts";
+import { useCallLive, writingIn } from "./callLive.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
@@ -613,7 +613,10 @@ function Lane({
         b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
     );
     // A step that waits on a person is drawn once, below, with its controls.
-    const recorded = turnOfCall(tool, (step) => asks.includes(step));
+    const recorded = writingIn(
+      turnOfCall(tool, (step) => asks.includes(step)),
+      live,
+    );
     const published = files ?? live?.attachments;
     const turn: Turn = {
       ...recorded,

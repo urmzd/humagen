@@ -42,7 +42,7 @@ export function useCallLive(
     let last = -1;
     let read = false;
     const waiting: RunEvent[] = [];
-    const to = adapter({ hue: hueOf });
+    const to = adapter({ hue: hueOf, writing: true });
     const take = (event: RunEvent) => {
       // An event that does not say its place cannot be told from a repeat, and is taken.
       if (event.seq !== undefined) {
@@ -79,4 +79,24 @@ export function useCallLive(
     };
   }, [run, agent, running, session, load, follow]);
   return turn;
+}
+
+const working = (t: Turn["tasks"][number]) => t.status === "in_progress" || t.status === "pending";
+
+/**
+ * A call's recorded turn with how much its agent has written of the call it
+ * is making now. The record names each step but not how far a call still
+ * being written has got, which only the run's own events say. The two name a
+ * call differently, so the step is found as the last one at work, when both
+ * say it is the same tool.
+ */
+export function writingIn(recorded: Turn, live: Turn | undefined): Turn {
+  const now = live?.tasks.findLast(working);
+  if (!now?.writtenBytes) return recorded;
+  const at = recorded.tasks.findLastIndex(working);
+  const step = recorded.tasks[at];
+  if (!step || step.tool !== now.tool) return recorded;
+  const tasks = [...recorded.tasks];
+  tasks[at] = { ...step, writtenBytes: now.writtenBytes };
+  return { ...recorded, tasks };
 }

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import type { ResponseTool } from "@humagen/core";
+import { emptyTurn, type ResponseTool, type Task } from "@humagen/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { RunEvent } from "./adapter.ts";
-import { type FollowRuns, useCallLive } from "./callLive.ts";
+import { type FollowRuns, useCallLive, writingIn } from "./callLive.ts";
 
 afterEach(cleanup);
 
@@ -102,4 +102,39 @@ test("a call outside a session, or one that is not running, follows nothing", ()
   const ended = renderHook(() => useCallLive(call("done"), "s_1", load, s.follow));
   assert.equal(ended.result.current, undefined);
   assert.equal(s.open(), 0);
+});
+
+test("a called agent's step says how much it has written of the call it is making now", () => {
+  const step = (id: string, tool: string, more: Partial<Task> = {}): Task => ({
+    id,
+    title: tool,
+    tool,
+    status: "in_progress",
+    ...more,
+  });
+  const turn = (tasks: Task[]) => ({ ...emptyTurn("r", { name: "writer" }), tasks });
+  const recorded = turn([
+    step("htu_1", "file_read", { status: "complete" }),
+    step("htu_2", "file_write"),
+  ]);
+  const live = turn([
+    step("t1", "file_read", { status: "complete" }),
+    step("t2", "file_write", { writtenBytes: 4096 }),
+  ]);
+  assert.deepEqual(
+    writingIn(recorded, live).tasks.map((t) => t.writtenBytes),
+    [undefined, 4096],
+  );
+  // The record is not changed, and nothing is said when the two do not agree on the step.
+  assert.equal(recorded.tasks[1]?.writtenBytes, undefined);
+  assert.equal(writingIn(recorded, undefined), recorded);
+  assert.equal(
+    writingIn(recorded, turn([step("t2", "publish_artifact", { writtenBytes: 9 })])),
+    recorded,
+  );
+  assert.equal(
+    writingIn(turn([step("htu_2", "file_write", { status: "complete" })]), live).tasks[0]
+      ?.writtenBytes,
+    undefined,
+  );
 });
