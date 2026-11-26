@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { allTools, answerOf, foldAll, type Turn } from "@humagen/core";
+import { allTools, answerOf, foldAll, type ResponseTool, type Turn } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, CallThreadContext } from "@humagen/web";
@@ -803,6 +803,95 @@ test("a called agent is a message of its own in the answer: full size, with its 
     assert.ok(detail.container.querySelector(`a[title="${words.focus(name)}"]`));
     assert.ok(detail.container.querySelector("summary svg"));
     assert.equal(detail.container.querySelector("article"), null);
+  } finally {
+    net.restore();
+  }
+});
+
+test("a called agent's message shows the file it published, read from its own run's events", async () => {
+  const published = hex("9");
+  const call = {
+    type: "tool",
+    id: "c1",
+    name: "call_agent",
+    kind: "agent",
+    agent: "writer",
+    runId: published,
+    title: "Write the guide",
+    input: {},
+    depth: 1,
+    status: "done",
+    content: [
+      {
+        type: "tool",
+        id: "t1",
+        name: "publish_artifact",
+        kind: "tool",
+        input: { path: "intro.docx" },
+        depth: 2,
+        status: "done",
+        result: { text: "Published", sources: [], isError: false },
+        content: [],
+      },
+      { type: "text", text: "I published the guide.", citations: [] },
+    ],
+  } as ResponseTool;
+  const event = (seq: number, type: string, data: unknown = {}) => ({
+    id: `e${seq}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time: at(seq),
+    hops: 0,
+    tenant: "acme",
+    run: published,
+    seq,
+    agent: "writer",
+    version: "1.0.0",
+    data,
+  });
+  const net = stubFetch({
+    [`GET /api/runs/${published}/feedback`]: () => ({ feedback: [] }),
+    [`GET /api/runs/${published}/events`]: () => ({
+      complete: true,
+      events: [
+        event(1, "run.accepted.v1"),
+        event(2, "run.started.v1"),
+        event(3, "run.delta.tool.call.v1", { id: "t1", name: "publish_artifact" }),
+        event(4, "run.action.taken.v1", {
+          name: "publish_artifact",
+          data: {
+            id: "art-7",
+            title: "Introduction to Chinese.docx",
+            kind: "document",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size: 2819,
+            version: 1,
+          },
+        }),
+        event(5, "run.delta.text.v1", { text: "I published the guide." }),
+        event(6, "run.completed.v1", { text: "I published the guide." }),
+      ],
+    }),
+  });
+  try {
+    const { container } = render(
+      <WebSurface>
+        <CallThreadContext.Provider value={null}>
+          {callThreadsOf({ ...foldAll([]), content: [call] })({
+            id: "c1",
+            subagent: { runId: published },
+          } as Parameters<ReturnType<typeof callThreadsOf>>[0])}
+        </CallThreadContext.Provider>
+      </WebSurface>,
+    );
+    const message = within(container).getByRole("article", { name: "writer message" });
+    // The card is the file's, with the link that opens it.
+    await waitFor(() =>
+      assert.ok((message.textContent ?? "").includes("Introduction to Chinese.docx")),
+    );
+    assert.ok(message.querySelector('a[href*="/api/artifacts/art-7/content"]'));
+    assert.ok(net.seen.some((s) => s.path === `/api/runs/${published}/events`));
   } finally {
     net.restore();
   }

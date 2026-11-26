@@ -26,6 +26,7 @@ import {
 import type { Run } from "./adapter.ts";
 import { api, call } from "./api.ts";
 import { agentShown } from "./branding.ts";
+import { useCallFiles } from "./callFiles.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
@@ -468,6 +469,8 @@ function Lane({
   // A call that does not wait is delegated: the agent carries on by itself
   // and answers later, not back into its caller's turn.
   const delegated = tool?.input.background === true;
+  // The files it published, which its call's record does not keep.
+  const files = useCallFiles(inMessage ? tool : undefined);
   const urgent =
     focused ||
     pathTo(blocks, focus).length > 0 ||
@@ -605,7 +608,10 @@ function Lane({
         b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
     );
     // A step that waits on a person is drawn once, below, with its controls.
-    const turn = turnOfCall(tool, (step) => asks.includes(step));
+    const turn: Turn = {
+      ...turnOfCall(tool, (step) => asks.includes(step)),
+      ...(files ? { attachments: files } : {}),
+    };
     const run = tool.runId;
     const ended = shown === "error" || shown === "denied" || shown === "stopped";
     // What it was asked is said above it, as its caller's words. Beside its
