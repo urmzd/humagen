@@ -81,6 +81,8 @@ type Block = {
   block_id?: string;
   text?: { text?: string };
   title?: { text?: string };
+  body?: { text?: string };
+  child_blocks?: unknown[];
   elements?: unknown[];
 };
 
@@ -188,7 +190,9 @@ export function promptIn(blocks: readonly unknown[], question: string): string {
     const own = (
       native.inCarousel === undefined ? at : obj(at.elements?.[native.inCarousel])
     ) as Block;
-    return plainWords(own.title?.text ?? "");
+    // The title says only what kind of card it is: the call or the question leads its body.
+    const first = own.type === "container" ? (obj(own.child_blocks?.[0]) as Block) : null;
+    return plainWords(own.body?.text ?? first?.text?.text ?? "");
   }
   const at = buttonsOf(blocks, question);
   for (let i = at - 1; i >= 0; i--) {

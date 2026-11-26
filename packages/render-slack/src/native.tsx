@@ -80,6 +80,12 @@ export const NATIVE_LIMITS = {
   cardBody: 200,
   cardSubtext: 200,
   cardButtons: 3,
+  /**
+   * Characters of button labels a card shows on desktop without cutting one:
+   * measured in Block Kit Builder, where "Roll Back", "Ask a Question" and
+   * "Decline" (28) showed "Roll …". Slack documents no width.
+   */
+  cardButtonChars: 24,
   carouselCards: 10,
   containerTitle: 150,
   containerChildren: 10,
@@ -137,6 +143,8 @@ interface CardWords {
   buttons: ButtonProps[];
 }
 
+const labelChars = (buttons: ButtonProps[]) => buttons.reduce((n, b) => n + b.label.length, 0);
+
 /**
  * A card, or why it can't be one. A text over its limit is never clipped:
  * the shared drawing is posted instead, so no meaning is cut.
@@ -156,6 +164,12 @@ function card(w: CardWords, firstIndex = 0): { block: Block } | { refused: strin
   if (w.buttons.length > NATIVE_LIMITS.cardButtons) {
     return {
       refused: `card has ${w.buttons.length} buttons; a card holds ${NATIVE_LIMITS.cardButtons}`,
+    };
+  }
+  const chars = labelChars(w.buttons);
+  if (chars > NATIVE_LIMITS.cardButtonChars) {
+    return {
+      refused: `card buttons need ${chars} chars; a card shows ${NATIVE_LIMITS.cardButtonChars} uncut`,
     };
   }
   const block: Block = { type: "card", block_id: w.blockId.slice(0, LIMITS.blockId) };
@@ -221,11 +235,23 @@ function approvalWords(
   // judgement already shows: the record keeps only who and when.
   const noted = (reason?: string) =>
     reason && judgement?.reason && reason.endsWith(judgement.reason) ? undefined : reason;
+  // Slack shows a card's title on one line, so it says what kind of card this is;
+  // the call itself, which must be read whole, leads the body.
+  const titles = copy.slackBlocks.approvalTitle;
   const base = {
     blockId: `approval:${a.id}:r${a.revision ?? 0}`,
-    title: a.summary,
+    title:
+      decision.kind === "pending"
+        ? a.budget
+          ? titles.limit
+          : titles.pending
+        : decision.kind === "asked"
+          ? titles.asked
+          : decision.kind === "approved"
+            ? titles.approved
+            : titles.declined,
     ...(a.origin ? { subtitle: a.origin } : {}),
-    body: [what, judged].filter(Boolean).join("\n"),
+    body: [`**${a.summary}**`, what, judged].filter(Boolean).join("\n"),
     buttons: [] as ButtonProps[],
     more: [] as ButtonProps[],
   };
@@ -254,7 +280,8 @@ function approvalWords(
           : copy.cancelled;
     return {
       ...base,
-      body: [outcome, judged].filter(Boolean).join("\n"),
+      // Kept struck through, then the outcome, as the shared drawing has it.
+      body: [`~~${a.summary}~~ ${outcome}`, judged].filter(Boolean).join("\n"),
       ...(decision.kind === "denied"
         ? {
             subtext: withReason(
@@ -268,7 +295,12 @@ function approvalWords(
         : {}),
     };
   }
-  const ask: ButtonProps = { label: copy.askApproval, action: { id: ActionId.ask, payload } };
+  // Short on the card, so no label is cut; a screen reader says it in full.
+  const ask: ButtonProps = {
+    label: copy.slackBlocks.ask,
+    accessibilityLabel: `${copy.askApproval}: ${a.summary}`,
+    action: { id: ActionId.ask, payload },
+  };
   if (o.viewer !== undefined && !canDecide(a, o.viewer)) {
     return {
       ...base,
@@ -281,7 +313,7 @@ function approvalWords(
     : (a.approveLabel ?? copy.approve);
   const denyLabel = a.budget ? copy.budgetHold.stop : copy.declineAction;
   // The shared drawing's order: the way forward, then Ask, then Decline.
-  const choices: ButtonProps[] = [
+  const decide: ButtonProps[] = [
     {
       label: approveLabel,
       style: a.destructive ? "danger" : "primary",
@@ -290,14 +322,17 @@ function approvalWords(
       ...(a.budget ? {} : { accessibilityLabel: `${approveLabel}: ${a.summary}` }),
       ...(a.destructive ? { confirm: copy.confirmDestructive } : {}),
     },
-    ...(a.budget ? [] : [ask]),
     {
       label: denyLabel,
       action: { id: ActionId.deny, payload },
       ...(a.budget ? {} : { accessibilityLabel: `${denyLabel}: ${a.summary}` }),
     },
   ];
+  // Ask sits between them when the labels leave room for it, else in the row under the card.
+  const asks = !a.budget && labelChars([...decide, ask]) <= NATIVE_LIMITS.cardButtonChars;
+  const choices = asks ? [decide[0] as ButtonProps, ask, decide[1] as ButtonProps] : decide;
   const more: ButtonProps[] = [
+    ...(!a.budget && !asks ? [ask] : []),
     ...(a.editable && !a.actsForPerson
       ? [{ label: copy.edit, action: { id: ActionId.edit, payload } }]
       : []),
@@ -370,8 +405,7 @@ const SlackApprovalCard: Override<ApprovalCardProps> = ({ base: Base, ...props }
 
 /**
  * Several approvals at once: one line, a carousel of their cards, each
- * decided on its own card, then Approve All and a menu with the thread's
- * Auto mode and Cancel All. More than ten, or a card that cannot hold its
+ * decided on its own card, then a menu with the thread's Auto mode. More than ten, or a card that cannot hold its
  * words or its choices: the shared checkbox layout.
  */
 const SlackApprovalBatch: Override<ApprovalBatchProps> = ({ base: Base, ...props }) => {
@@ -387,7 +421,12 @@ const SlackApprovalBatch: Override<ApprovalBatchProps> = ({ base: Base, ...props
   let index = 0;
   for (const a of approvals) {
     // The thread's mode is offered once, under the carousel.
-    const words = approvalWords(a, { turnId, approval: a, copy });
+    const words = approvalWords(a, {
+      turnId,
+      approval: a,
+      copy,
+      ...(props.viewer !== undefined ? { viewer: props.viewer } : {}),
+    });
     if (words.more.length) return refuse(`${a.id} offers more choices than a card holds`);
     const made = card(words, index);
     if ("refused" in made) return refuse(`${a.id}: ${made.refused}`);
@@ -395,40 +434,25 @@ const SlackApprovalBatch: Override<ApprovalBatchProps> = ({ base: Base, ...props
     cards.push(made.block);
   }
   const name = `batch:${turnId}`;
-  const target = { turnId, target: name };
-  const pending = approvals.filter((a) => a.decision.kind === "pending").length;
+  const pending = approvals.some((a) => a.decision.kind === "pending");
   const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
-  const auto = props.offerAgent && !approvals.some((a) => a.budget);
+  const auto = props.offerAgent && pending && !approvals.some((a) => a.budget);
   const blocks: Block[] = [
     { type: "section", text: mrkdwn(`**${copy.batchTitle(approvals.length)}**`) },
     { type: "carousel", block_id: `${name}:cards`.slice(0, LIMITS.blockId), elements: cards },
   ];
+  // Each card decides its own call. Nothing under the carousel acts on all of
+  // them at once: the app has no handler for that yet.
   const more = (
     <>
-      {pending > 0 && (
+      {auto && (
         <Actions blockId={`${name}:actions`}>
-          {pending > 1 && (
-            <Button
-              label={copy.approveAll(pending)}
-              style="primary"
-              action={{ id: ActionId.approveAll, payload: target }}
-            />
-          )}
           <Menu
             label={copy.moreOptions}
             items={[
-              ...(auto
-                ? [
-                    {
-                      label: copy.approvals.letAgentDecide,
-                      action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
-                    },
-                  ]
-                : []),
               {
-                label: copy.denyAll,
-                action: { id: ActionId.denyAll, payload: target },
-                danger: true,
+                label: copy.approvals.letAgentDecide,
+                action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
               },
             ]}
           />
@@ -460,13 +484,21 @@ const SlackClarificationCard: Override<ClarificationCardProps> = ({ base: Base, 
   const { clarification, turnId } = props;
   const copy = props.copy ?? defaultCopy;
   const refuse = (why: string) => <Native warnings={[why]}>{shared}</Native>;
-  const title = plain(clarification.question);
-  if (title.text.length > NATIVE_LIMITS.containerTitle) {
-    return refuse(
-      `container title is ${title.text.length} chars; a container holds ${NATIVE_LIMITS.containerTitle}`,
-    );
-  }
   const { answer, options, judgement } = clarification;
+  // Slack shows a container's title on one line, so it says what kind of card
+  // this is; the question, which must be read whole, is its first block.
+  const open = answer.kind === "pending" && !clarification.forOthers;
+  const title = plain(copy.slackBlocks.questionTitle[open ? "open" : "settled"]);
+  const described = open ? options.filter((x) => x.description) : [];
+  const asked: Block = {
+    type: "section",
+    text: mrkdwn(
+      [
+        open ? `**${clarification.question}**` : clarification.question,
+        ...described.map((x) => `• **${x.label}**: ${x.description}`),
+      ].join("\n"),
+    ),
+  };
   const blockId = `clarification:${clarification.id}`.slice(0, LIMITS.blockId);
   const context = (line: string): Block => ({ type: "context", elements: [mrkdwn(line)] });
   const payload: ActionPayload = { turnId, target: clarification.id };
@@ -513,7 +545,6 @@ const SlackClarificationCard: Override<ClarificationCardProps> = ({ base: Base, 
   } else if (clarification.forOthers) {
     children = [context(clarification.forOthers)];
   } else {
-    const described = options.filter((x) => x.description);
     const textBlock = `${TEXT_BLOCK}${encodeAction(payload)}`;
     // Beside options, an answer of the reader's own is typed in place. The words
     // ride in the input's block_id; one too long for it asks with a button
@@ -537,14 +568,6 @@ const SlackClarificationCard: Override<ClarificationCardProps> = ({ base: Base, 
       return refuse(`${buttons.length} options; an actions block holds ${LIMITS.actionsElements}`);
     }
     children = [
-      ...(described.length
-        ? [
-            {
-              type: "section",
-              text: mrkdwn(described.map((x) => `• **${x.label}**: ${x.description}`).join("\n")),
-            },
-          ]
-        : []),
       ...judged,
       ...(buttons.length
         ? [
@@ -574,7 +597,9 @@ const SlackClarificationCard: Override<ClarificationCardProps> = ({ base: Base, 
     ];
   }
   return (
-    <Native blocks={[{ type: "container", block_id: blockId, title, child_blocks: children }]}>
+    <Native
+      blocks={[{ type: "container", block_id: blockId, title, child_blocks: [asked, ...children] }]}
+    >
       {shared}
     </Native>
   );
@@ -592,9 +617,9 @@ export function alertLevel(a: Pick<AlertInput, "priority" | "severity" | "state"
 const LEVEL_TONE = { success: "ok", error: "bad", warning: "warn", info: "info" } as const;
 
 /**
- * An open incident in a message as a card: the service and what is wrong as
- * its title, its status in words as its subtitle, what people notice as its
- * body, when it started as its subtext, then Acknowledge, Snooze and Open
+ * An open incident in a message as a card: the service and its state as its
+ * title, its status in words as its subtitle, what is wrong and what people
+ * notice as its body, when it started as its subtext, then Acknowledge, Snooze and Open
  * Rule. Resolved, its record is the subtext and the buttons are gone. One
  * whose service is back is the shared one-line record.
  */
@@ -610,7 +635,7 @@ const SlackSystemAlertPart: Override<SystemAlertPartProps> = ({ base: Base, ...p
     alert.updatedAt !== alert.startedAt ? copy.updated(timeToken(alert.updatedAt)) : null,
     alert.url ? `[${copy.statusPage}](${alert.url})` : null,
   ].filter((x): x is string => x !== null);
-  const buttons: ButtonProps[] = props.record
+  const all: ButtonProps[] = props.record
     ? []
     : [
         ...(props.acknowledge ? [{ label: copy.acknowledge, action: props.acknowledge }] : []),
@@ -620,16 +645,34 @@ const SlackSystemAlertPart: Override<SystemAlertPartProps> = ({ base: Base, ...p
   const body = [alert.body, alert.affects?.length ? copy.affects(alert.affects.join(", ")) : null]
     .filter(Boolean)
     .join(" ");
+  // The buttons whose labels fit uncut on the card, in order; the rest in a row under it.
+  const fits = all.findIndex(
+    (_, i) => labelChars(all.slice(0, i + 1)) > NATIVE_LIMITS.cardButtonChars,
+  );
+  const buttons = fits < 0 ? all : all.slice(0, fits);
+  const rest = fits < 0 ? [] : all.slice(fits);
+  // The title is one line: the service and its state. What is wrong leads the body.
   const made = card({
     blockId: props.blockId,
-    title: `${alert.service} ${status.toLowerCase()}: ${alert.title}`,
+    title: `${alert.service} ${status.toLowerCase()}`,
     subtitle: [emoji, status].filter(Boolean).join(" "),
-    ...(body ? { body } : {}),
+    body: [`**${alert.title}**`, body].filter(Boolean).join("\n"),
     subtext: props.record ?? meta.join(" | "),
     buttons,
   });
   if ("refused" in made) return <Native warnings={[made.refused]}>{shared}</Native>;
-  return <Native blocks={[made.block]}>{shared}</Native>;
+  const more = rest.length ? (
+    <Actions blockId={`${props.blockId}:more`}>
+      {rest.map((b) => (
+        <Button key={b.label} {...b} />
+      ))}
+    </Actions>
+  ) : null;
+  return (
+    <Native blocks={[made.block]} more={more}>
+      {shared}
+    </Native>
+  );
 };
 
 /** The shared components Slack draws as its own blocks, for `renderToSlack`. */

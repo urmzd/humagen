@@ -529,7 +529,12 @@ const approveOffer: Offered = {
 const askOffer: Offered = { id: ActionId.ask, label: defaultCopy.askApproval, name: undefined };
 const slackDecision: Offered[] = [
   approveOffer,
-  askOffer,
+  // Short on Slack's card, so no label there is cut; read aloud in full.
+  {
+    id: ActionId.ask,
+    label: defaultCopy.slackBlocks.ask,
+    name: decisionName(defaultCopy.askApproval),
+  },
   {
     id: ActionId.deny,
     label: defaultCopy.declineAction,

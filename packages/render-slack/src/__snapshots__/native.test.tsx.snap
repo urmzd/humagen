@@ -1,13 +1,14 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`a question as a container > has the question as its title, the options as buttons and an input for its own answer 1`] = `
+exports[`a question as a container > has a one-line title, the whole question first, the options as buttons and an input for its own answer 1`] = `
 [
   {
     "block_id": "clarification:q1",
     "child_blocks": [
       {
         "text": {
-          "text": "• *Check Production*: Where the alert fired
+          "text": "*Which environment should I check?*
+• *Check Production*: Where the alert fired
 • *Check Staging*: Same build, no customer traffic",
           "type": "mrkdwn",
         },
@@ -76,7 +77,7 @@ exports[`a question as a container > has the question as its title, the options 
     ],
     "title": {
       "emoji": true,
-      "text": "Which environment should I check?",
+      "text": "Input needed",
       "type": "plain_text",
     },
     "type": "container",
@@ -128,7 +129,7 @@ exports[`an alert as a card > has its title, its priority in words, its body, th
 ]
 `;
 
-exports[`an approval as a card > has the action as its title, what it does as its body, then Approve, Ask and Decline 1`] = `
+exports[`an approval as a card > has a one-line title, the whole call and what it does as its body, then Approve, Ask and Decline 1`] = `
 [
   {
     "actions": [
@@ -164,10 +165,11 @@ exports[`an approval as a card > has the action as its title, what it does as it
         "value": "{"turnId":"run-1","target":"a1"}",
       },
       {
+        "accessibility_label": "Ask a Question: Roll back payments-api in production to deploy #4811?",
         "action_id": "aui.ask#1",
         "text": {
           "emoji": true,
-          "text": "Ask a Question",
+          "text": "Ask",
           "type": "plain_text",
         },
         "type": "button",
@@ -187,14 +189,15 @@ exports[`an approval as a card > has the action as its title, what it does as it
     ],
     "block_id": "approval:a1:r1",
     "body": {
-      "text": "Service: payments-api
+      "text": "*Roll back payments-api in production to deploy #4811?*
+Service: payments-api
 Environment: production
 From: #4812 (14:50)
 To: #4811 (yesterday 17:20)",
       "type": "mrkdwn",
     },
     "title": {
-      "text": "*Roll back payments-api in production to deploy #4811?*",
+      "text": "*Approval needed*",
       "type": "mrkdwn",
     },
     "type": "card",
@@ -202,7 +205,7 @@ To: #4811 (yesterday 17:20)",
 ]
 `;
 
-exports[`several approvals as a carousel > is one line, a card for each, then Approve All and a menu with Auto and Cancel All 1`] = `
+exports[`several approvals as a carousel > is one line, a card for each, then only a menu with Auto: nothing that acts on all at once 1`] = `
 [
   {
     "text": {
@@ -248,10 +251,11 @@ exports[`several approvals as a carousel > is one line, a card for each, then Ap
             "value": "{"turnId":"run-1","target":"a1"}",
           },
           {
+            "accessibility_label": "Ask a Question: Roll back payments-api in production to deploy #4811?",
             "action_id": "aui.ask#1",
             "text": {
               "emoji": true,
-              "text": "Ask a Question",
+              "text": "Ask",
               "type": "plain_text",
             },
             "type": "button",
@@ -271,14 +275,15 @@ exports[`several approvals as a carousel > is one line, a card for each, then Ap
         ],
         "block_id": "approval:a1:r1",
         "body": {
-          "text": "Service: payments-api
+          "text": "*Roll back payments-api in production to deploy #4811?*
+Service: payments-api
 Environment: production
 From: #4812 (14:50)
 To: #4811 (yesterday 17:20)",
           "type": "mrkdwn",
         },
         "title": {
-          "text": "*Roll back payments-api in production to deploy #4811?*",
+          "text": "*Approval needed*",
           "type": "mrkdwn",
         },
         "type": "card",
@@ -298,10 +303,11 @@ To: #4811 (yesterday 17:20)",
             "value": "{"turnId":"run-1","target":"a2"}",
           },
           {
+            "accessibility_label": "Ask a Question: Post the incident summary to #payments-oncall (38 members)?",
             "action_id": "aui.ask#4",
             "text": {
               "emoji": true,
-              "text": "Ask a Question",
+              "text": "Ask",
               "type": "plain_text",
             },
             "type": "button",
@@ -321,7 +327,8 @@ To: #4811 (yesterday 17:20)",
         ],
         "block_id": "approval:a2:r0",
         "body": {
-          "text": "Channel: #payments-oncall
+          "text": "*Post the incident summary to #payments-oncall (38 members)?*
+Channel: #payments-oncall
 Mentions: @payments-oncall",
           "type": "mrkdwn",
         },
@@ -330,7 +337,7 @@ Mentions: @payments-oncall",
           "type": "mrkdwn",
         },
         "title": {
-          "text": "*Post the incident summary to #payments-oncall (38 members)?*",
+          "text": "*Approval needed*",
           "type": "mrkdwn",
         },
         "type": "card",
@@ -342,17 +349,6 @@ Mentions: @payments-oncall",
     "block_id": "batch:run-1:actions",
     "elements": [
       {
-        "action_id": "aui.approve.all#0",
-        "style": "primary",
-        "text": {
-          "emoji": true,
-          "text": "Approve All (2)",
-          "type": "plain_text",
-        },
-        "type": "button",
-        "value": "{"turnId":"run-1","target":"batch:run-1"}",
-      },
-      {
         "action_id": "aui.menu#0",
         "options": [
           {
@@ -362,14 +358,6 @@ Mentions: @payments-oncall",
               "type": "plain_text",
             },
             "value": "{"id":"aui.approval.mode","p":{"turnId":"run-1","target":"auto"}}",
-          },
-          {
-            "text": {
-              "emoji": true,
-              "text": "Cancel All",
-              "type": "plain_text",
-            },
-            "value": "{"id":"aui.deny.all","p":{"turnId":"run-1","target":"batch:run-1"}}",
           },
         ],
         "type": "overflow",

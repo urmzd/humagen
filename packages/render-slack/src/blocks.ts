@@ -82,9 +82,10 @@ const FALLBACKS = new WeakMap<readonly unknown[], Block[] | null>();
 
 /**
  * The page to post when Slack refuses `page` as `invalid_blocks`: the same
- * page drawn with sections in place of Slack's own blocks. Null when the
- * other layout splits into other pages, so only the message's text can stand
- * in for it. Undefined when the page has no native blocks to take back.
+ * page drawn with sections in place of Slack's own blocks. Both layouts
+ * split into the same messages (`units`), so there always is one; null only
+ * if they ever did not, when the message's text alone stands in for it.
+ * Undefined when the page has no native blocks to take back.
  */
 export function fallbackOf(page: readonly unknown[]): Block[] | null | undefined {
   return FALLBACKS.get(page);
@@ -115,6 +116,13 @@ class Serializer {
   summary: string | null = null;
   /** Slack's own blocks drawn in place of a shared component's sections. */
   natives = new Set<Block>();
+  /**
+   * Blocks that stand for one shared component, by their first index: where
+   * they end, and how many blocks its sections are. A message never splits
+   * one, and counts its sections whichever way it is drawn, so its native
+   * layout and its sections split into the same messages.
+   */
+  units = new Map<number, { end: number; weight: number }>();
   /** Block indexes where a new message must start (the markdown budget ran out). */
   breaks = new Set<number>();
   /** Accessories each sit in their own block; number them across the layout so no two match. */
@@ -196,8 +204,11 @@ class Serializer {
     const children = flatten(node.children);
     const base = children.filter((c) => c.type !== NATIVE_MORE);
     this.warnings.push(...warnings);
+    const start = this.blocks.length;
     if (!blocks || this.options.native === false) {
       for (const c of base) this.node(c);
+      const end = this.blocks.length;
+      if (blocks && end > start) this.units.set(start, { end, weight: end - start });
       return;
     }
     const words = new Serializer(this.placement, this.options);
@@ -211,6 +222,9 @@ class Serializer {
     for (const more of children.filter((c) => c.type === NATIVE_MORE)) {
       for (const c of flatten(more.children)) this.node(c);
     }
+    const end = this.blocks.length;
+    // Counted as its sections, which are never fewer blocks than Slack's own.
+    this.units.set(start, { end, weight: words.blocks.length });
   }
 
   node(node: HostNode) {
@@ -888,14 +902,21 @@ class Serializer {
   paginate(): Block[][] {
     const max = LIMITS.blocks.message;
     const pages: Block[][] = [[]];
-    this.blocks.forEach((block, i) => {
+    let used = 0;
+    for (let i = 0; i < this.blocks.length; ) {
+      const unit = this.units.get(i) ?? { end: i + 1, weight: 1 };
       const page = pages[pages.length - 1] as Block[];
-      const last = i === this.blocks.length - 1;
-      // Keep one slot free for the continuation note unless this block ends the message.
-      const full = page.length >= (last ? max : max - 1);
-      if (page.length > 0 && (this.breaks.has(i) || full)) pages.push([block]);
-      else page.push(block);
-    });
+      const last = unit.end === this.blocks.length;
+      // Keep one slot free for the continuation note unless this ends the message.
+      const full = used + unit.weight > (last ? max : max - 1);
+      if (page.length > 0 && (this.breaks.has(i) || full)) {
+        pages.push([]);
+        used = 0;
+      }
+      (pages[pages.length - 1] as Block[]).push(...this.blocks.slice(i, unit.end));
+      used += unit.weight;
+      i = unit.end;
+    }
     if (pages.length > 1) {
       this.warnings.push(
         `${this.blocks.length} blocks${this.breaks.size ? " and over 12k of markdown" : ""} exceed ${max} per message; split into ${pages.length} messages (post pages[1..] as follow-ups)`,

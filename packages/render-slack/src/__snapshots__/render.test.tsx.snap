@@ -575,10 +575,11 @@ exports[`renderToSlack > renders the waiting turn 1`] = `
           "value": "{"turnId":"turn-1","target":"a1"}",
         },
         {
+          "accessibility_label": "Ask a Question: Roll back payments-api in production to deploy #4811?",
           "action_id": "aui.ask#1",
           "text": {
             "emoji": true,
-            "text": "Ask a Question",
+            "text": "Ask",
             "type": "plain_text",
           },
           "type": "button",
@@ -598,7 +599,8 @@ exports[`renderToSlack > renders the waiting turn 1`] = `
       ],
       "block_id": "approval:a1:r1",
       "body": {
-        "text": "Service: payments-api
+        "text": "*Roll back payments-api in production to deploy #4811?*
+Service: payments-api
 Environment: production
 From: #4812 (14:50)
 To: #4811 (yesterday 17:20)",
@@ -609,7 +611,7 @@ To: #4811 (yesterday 17:20)",
         "type": "mrkdwn",
       },
       "title": {
-        "text": "*Roll back payments-api in production to deploy #4811?*",
+        "text": "*Approval needed*",
         "type": "mrkdwn",
       },
       "type": "card",

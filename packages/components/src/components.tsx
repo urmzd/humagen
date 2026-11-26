@@ -354,6 +354,8 @@ function ApprovalCardBase({
 export type ApprovalBatchProps = {
   turnId: string;
   approvals: ApprovalT[];
+  /** Who is looking. Slack's carousel offers a card they may not decide only Ask. */
+  viewer?: string;
   /** Offer letting the approval agent decide from here on, as one approval's card does. */
   offerAgent?: boolean;
 } & WithCopy;
@@ -1153,6 +1155,7 @@ export function TurnView({
           <ApprovalBatch
             turnId={turn.id}
             approvals={pendingApprovals}
+            viewer={viewer}
             offerAgent={offerAgent}
             copy={copy}
           />
@@ -1162,6 +1165,7 @@ export function TurnView({
           <ApprovalBatch
             turnId={turn.id}
             approvals={pendingApprovals}
+            viewer={viewer}
             offerAgent={offerAgent}
             copy={copy}
           />

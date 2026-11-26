@@ -299,7 +299,10 @@ test("a person's own answer, recorded as sent, is not called settled elsewhere",
 test("Ask a Question on a call opens a form, and the question is asked in the thread as the person while the call keeps waiting", async () => {
   const w = mapped();
   const { run, blocks, ts } = await parkOn(w, "approval");
-  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
+  await deliver(
+    w,
+    click(blocks, defaultCopy.slackBlocks.ask, { ts, threadTs: TS, user: OTHER_USER }),
+  );
 
   const opened = w.slack.of("views.open");
   assert.equal(opened.length, 1, "one form, on the click's trigger");
@@ -370,14 +373,20 @@ test("someone the client does not map asks nothing about a call: no form, and a 
   const w = mapped();
   const { blocks, ts } = await parkOn(w, "approval");
   const runs = w.humagen.runs.size;
-  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: "U09NOBODY" }));
+  await deliver(
+    w,
+    click(blocks, defaultCopy.slackBlocks.ask, { ts, threadTs: TS, user: "U09NOBODY" }),
+  );
   assert.equal(w.slack.of("views.open").length, 0, "no form is opened for them");
   assert.equal(
     w.slack.of("chat.postEphemeral").at(-1)?.text,
     defaultCopy.threads.notConnected("Humagen"),
   );
   // A mapped person's form, sent back as theirs: nothing is said or asked.
-  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
+  await deliver(
+    w,
+    click(blocks, defaultCopy.slackBlocks.ask, { ts, threadTs: TS, user: OTHER_USER }),
+  );
   const view = w.slack.of("views.open")[0]?.view as View;
   const posts = w.slack.of("chat.postMessage").length;
   await deliver(
@@ -397,7 +406,10 @@ test("someone the client does not map asks nothing about a call: no form, and a 
 test("an empty question asks nothing, and a call whose thread is not here says where to ask", async () => {
   const w = mapped();
   const { run, blocks, ts } = await parkOn(w, "approval");
-  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
+  await deliver(
+    w,
+    click(blocks, defaultCopy.slackBlocks.ask, { ts, threadTs: TS, user: OTHER_USER }),
+  );
   const view = w.slack.of("views.open")[0]?.view as View;
   const posts = w.humagen.posts.length;
   const submitted = (text: string) =>
@@ -633,17 +645,21 @@ test("Slack's own container gives way to its record's, and a card in a carousel 
   assert.deepEqual(cards[1], other);
 });
 
-test("the question on Slack's own card or container is read from its title", () => {
+test("the question on Slack's own card or container is read from what leads its body", () => {
   const container = {
     type: "container",
     block_id: "clarification:q1",
-    title: { type: "plain_text", text: "Ship <web> & api?" },
+    title: { type: "plain_text", text: "Input needed" },
+    child_blocks: [
+      { type: "section", text: { type: "mrkdwn", text: "*Ship &lt;web&gt; &amp; api?*\n• *Now*" } },
+    ],
   };
   assert.equal(promptIn([container], "q1"), "Ship <web> & api?");
   const card = {
     type: "card",
     block_id: "approval:a1:r0",
-    title: { type: "mrkdwn", text: "*Roll back &lt;payments&gt;?*" },
+    title: { type: "mrkdwn", text: "*Approval needed*" },
+    body: { type: "mrkdwn", text: "*Roll back &lt;payments&gt;?*\nService: payments" },
   };
   assert.equal(promptIn([{ type: "carousel", elements: [card] }], "a1"), "Roll back <payments>?");
 });

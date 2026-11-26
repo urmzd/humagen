@@ -1,6 +1,13 @@
-import { defaultCopy, MessageView, SystemAlertPart, TurnView } from "@humagen/components";
+import {
+  ApprovalCard,
+  defaultCopy,
+  MessageView,
+  SystemAlertPart,
+  TurnView,
+} from "@humagen/components";
 import { ActionId, type Approval, type InboxMessage } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
+import { Text } from "@humagen/primitives";
 import { describe, expect, it } from "vitest";
 import {
   type AlertInput,
@@ -11,6 +18,8 @@ import {
   type Block,
   decodeSlackAction,
   fallbackOf,
+  LIMITS,
+  NATIVE_LIMITS,
   type NativeBlocks,
   nativeBlocks,
   questionContainer,
@@ -70,6 +79,11 @@ const sends = (blocks: Block[]) =>
       .filter((b) => b.value)
       .map((b) => [b.text.text, decodeSlackAction(b)]),
   );
+/** What the buttons send, whatever they say: Slack's card may word a button shorter. */
+const actions = (blocks: Block[]) =>
+  Object.values(sends(blocks))
+    .map((a) => JSON.stringify(a))
+    .sort();
 
 const every = (out: NativeBlocks) => {
   expect(out.text.trim().length).toBeGreaterThan(0);
@@ -78,22 +92,34 @@ const every = (out: NativeBlocks) => {
 };
 
 describe("an approval as a card", () => {
-  it("has the action as its title, what it does as its body, then Approve, Ask and Decline", () => {
+  it("has a one-line title, the whole call and what it does as its body, then Approve, Ask and Decline", () => {
     const out = approvalCard(rollback, ctx);
     every(out);
     expect(out.native).toBe(true);
     expect(out.blocks).toMatchSnapshot();
     const [card] = out.blocks as [Block];
     expect(card.type).toBe("card");
-    expect((card.title as { text: string }).text).toBe(`*${rollback.summary}*`);
-    expect((card.body as { text: string }).text).toContain("Service: payments-api");
+    // Slack shows a title on one line: the call is never cut there.
+    expect((card.title as { text: string }).text).toBe(
+      `*${defaultCopy.slackBlocks.approvalTitle.pending}*`,
+    );
+    expect((card.body as { text: string }).text).toMatch(
+      /^\*Roll back payments-api in production to deploy #4811\?\*\nService: payments-api/,
+    );
     const labels = buttons(out.blocks).map((b) => [b.text.text, (b as { style?: string }).style]);
     // As the shared drawing has them: the way forward first, Decline unstyled.
     expect(labels).toEqual([
       ["Roll Back", "danger"],
-      [defaultCopy.askApproval, undefined],
+      [defaultCopy.slackBlocks.ask, undefined],
       [defaultCopy.declineAction, undefined],
     ]);
+    // Short enough that no label is cut; a screen reader still says Ask a Question.
+    expect(labels.reduce((n, [l]) => n + String(l).length, 0)).toBeLessThanOrEqual(
+      NATIVE_LIMITS.cardButtonChars,
+    );
+    expect(buttons(out.blocks)[1]).toMatchObject({
+      accessibility_label: `${defaultCopy.askApproval}: ${rollback.summary}`.slice(0, 75),
+    });
     expect(out.text).toBe(defaultCopy.approvalNeeded(rollback.summary));
   });
 
@@ -104,7 +130,7 @@ describe("an approval as a card", () => {
 
   it("sends what the section layout sends, so the app's handlers take the same clicks", () => {
     const out = approvalCard(rollback, ctx);
-    expect(sends(out.blocks)).toEqual(sends(out.fallback));
+    expect(actions(out.blocks)).toEqual(actions(out.fallback));
     expect(sends(out.blocks)[defaultCopy.declineAction]).toEqual({
       id: ActionId.deny,
       payload: { turnId: "run-1", target: "a1" },
@@ -137,7 +163,7 @@ describe("an approval as a card", () => {
     );
     expect(out.native).toBe(true);
     expect((out.blocks[0]?.body as { text: string }).text).toBe(
-      'Service: payments-api\n*Risk:* High | *Approval agent:* Asked a person: "Production needs a person"',
+      `*${rollback.summary}*\nService: payments-api\n*Risk:* High | *Approval agent:* Asked a person: "Production needs a person"`,
     );
   });
 
@@ -168,7 +194,7 @@ describe("an approval as a card", () => {
     expect(out.native).toBe(true);
     expect(out.blocks.map((b) => b.type)).toEqual(["card", "actions"]);
     expect(buttons([out.blocks[1] as Block]).map((b) => b.text.text)).toEqual([defaultCopy.edit]);
-    expect(sends(out.blocks)).toEqual(sends(out.fallback));
+    expect(actions(out.blocks)).toEqual(actions(out.fallback));
     const menu = (out.blocks[1]?.elements as Block[]).find((e) => e.type === "overflow");
     const [auto] = (menu?.options ?? []) as { text: { text: string }; value: string }[];
     expect(auto?.text.text).toBe(defaultCopy.approvals.letAgentDecide);
@@ -215,7 +241,7 @@ describe("an approval as a card", () => {
 
   it("shows a reader who may not decide only Ask, and says why", () => {
     const out = approvalCard({ ...rollback, initiator: "dana" }, { ...ctx, viewer: "ana" });
-    expect(buttons(out.blocks).map((b) => b.text.text)).toEqual([defaultCopy.askApproval]);
+    expect(buttons(out.blocks).map((b) => b.text.text)).toEqual([defaultCopy.slackBlocks.ask]);
     expect((out.blocks[0]?.subtext as { text: string }).text).toContain(defaultCopy.notYours);
   });
 
@@ -224,7 +250,7 @@ describe("an approval as a card", () => {
     const out = approvalCard(long, ctx);
     expect(out.native).toBe(false);
     expect(out.blocks).toEqual(out.fallback);
-    expect(out.warnings[0]).toMatch(/card title is \d+ chars; a card holds 150/);
+    expect(out.warnings[0]).toMatch(/card body is \d+ chars; a card holds 200/);
     expect(JSON.stringify(out.blocks)).toContain("Roll back every service Roll back");
   });
 
@@ -236,7 +262,7 @@ describe("an approval as a card", () => {
 });
 
 describe("several approvals as a carousel", () => {
-  it("is one line, a card for each, then Approve All and a menu with Auto and Cancel All", () => {
+  it("is one line, a card for each, then only a menu with Auto: nothing that acts on all at once", () => {
     const out = approvalCarousel([rollback, post], { ...ctx, offerAgent: true });
     every(out);
     expect(out.native).toBe(true);
@@ -254,12 +280,9 @@ describe("several approvals as a carousel", () => {
       payload: { turnId: "run-1", target: "a2" },
     });
     const row = out.blocks[2] as Block;
-    expect(sends([row])).toEqual({
-      [defaultCopy.approveAll(2)]: {
-        id: ActionId.approveAll,
-        payload: { turnId: "run-1", target: "batch:run-1" },
-      },
-    });
+    // Approve All and Cancel All have no handler in the app: they are not offered.
+    expect(buttons([row])).toEqual([]);
+    expect(JSON.stringify(out.blocks)).not.toMatch(/aui\.approve\.all|aui\.deny\.all/);
     const menu = (row.elements as Block[]).find((e) => e.type === "overflow");
     const options = (menu?.options ?? []) as { text: { text: string }; value: string }[];
     expect(
@@ -272,12 +295,24 @@ describe("several approvals as a carousel", () => {
         defaultCopy.approvals.letAgentDecide,
         { id: ActionId.approvalMode, payload: { turnId: "run-1", target: "auto" } },
       ],
-      [
-        defaultCopy.denyAll,
-        { id: ActionId.denyAll, payload: { turnId: "run-1", target: "batch:run-1" } },
-      ],
     ]);
     expect(out.text).toBe(defaultCopy.approvalNeeded(defaultCopy.batchTitle(2)));
+    // Without Auto there is no row at all.
+    expect(approvalCarousel([rollback, post], ctx).blocks.map((b) => b.type)).toEqual([
+      "section",
+      "carousel",
+    ]);
+  });
+
+  it("shows a card its reader may not decide with only Ask, and says why", () => {
+    const out = approvalCarousel([{ ...rollback, initiator: "dana" }, post], {
+      ...ctx,
+      viewer: "ana",
+    });
+    const [mine, theirs] = out.blocks[1]?.elements as Block[];
+    expect(buttons([mine as Block]).map((b) => b.text.text)).toEqual([defaultCopy.slackBlocks.ask]);
+    expect((mine?.subtext as { text: string }).text).toContain(defaultCopy.notYours);
+    expect(buttons([theirs as Block])).toHaveLength(3);
   });
 
   it.each([
@@ -324,6 +359,30 @@ describe("a turn as production posts it", () => {
     expect(out.blocks.map((b) => b.type)).toContain("container");
   });
 
+  it("splits into the same messages either way, so every page has its sections to fall back to", () => {
+    // 48 blocks, then an approval: its card (1 block) would fit in the first message, its sections (3) do not.
+    const out = renderToSlack(
+      <>
+        {Array.from({ length: 48 }, (_, i) => `Line ${i}`).map((line) => (
+          <Text key={line} text={line} />
+        ))}
+        <ApprovalCard turnId="run-1" approval={rollback} />
+      </>,
+    );
+    expect(out.fallback?.pages.length).toBe(out.pages.length);
+    expect(out.pages.length).toBe(2);
+    for (const page of out.pages) expect(page.length).toBeLessThanOrEqual(LIMITS.blocks.message);
+    for (const page of out.fallback?.pages ?? [])
+      expect(page.length).toBeLessThanOrEqual(LIMITS.blocks.message);
+    // The page with the card falls back to the page with its sections, buttons and all.
+    const withCard = out.pages.find((p) => p.some((b) => b.type === "card")) as Block[];
+    const sections = fallbackOf(withCard);
+    expect(sections).toEqual(out.fallback?.pages[out.pages.indexOf(withCard)]);
+    expect(actions(sections ?? [])).toEqual(actions(withCard));
+    // The page before it has nothing native to take back.
+    expect(fallbackOf(out.pages[0] as Block[])).toBeUndefined();
+  });
+
   it("has no fallback when nothing in it is native", () => {
     const out = renderToSlack(<TurnView turn={fx.doneTurn} />);
     expect(out.fallback).toBeUndefined();
@@ -340,16 +399,23 @@ describe("a turn as production posts it", () => {
 describe("an inbox alert as a card", () => {
   const message = fx.mailMessages.find((m) => m.id === "m-alert") as InboxMessage;
 
-  it("has the service and what is wrong as its title, its status as its subtitle, then its buttons", () => {
+  it("has the service as its title, its status as its subtitle, what is wrong as its body, then its buttons", () => {
     const out = nativeBlocks(<MessageView message={message} />);
     expect(out.native).toBe(true);
     const card = out.blocks.find((b) => b.type === "card") as Block;
     expect(card.block_id).toBe("alert:a-5xx");
-    expect((card.title as { text: string }).text).toBe("*payments-api down: 5xx rate is 4.2%*");
+    expect((card.title as { text: string }).text).toBe("*payments-api down*");
     expect((card.subtitle as { text: string }).text).toBe(`:x: ${defaultCopy.serviceStatus.down}`);
-    expect((card.body as { text: string }).text).toContain("Charges, Refunds");
-    expect(buttons([card]).map((b) => b.text.text)).toContain(defaultCopy.openRule);
-    expect(sends([card])).toEqual(sends(out.fallback));
+    expect((card.body as { text: string }).text).toMatch(
+      /^\*5xx rate is 4\.2%\*\n.*Charges, Refunds/,
+    );
+    // What fits uncut is on the card; Open Rule is in the row under it.
+    expect(buttons([card]).map((b) => b.text.text)).toEqual([
+      defaultCopy.acknowledge,
+      defaultCopy.snooze,
+    ]);
+    expect(buttons(out.blocks).map((b) => b.text.text)).toContain(defaultCopy.openRule);
+    expect(actions(out.blocks)).toEqual(actions(out.fallback));
   });
 
   it("keeps its record in place once resolved, with nothing to press", () => {
@@ -460,16 +526,24 @@ describe("an alert as a card", () => {
 describe("a question as a container", () => {
   const question = { ...fx.pendingClarification, allowUnsure: true };
 
-  it("has the question as its title, the options as buttons and an input for its own answer", () => {
+  it("has a one-line title, the whole question first, the options as buttons and an input for its own answer", () => {
     const out = questionContainer(question, { turnId: "run-1" });
     every(out);
     expect(out.native).toBe(true);
     expect(out.blocks).toMatchSnapshot();
     const [box] = out.blocks as [Block];
     expect(box.type).toBe("container");
-    expect(box.title).toEqual({ type: "plain_text", text: question.question, emoji: true });
+    // Slack shows a title on one line: the question is never cut there.
+    expect(box.title).toEqual({
+      type: "plain_text",
+      text: defaultCopy.slackBlocks.questionTitle.open,
+      emoji: true,
+    });
     const children = box.child_blocks as Block[];
     expect(children.map((b) => b.type)).toEqual(["section", "actions", "input"]);
+    expect((children[0]?.text as { text: string }).text).toMatch(
+      new RegExp(`^\\*${question.question.replace("?", "\\?")}\\*\\n• \\*Check Production\\*`),
+    );
     expect(buttons(out.blocks).map((b) => b.text.text)).toEqual([
       "Check Production",
       "Check Staging",
@@ -503,17 +577,22 @@ describe("a question as a container", () => {
   it("shows the record in place once answered, with nothing to press", () => {
     const out = questionContainer(fx.answeredClarification, { turnId: "run-1" });
     const children = out.blocks[0]?.child_blocks as Block[];
-    expect(children.map((b) => b.type)).toEqual(["context"]);
+    expect(children.map((b) => b.type)).toEqual(["section", "context"]);
+    expect((children[0]?.text as { text: string }).text).toBe(fx.answeredClarification.question);
     expect(JSON.stringify(children)).toContain("Dana chose Check Production");
   });
 
-  it.each([
-    ["a modal", question, { placement: "modal" as const }],
-    ["a question longer than its title holds", { ...question, question: "Which? ".repeat(30) }, {}],
-  ])("is the section layout in %s", (_k, clarification, extra) => {
-    const out = questionContainer(clarification, { turnId: "run-1", ...extra });
+  it("is the section layout in a modal", () => {
+    const out = questionContainer(question, { turnId: "run-1", placement: "modal" });
     expect(out.native).toBe(false);
     expect(out.blocks).toEqual(out.fallback);
+  });
+
+  it("shows a long question whole, under the title", () => {
+    const long = `${"Which environment should I check first? ".repeat(4)}`.trim();
+    const out = questionContainer({ ...question, question: long }, { turnId: "run-1" });
+    expect(out.native).toBe(true);
+    expect(JSON.stringify(out.blocks)).toContain(long);
   });
 });
 

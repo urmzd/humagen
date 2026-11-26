@@ -237,19 +237,24 @@ Under `tailscale` sign-in the app's subject is `slack-app:<team id>`, such as
 
 | What waits | Block | Buttons |
 |------------|-------|---------|
-| One approval | `card`: the action as its title, the preview and the approval agent's line as its body, who may act or the record as its subtext | Approve, Ask a Question and Decline on the card. Edit, Always Allow and **Set this thread to Auto** in a row under it |
-| Several approvals | A line, then a `carousel` with one card for each | Each card decides its own call. **Approve All** and a menu with **Set this thread to Auto** and **Cancel All** under the carousel |
-| A question | `container`: the question as its title | One button for each option, I'm Not Sure, and a field for an answer of the reader's own that sends on Enter. A question with no options keeps Something Else, which opens the reply form |
-| An inbox alert | `card`: the service and what is wrong as its title, its status as its subtitle | Acknowledge, Snooze and Open Rule |
+| One approval | `card`: "Approval needed" as its title; the whole action, its preview and the approval agent's line as its body; who may act or the record as its subtext | Approve, Ask and Decline on the card. Edit, Always Allow and **Set this thread to Auto** in a row under it |
+| Several approvals | A line, then a `carousel` with one card for each | Each card decides its own call. A menu with **Set this thread to Auto** under the carousel |
+| A question | `container`: "Input needed" as its title, the whole question first | One button for each option, I'm Not Sure, and a field for an answer of the reader's own that sends on Enter. A question with no options keeps Something Else, which opens the reply form |
+| An inbox alert | `card`: the service and its state as its title, its status as its subtitle, what is wrong as its body | Acknowledge and Snooze on the card, Open Rule under it |
 
-A decided card stays in place with its record and no buttons. A modal and
+Slack shows a card's or a container's title on one line, so the title only
+names the kind of card, and what is being approved or asked is in the body,
+whole. A card holds as many button labels as it shows uncut (24 characters,
+measured in Block Kit Builder), so Ask a Question reads **Ask** there and is
+read aloud in full. A decided card stays in place with its record and no buttons. A modal and
 the Home tab keep the sections and buttons. A text longer than a card holds
 is never cut: that card is drawn as sections. When Slack refuses a message's
 blocks as `invalid_blocks`, the app sends the same message again as sections,
 and then as its text alone (`apps/slack/src/fallback.ts`).
 
-The app does not handle Approve All, Approve Selected or Cancel All yet, so
-those buttons do nothing. Each approval's own buttons work.
+The carousel offers nothing that acts on all its approvals at once: the app
+has no handler for Approve All, Approve Selected or Cancel All yet. The
+checked-list layout a modal or a refused carousel shows still has them.
 
 **Ask a Question** on an approval opens a form for one question. Sent, the
 question is said in the thread (who asked, about which action, and what)

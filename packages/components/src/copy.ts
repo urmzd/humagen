@@ -3325,6 +3325,18 @@ export const defaultCopy = {
     resolvedBy: (by: string, time: string) => `Resolved by ${by} | ${time}`,
     /** The field under a question's options for an answer of the reader's own. */
     other: "Something else",
+    /** Ask a Question on an approval card, short so no button on the card is cut. */
+    ask: "Ask",
+    /** A question's title, one line: the question itself is the first block under it. */
+    questionTitle: { open: "Input needed", settled: "Question" },
+    /** An approval card's title, one line: the call itself leads the body. */
+    approvalTitle: {
+      pending: "Approval needed",
+      limit: "Limit reached",
+      asked: "Question asked",
+      approved: "Approved",
+      declined: "Not run",
+    },
     otherPlaceholder: "Type an answer, then press Enter",
   },
   unsure: "I'm Not Sure",

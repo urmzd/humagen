@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ApprovalCard, NoticeView } from "@humagen/components";
 import type { Turn } from "@humagen/core";
-import { doneTurn, pendingClarification, waitingTurn } from "@humagen/core/fixtures";
+import {
+  doneTurn,
+  pendingApproval,
+  pendingClarification,
+  waitingTurn,
+} from "@humagen/core/fixtures";
+import { renderToSlack } from "@humagen/render-slack";
 import { withBlockFallback } from "./fallback.ts";
 import { CHANNEL, FakeSlack, TEAM, USER } from "./harness.ts";
 import { Presenter } from "./present.tsx";
@@ -102,4 +109,30 @@ test("a refusal of anything else than the blocks is not sent again", async () =>
   slack.failing["chat.postMessage"] = (args) => (hasNative(args) ? "channel_not_found" : undefined);
   await post(slack, waitingTurn);
   assert.equal(slack.of("chat.postMessage").filter((a) => !hasNative(a)).length, 0);
+});
+
+test("a message whose sections are longer than its cards still falls back to the sections, buttons and all", async () => {
+  // 48 blocks and an approval: the card fits one message, the sections need two.
+  const view = renderToSlack(
+    <>
+      {Array.from({ length: 48 }, (_, i) => `Line ${i}`).map((id) => (
+        <NoticeView key={id} notice={{ id, kind: "silence", tone: "info", body: id }} />
+      ))}
+      <ApprovalCard turnId="r1" approval={{ ...pendingApproval, actingAs: undefined }} />
+    </>,
+  );
+  const slack = new FakeSlack();
+  slack.failing["chat.postMessage"] = (args) => (hasNative(args) ? "invalid_blocks" : undefined);
+  const wrapped = withBlockFallback(slack);
+  for (const page of view.pages) {
+    await wrapped.call("chat.postMessage", { channel: CHANNEL, text: view.text, blocks: page });
+  }
+  const sent = slack.of("chat.postMessage").filter((a) => !hasNative(a));
+  assert.equal(sent.length, view.pages.length, "every page is posted");
+  const all = sent.flatMap((a) => (a.blocks as Block[] | undefined) ?? []);
+  assert.ok(
+    sent.every((a) => Array.isArray(a.blocks)),
+    "no page falls back to its text alone",
+  );
+  assert.ok(all.some((b) => b.type === "actions" && b.block_id?.startsWith("approval:a1:")));
 });
