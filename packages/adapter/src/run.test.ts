@@ -186,6 +186,28 @@ test("a published file is one card that goes from generating to ready", () => {
   });
 });
 
+test("each publish in a run keeps its own card, however many times its call is reported", () => {
+  const to = adapter();
+  const cards = new Map<string, { title: string; phase: string }>();
+  const feed = (type: string, data: unknown, seq: number) => {
+    for (const e of to(ev(type, data, seq)))
+      if (e.type === "attachment.upserted" && e.attachment.type === "artifact")
+        cards.set(e.attachment.id, { title: e.attachment.title, phase: e.attachment.phase });
+  };
+  const file = (id: string, title: string) => ({ id, title, kind: "document", mime: "text/markdown", size: 9, version: 1 });
+  // A call is reported when the model starts it and again when it runs.
+  feed("run.delta.tool.call.v1", { id: "t1", name: "publish_artifact", phase: "requested" }, 1);
+  feed("run.delta.tool.call.v1", { id: "t1", name: "publish_artifact", phase: "executing" }, 2);
+  feed("run.action.taken.v1", { name: "publish_artifact", data: file("art-1", "first.md") }, 3);
+  feed("run.delta.tool.call.v1", { id: "t2", name: "publish_artifact", phase: "requested" }, 4);
+  feed("run.delta.tool.call.v1", { id: "t2", name: "publish_artifact", phase: "executing" }, 5);
+  feed("run.action.taken.v1", { name: "publish_artifact", summary: "second.md", error: "platform: refused" }, 6);
+  assert.deepEqual([...cards], [
+    ["t1", { title: "first.md", phase: "ready" }],
+    ["t2", { title: "second.md", phase: "failed" }],
+  ]);
+});
+
 test("a publish that is refused shows a failed file with the reason", () => {
   const to = adapter();
   to(ev("run.delta.tool.call.v1", { id: "t1", name: "publish_artifact" }));
