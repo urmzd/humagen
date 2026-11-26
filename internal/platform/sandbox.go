@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -360,17 +361,25 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	return p.publishFrom(ctx, area, pub)
 }
 
-// titled gives a title the extension of the file it names. The title is the
-// name a download is saved under and the name a file's type is read from, so
-// a title a model wrote as a heading ("Launch plan" for plan.docx) would
-// otherwise store a document as an archive that nothing can open.
+// titled gives a title that names no file type the extension of the file it
+// was published from. The title is the name a download is saved under and the
+// name a file's type is read from, so a title a model wrote as a heading
+// ("Launch plan" for plan.docx) would otherwise store a document as an archive
+// that nothing can open. A title with an extension of its own keeps it: the
+// bytes, not the name, still decide what the file is stored as.
 func titled(title, file string) string {
 	ext := path.Ext(file)
-	if ext == "" || strings.EqualFold(path.Ext(strings.TrimSpace(title)), ext) {
+	title = strings.TrimSpace(title)
+	if ext == "" || title == "" || fileExtension.MatchString(path.Ext(title)) {
 		return title
 	}
-	return strings.TrimSpace(title) + ext
+	return title + ext
 }
+
+// fileExtension is what a file's extension looks like: ".md" and ".docx" are,
+// and the ".2" of "Plan v1.2" and the ". Q4 results" of "Q3 vs. Q4 results"
+// are not.
+var fileExtension = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9]{0,7}$`)
 
 // publishFrom publishes a file from area: a conversation's directory, or
 // the work directory of the run that publishes it.

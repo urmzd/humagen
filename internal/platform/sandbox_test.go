@@ -520,9 +520,9 @@ func TestATitleWithoutAnExtensionKeepsTheFilesType(t *testing.T) {
 	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "plan.md", "content": "# Plan"}); err != nil {
 		t.Fatal(err)
 	}
-	for title, want := range map[string]string{"Launch plan": "Launch plan.md", "launch.MD": "launch.MD", "": "plan.md", "Plan v1.2": "Plan v1.2.md"} {
+	for title, want := range map[string]string{"Launch plan": "Launch plan.md", "launch.MD": "launch.MD", "": "plan.md", "Plan v1.2": "Plan v1.2.md", "Q3 vs. Q4 results": "Q3 vs. Q4 results.md", "notes.txt": "notes.txt"} {
 		got, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "plan.md", Title: title})
-		if err != nil || got.Title != want || got.Mime != "text/markdown" {
+		if err != nil || got.Title != want || (got.Mime != "text/markdown") != (title == "notes.txt") {
 			t.Fatalf("title %q = %q (%s), %v; want %q", title, got.Title, got.Mime, err, want)
 		}
 	}
