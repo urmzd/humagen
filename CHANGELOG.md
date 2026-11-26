@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.206.0 (2026-11-26)
+
+### Features
+
+- **slack**: native blocks with validated fallbacks (#420) ([a485e7d](https://github.com/urmzd/humagen/commit/a485e7d733b41db5e7e361872f2d6492b1567526))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.205.1...v0.206.0)
+
+
 ## 0.205.1 (2026-11-26)
 
 ### Bug Fixes
