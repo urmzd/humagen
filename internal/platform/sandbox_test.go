@@ -501,6 +501,33 @@ func TestPublishingTellsTheInbox(t *testing.T) {
 	}
 }
 
+// A title a model wrote as a heading still names a file: it takes the
+// extension of the file it was published from, so the document is stored as
+// what it is and not as an archive nothing can open.
+func TestATitleWithoutAnExtensionKeepsTheFilesType(t *testing.T) {
+	p := start(t, call.Limits{})
+	run, req := turn(t, p, "titled-files", "")
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "intro_to_chinese.docx", "format": "native", "content": `{"title":"Introduction","paragraphs":["Ni hao means hello"]}`}); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "intro_to_chinese.docx", Title: "Introduction to Chinese for Beginners", Kind: "document"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Title != "Introduction to Chinese for Beginners.docx" || !strings.Contains(doc.Mime, "wordprocessingml.document") || doc.Kind != artifacts.Document {
+		t.Fatalf("a titled document = %+v", doc)
+	}
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "plan.md", "content": "# Plan"}); err != nil {
+		t.Fatal(err)
+	}
+	for title, want := range map[string]string{"Launch plan": "Launch plan.md", "launch.MD": "launch.MD", "": "plan.md", "Plan v1.2": "Plan v1.2.md"} {
+		got, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "plan.md", Title: title})
+		if err != nil || got.Title != want || got.Mime != "text/markdown" {
+			t.Fatalf("title %q = %q (%s), %v; want %q", title, got.Title, got.Mime, err, want)
+		}
+	}
+}
+
 func TestNativeDocumentsPublishAsEditableOfficeAndKeepPriorVersions(t *testing.T) {
 	p := start(t, call.Limits{})
 	run, req := turn(t, p, "native-files", "")

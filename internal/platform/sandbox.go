@@ -360,6 +360,18 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	return p.publishFrom(ctx, area, pub)
 }
 
+// titled gives a title the extension of the file it names. The title is the
+// name a download is saved under and the name a file's type is read from, so
+// a title a model wrote as a heading ("Launch plan" for plan.docx) would
+// otherwise store a document as an archive that nothing can open.
+func titled(title, file string) string {
+	ext := path.Ext(file)
+	if ext == "" || strings.EqualFold(path.Ext(strings.TrimSpace(title)), ext) {
+		return title
+	}
+	return strings.TrimSpace(title) + ext
+}
+
 // publishFrom publishes a file from area: a conversation's directory, or
 // the work directory of the run that publishes it.
 func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publication) (artifacts.Artifact, error) {
@@ -370,6 +382,10 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 	title := pub.Title
 	if strings.TrimSpace(title) == "" {
 		title = path.Base(clean)
+	}
+	// A new version keeps the title of the file it follows.
+	if pub.After == "" {
+		title = titled(title, clean)
 	}
 	if title, err = artifacts.CleanTitle(title); err != nil {
 		return artifacts.Artifact{}, err
