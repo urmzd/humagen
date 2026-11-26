@@ -111,7 +111,7 @@ export function SidebarItem({
       aria-label={
         open ? undefined : count ? (badgeLabel ?? defaultCopy.sidebar.needYou(label, count)) : label
       }
-      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
+      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:[&>svg]:text-aui-accent ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
     >
@@ -159,7 +159,7 @@ function Choices<T extends string>({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
       >
         <span className="min-w-0 flex-1 truncate">{title}</span>
         <span className="truncate text-aui-muted">{current}</span>
@@ -181,7 +181,7 @@ function Choices<T extends string>({
                 setOpen(false);
                 trigger.current?.focus();
               }}
-              className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+              className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
             >
               {o.mark}
               <span className="min-w-0 flex-1 truncate">{o.label}</span>
@@ -219,7 +219,7 @@ function PinButton({
       aria-label={label}
       aria-pressed={pinned}
       title={label}
-      className={`absolute top-1 right-1 inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 [@media(pointer:coarse)]:top-0.5 [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100 ${project ? "group-hover/project:opacity-100 group-focus-within/project:opacity-100" : "group-hover/task:opacity-100 group-focus-within/task:opacity-100"} ${pinned ? "opacity-100" : "opacity-0"}`}
+      className={`absolute top-1 right-1 inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent [@media(pointer:coarse)]:top-0.5 [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100 ${project ? "group-hover/project:opacity-100 group-focus-within/project:opacity-100" : "group-hover/task:opacity-100 group-focus-within/task:opacity-100"} ${pinned ? "opacity-100" : "opacity-0"}`}
     >
       <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
     </button>
@@ -261,7 +261,7 @@ function ProjectGroup({
     >
       <summary
         aria-current={!open && holdsCurrent ? "true" : undefined}
-        className="flex min-h-8 pointer-coarse:min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-2.5 text-aui-xs font-semibold text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current]:bg-aui-hover [&::-webkit-details-marker]:hidden"
+        className="flex min-h-8 pointer-coarse:min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-2.5 text-aui-xs font-semibold text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-[current]:bg-aui-hover [&::-webkit-details-marker]:hidden"
       >
         <svg
           aria-hidden="true"
@@ -295,11 +295,11 @@ function ProjectGroup({
  * drawn inside the row.
  */
 const rowLink =
-  "relative flex w-full min-w-0 flex-col gap-0.5 rounded-aui py-1.5 pr-1.5 pl-2.5 pointer-coarse:py-2 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current=page]:bg-aui-hover before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full aria-[current=page]:before:bg-aui-fg";
+  "relative flex w-full min-w-0 flex-col gap-0.5 rounded-aui py-1.5 pr-1.5 pl-2.5 pointer-coarse:py-2 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full aria-[current=page]:before:bg-aui-accent";
 
 /** A quiet icon button in a row's hover actions. */
 const rowAction =
-  "inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50";
+  "inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent";
 
 /** One glyph per place a session can start, drawn in the row's muted ink. */
 const SOURCE_ICONS: Record<RowSource, ReactNode> = {
@@ -596,7 +596,7 @@ function TaskRow({
 }
 
 const menuItem =
-  "flex h-8 w-full items-center gap-2.5 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50";
+  "flex h-8 w-full items-center gap-2.5 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent";
 
 /**
  * What a conversation's ⋯ menu offers. Each item has a letter that works while
@@ -651,14 +651,14 @@ function RowMenu({
           <button
             type="button"
             onClick={() => setConfirming(false)}
-            className="h-7 rounded-aui px-2.5 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+            className="h-7 rounded-aui px-2.5 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="h-7 rounded-aui bg-aui-bad px-2.5 text-aui-sm text-white hover:opacity-90 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+            className="h-7 rounded-aui bg-aui-bad px-2.5 text-aui-sm text-white hover:opacity-90 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
           >
             Delete
           </button>
@@ -725,7 +725,7 @@ function Label({
           data-fold
           aria-expanded={fold.open}
           onClick={fold.onToggle}
-          className="inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded-aui px-2.5 text-aui-xs font-medium text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 pointer-coarse:min-h-11"
+          className="inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded-aui px-2.5 text-aui-xs font-medium text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
         >
           <span className="min-w-0 truncate">{children}</span>
           {count !== undefined && (
@@ -1363,7 +1363,7 @@ export function Sidebar({
             onClick={onToggle}
             aria-expanded={open}
             aria-label={open ? "Close sidebar" : "Open sidebar"}
-            className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+            className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
           >
             {open ? (
               <PanelLeftCloseIcon size={18} strokeWidth={1.75} />
@@ -1396,7 +1396,7 @@ export function Sidebar({
                 type="button"
                 onClick={onSearch}
                 aria-label={nav.search}
-                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 ${open ? "px-2.5" : "w-9 justify-center"}`}
+                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
               >
                 <SearchIcon size={18} />
                 {open && (
@@ -1505,7 +1505,7 @@ export function Sidebar({
                       narrow
                       align="right"
                       label={defaultCopy.chat.filter(filters)}
-                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                       button={
                         <>
                           <SlidersIcon size={14} />
@@ -1566,7 +1566,7 @@ export function Sidebar({
                                 clear();
                                 setView("flat");
                               }}
-                              className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                              className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                             >
                               Reset to defaults
                             </button>
@@ -1591,7 +1591,7 @@ export function Sidebar({
                     <button
                       type="button"
                       onClick={undoArchive}
-                      className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                      className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                     >
                       {defaultCopy.sidebar.undo}
                     </button>
@@ -1599,7 +1599,7 @@ export function Sidebar({
                       type="button"
                       onClick={() => setNote(null)}
                       aria-label="Dismiss"
-                      className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                      className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                     >
                       ×
                     </button>
@@ -1622,7 +1622,7 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={retry}
-                        className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                        className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                       >
                         Try Again
                       </button>
@@ -1700,7 +1700,7 @@ export function Sidebar({
                                         return n;
                                       })
                                     }
-                                    className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                                    className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                                   >
                                     {all
                                       ? defaultCopy.sidebar.showFewer
@@ -1740,7 +1740,7 @@ export function Sidebar({
                         type="button"
                         onClick={more}
                         disabled={loading === "more"}
-                        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 disabled:cursor-default"
+                        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-default"
                       >
                         {loading === "more" ? (
                           <span className="aui-shimmer">Loading</span>
@@ -1774,7 +1774,7 @@ export function Sidebar({
               // Open, the button is named by the name it shows, then what it opens.
               label={open ? undefined : defaultCopy.preferences.openFor(name)}
               tooltip={open ? undefined : name}
-              className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-expanded:bg-aui-hover ${
+              className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover ${
                 open ? "" : "size-9 justify-center"
               }`}
               button={
@@ -1826,7 +1826,7 @@ export function Sidebar({
                         close();
                         go(item.to);
                       }}
-                      className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                      className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                     >
                       {item.icon}
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
@@ -1841,7 +1841,7 @@ export function Sidebar({
                           close();
                           onSignOut();
                         }}
-                        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
+                        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
                       >
                         <LogOutIcon size={14} />
                         <span className="min-w-0 flex-1 truncate">Sign out</span>
@@ -1879,7 +1879,7 @@ export function DrawerButton({
       data-testid="drawer-button"
       onClick={onOpen}
       aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} unread` : "Open sidebar"}
-      className="humagen-drawer-button fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 inline-flex size-11 items-center justify-center rounded-full border border-aui-border text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 md:hidden"
+      className="humagen-drawer-button fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 inline-flex size-11 items-center justify-center rounded-full border border-aui-border text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent md:hidden"
     >
       <PanelLeftOpenIcon size={20} />
       {inboxCount > 0 && (

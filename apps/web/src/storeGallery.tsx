@@ -180,7 +180,7 @@ function Gallery() {
   return (
     <main className="flex max-w-[68rem] flex-col gap-12 px-4 py-8 md:px-10">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="humagen-display font-semibold text-[1.875rem] text-aui-fg leading-[1.15]">
+        <h1 className="humagen-display font-semibold text-aui-2xl text-aui-fg">
           Agent store
         </h1>
         <Segmented

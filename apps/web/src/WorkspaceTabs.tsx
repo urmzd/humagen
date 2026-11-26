@@ -17,9 +17,9 @@ export function WorkspaceTabs({
   // tabs look and sit the same whichever kind heads a page.
   return (
     <nav aria-label={label} className={`humagen-beside-drawer shrink-0 pt-8 ${pageColumn}`}>
-      <div className="relative">
+      <div className="relative flex items-center gap-x-4">
         <span aria-hidden className={tabRule} />
-        <div className={tabStrip}>
+        <div className={`${tabStrip} min-w-0 flex-1`}>
           {items.map((item) => (
             <a
               key={item.label}
@@ -48,6 +48,8 @@ export function WorkspaceTabs({
             </a>
           ))}
         </div>
+        {/* The open page's actions, at the right of the row its tabs are on (Page fills it). */}
+        <div data-hub-actions className="flex shrink-0 items-center gap-2 pb-1 empty:hidden" />
       </div>
     </nav>
   );

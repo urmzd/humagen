@@ -418,7 +418,7 @@ export function FilterSelect<T extends string>({
       value={value === "" ? ALL : value}
       onValueChange={(v) => onChange(v === ALL ? "" : (v as T))}
     >
-      <SelectTrigger aria-label={label} className="h-9 min-w-32 border-aui-border">
+      <SelectTrigger aria-label={label} className="h-9 min-w-32 bg-aui-bg text-aui-sm">
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="end">

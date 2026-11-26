@@ -732,7 +732,7 @@ export function Composer({
           e.preventDefault();
           send(false);
         }}
-        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-1.5 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
+        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-1.5 transition-colors focus-within:border-aui-accent motion-reduce:transition-none"
       >
         {mic && (
           <LazyFrame fallback={null} instead={null} resetKey={lit}>

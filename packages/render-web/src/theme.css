@@ -302,10 +302,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* One radius scale: a shadcn control and a console control beside it round alike. */
+  --radius-sm: 0.4rem;
+  --radius-md: var(--radius);
+  --radius-lg: 0.8rem;
+  --radius-xl: 1rem;
   --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -335,7 +336,7 @@
   --color-aui-term-muted: var(--aui-term-muted);
   --color-aui-term-border: var(--aui-term-border);
 
-  /* Radii: one scale, derived from the sample's 0.8rem. */
+  /* The same scale by its older names: sm for a chip, base for a control, lg for a card. */
   --radius-aui-sm: 0.4rem;
   --radius-aui: 0.6rem;
   --radius-aui-lg: 0.8rem;
@@ -360,10 +361,31 @@
   --text-aui-lg--line-height: 1.5rem;
   --text-aui-xl: 1.25rem;
   --text-aui-xl--line-height: 1.75rem;
+  /* A page's title and a headline figure. */
+  --text-aui-2xl: 1.5rem;
+  --text-aui-2xl--line-height: 2rem;
+  /* One line per screen at most: Home's greeting. */
+  --text-aui-3xl: 2rem;
+  --text-aui-3xl--line-height: 2.5rem;
 
   --font-aui-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-aui-mono:
     "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/*
+ * A border drawn without a color is a rule, not the text color: `border`,
+ * `border-b` and `divide-y` alone give the hairline every shadcn control
+ * was written to expect.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
 }
 
 @layer components {

@@ -77,7 +77,7 @@ function Gallery() {
   return (
     <main className="flex max-w-[68rem] flex-col gap-10 px-5 py-8 md:px-10">
       <header className="flex items-end justify-between gap-4">
-        <h1 className="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">
+        <h1 className="humagen-display text-aui-2xl font-semibold text-aui-fg">
           Console primitives
         </h1>
         <Segmented

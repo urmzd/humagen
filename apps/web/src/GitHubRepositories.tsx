@@ -140,7 +140,7 @@ function RepositoryList({
           <>
             {!data.listed && <p className="text-aui-sm text-aui-muted">{words.notListed}</p>}
             {data.repositories.length > 8 && (
-              <label className="flex h-9 min-w-0 max-w-md items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
+              <label className="flex h-9 min-w-0 max-w-md items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-accent pointer-coarse:h-11">
                 <SearchIcon size={14} />
                 <input
                   type="search"

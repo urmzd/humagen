@@ -273,8 +273,7 @@ export function PickMany({
 }
 
 /** The one style for a page's title and the line under it, wherever a page draws its own header. */
-export const pageTitle =
-  "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
+export const pageTitle = "humagen-display truncate text-aui-2xl font-semibold text-aui-fg";
 export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 
 /**
@@ -339,6 +338,9 @@ export function Page({
   children: ReactNode;
 }) {
   const hubLabel = useContext(HubTabLabel);
+  // A hub's tab row has a place for the open page's actions (WorkspaceTabs).
+  const [hubPlace, setHubPlace] = useState<Element | null>(null);
+  useLayoutEffect(() => setHubPlace(document.querySelector("[data-hub-actions]")));
   if (layout === "conversation") {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -379,11 +381,16 @@ export function Page({
         className={`humagen-page-column @container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 ${underHub ? "pt-6" : "pt-8"} pb-12 md:px-10`}
       >
         {bare && <h1 className="sr-only">{title}</h1>}
-        {bare && !tabs && actions && (
-          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
-            {actions}
-          </div>
-        )}
+        {bare &&
+          !tabs &&
+          actions &&
+          (underHub && hubPlace ? (
+            createPortal(actions, hubPlace)
+          ) : (
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+              {actions}
+            </div>
+          ))}
         <header className={bare ? "hidden" : "flex flex-col gap-3"}>
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -645,9 +652,7 @@ export function Stat({ label, value, note }: { label: string; value: string; not
   return (
     <div className="flex min-w-0 flex-col">
       <span className="text-aui-xs text-aui-muted">{label}</span>
-      <span className="humagen-display pt-0.5 text-[1.75rem] leading-9 font-semibold text-aui-fg">
-        {value}
-      </span>
+      <span className="humagen-display pt-0.5 text-aui-2xl font-semibold text-aui-fg">{value}</span>
       {note && <span className="text-aui-2xs text-aui-muted">{note}</span>}
     </div>
   );
@@ -1038,7 +1043,7 @@ export function Segmented<T extends string>({
   // A fieldset is as wide as its content unless told otherwise, so min-w-0 lets it
   // fit the column; its choices then scroll inside the box, each on one line.
   return (
-    <fieldset className="inline-flex min-w-0 max-w-full rounded-aui border border-aui-border p-0.5">
+    <fieldset className="inline-flex min-h-9 min-w-0 max-w-full items-center rounded-aui border border-input bg-aui-bg p-[3px] shadow-xs">
       <legend className="sr-only">{label}</legend>
       <div
         ref={strip}
@@ -1050,7 +1055,7 @@ export function Segmented<T extends string>({
             type="button"
             aria-pressed={value === o.id}
             onClick={() => onChange(o.id)}
-            className="inline-flex h-8 pointer-coarse:h-11 pointer-coarse:min-w-11 justify-center shrink-0 items-center gap-1.5 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
+            className="inline-flex h-7 pointer-coarse:h-11 pointer-coarse:min-w-11 justify-center shrink-0 items-center gap-1.5 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:font-medium aria-pressed:text-aui-fg motion-reduce:transition-none"
           >
             {o.icon}
             {o.label}
@@ -1646,7 +1651,7 @@ export function SearchField({
 }) {
   return (
     <div
-      className={`flex h-8 items-center gap-2 rounded-aui border border-[var(--humagen-rule)] bg-aui-bg px-2.5 text-aui-muted transition-colors focus-within:border-aui-accent focus-within:text-aui-fg ${className}`}
+      className={`flex h-9 items-center gap-2 rounded-aui border border-input bg-aui-bg px-3 text-aui-muted shadow-xs transition-colors focus-within:border-aui-accent focus-within:text-aui-fg ${className}`}
     >
       <SearchIcon />
       <input
