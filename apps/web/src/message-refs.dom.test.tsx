@@ -808,6 +808,23 @@ test("a called agent is a message of its own in the answer: full size, with its 
   }
 });
 
+test("a called agent that has said and done nothing yet is found by its run, so its message is drawn from its first moment", () => {
+  // The writer has started: no step, no word, no answer.
+  const writing = node(
+    run(R2, { agent: "writer", parent: R1, depth: 1, status: "running", answer: "" }),
+  );
+  const asking = node(run(R1, { status: "running", answer: "" }), { children: [writing] });
+  const state = foldAll(traceEvents(traceOf([asking])));
+  const call = allTools(state).find((t) => t.kind === "agent");
+  assert.equal(call?.runId, R2);
+  assert.equal(call?.content.length, 0);
+  // The turn's step for that call names its run, which is all the two share.
+  const task = { id: "toolu_1", subagent: { runId: R2 } } as Parameters<
+    ReturnType<typeof callThreadsOf>
+  >[0];
+  assert.ok(callThreadsOf(state)(task));
+});
+
 test("a called agent's message shows the file it published, read from its own run's events", async () => {
   const published = hex("9");
   const call = {
