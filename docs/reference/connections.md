@@ -104,6 +104,13 @@ Connections, signs in with the vendor, reviews the tools it offers and
 approves the list. An agent then uses them when it is granted `person_tools`
 and the workspace's `tool_servers` ceiling allows the server's host.
 
+A person keeps at most 16 servers. Their approved lists, input schemas
+included, are at most 512 KiB together. One Google Workspace server's list
+is about 48 KiB. A run pins the lists without the input schemas: each tool's
+name, description, class and schema hash, at most 192 KiB together. When the
+run connects, it takes the schemas from the person's own copy, and only if
+that copy still matches what was pinned.
+
 | Preset | Server | Sign-in |
 |--------|--------|---------|
 | `notion` | `https://mcp.notion.com/mcp` | The server registers Humagen itself |

@@ -34,8 +34,9 @@ const (
 	MetaDigest  = wire.PrivateMetaPrefix + "humagen.context.digest"
 )
 
-// maxPinned bounds a pinned context, in bytes.
-const maxPinned = 64 << 10
+// maxPinned bounds a pinned context, in bytes: the person's tool servers,
+// at most personctx.MaxPinnedBytes, and room for the rest.
+const maxPinned = personctx.MaxPinnedBytes + 64<<10
 
 // ErrInvalid reports a pinned context that cannot be read or does not match
 // its digest.
@@ -68,7 +69,7 @@ func New(person string, resolved settings.Resolved, own personctx.Context) Conte
 	c.Memory = own.Memory
 	for _, t := range own.ToolServers {
 		if resolved.Ceilings.AllowsToolServer(t.Host()) {
-			c.ToolServers = append(c.ToolServers, t)
+			c.ToolServers = append(c.ToolServers, t.Pinned())
 		}
 	}
 	return c

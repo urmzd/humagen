@@ -163,11 +163,15 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request, a
 		if err != nil {
 			return native.ToolGroup{}, err
 		}
-		if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
+		// The run pinned the list without input schemas (personctx.Pinned).
+		// The person's own copy, the same list, carries them.
+		at := slices.IndexFunc(own.ToolServers, func(s personctx.ToolServer) bool {
 			return s.Name == server.Name && s.URL == server.URL && s.Credential == server.Credential && s.OAuth == server.OAuth && samePersonTools(s.Tools, server.Tools)
-		}) {
+		})
+		if at < 0 {
 			continue
 		}
+		approved := own.ToolServers[at].Tools
 		offered, err := p.discoverPersonToolsFor(ctx, req.Tenant, person, server)
 		if err != nil {
 			return native.ToolGroup{}, err
@@ -192,7 +196,7 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request, a
 		if err != nil {
 			return native.ToolGroup{}, err
 		}
-		tools, err := session.Toolset(ctx, toolprovider.Snapshot{Tenant: req.Tenant, Provider: prov.Name, Tools: server.Tools}, toolprovider.GrantWrite)
+		tools, err := session.Toolset(ctx, toolprovider.Snapshot{Tenant: req.Tenant, Provider: prov.Name, Tools: approved}, toolprovider.GrantWrite)
 		if err != nil {
 			_ = session.Close()
 			return native.ToolGroup{}, err

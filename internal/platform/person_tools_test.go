@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -203,5 +204,60 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	}
 	if _, err := rich.ExecuteRich(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
 		t.Fatalf("revoked rich server: %v", err)
+	}
+}
+
+// A run pins a person's tool lists without input schemas. Its tools still
+// carry the schema the person approved, read from their own context.
+func TestPersonalToolsKeepSchemasThatTheRunDoesNotPin(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "mail", Version: "1"}, nil)
+	schema := map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}, "required": []any{"query"}}
+	server.AddTool(&mcp.Tool{Name: "search", Description: "Search mail", InputSchema: schema, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "found"}}}, nil
+	})
+	httpServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil))
+	defer httpServer.Close()
+
+	p, err := New(Config{Workspace: t.TempDir(), PersonalHTTP: httpServer.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	host := personctx.ToolServer{Name: "mail", URL: httpServer.URL}
+	if err := p.SetRunSettings("acme", runsettings.Layer{Ceilings: runsettings.Ceilings{ToolServers: []string{host.Host()}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	who := auth.Principal{Tenant: "acme", Subject: "ana"}
+	if host.Tools, err = p.DiscoverPersonTools(context.Background(), who, host); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetPersonContext(context.Background(), who, personctx.Input{ToolServers: []personctx.ToolServer{host}}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := p.newRunContext("acme", "", nil, "ana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.ToolServers) != 1 || len(c.ToolServers[0].Tools) != 1 || c.ToolServers[0].Tools[0].InputSchema != nil || c.ToolServers[0].Tools[0].SchemaHash == "" {
+		t.Fatalf("pinned servers = %+v, want the tool without its schema but with its hash", c.ToolServers)
+	}
+	req := requestWith(t, c)
+	req.Tenant = "acme"
+	req.Definition.Spec.Tools = []string{personToolsGrant}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	group, err := p.personalToolGroup(ctx, req, PersonActor(who.Subject))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(group.Tools) != 1 {
+		t.Fatalf("group: %+v", group)
+	}
+	params := group.Tools[0].Definition().Parameters
+	if _, ok := params.Properties["query"]; !ok || !slices.Contains(params.Required, "query") {
+		t.Fatalf("parameters = %+v, want the approved schema's query", params)
+	}
+	if text, err := group.Tools[0].Execute(ctx, map[string]any{"query": "x"}); err != nil || text != "found" {
+		t.Fatalf("execute: %q %v", text, err)
 	}
 }
