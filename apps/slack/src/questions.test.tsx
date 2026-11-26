@@ -5,6 +5,7 @@ import { type decodeReplyModal, REPLY_MODAL } from "@humagen/render-slack";
 import type { AppOptions } from "./app.tsx";
 import { parseBranding } from "./branding.ts";
 import {
+  buttonLabels,
   CHANNEL,
   click,
   type FakeSlack,
@@ -95,10 +96,7 @@ const submit = (view: View, text: string, user: string) =>
   });
 
 const texts = (blocks: unknown) => JSON.stringify(blocks);
-const buttons = (blocks: unknown[]) =>
-  (blocks as { type: string; elements?: { text?: { text: string } }[] }[])
-    .filter((b) => b.type === "actions")
-    .flatMap((b) => (b.elements ?? []).map((e) => e.text?.text));
+const buttons = buttonLabels;
 
 test("Something Else opens a modal with the question above one multiline field, and its words answer as the person who typed them", async () => {
   const w = mapped();
@@ -594,6 +592,60 @@ test("a card is replaced whole where it was drawn, and by its record alone where
     settleCard([question, { ...actions, block_id: "clarification:q-x" }], "r1", recorded),
     null,
   );
+});
+
+test("Slack's own container gives way to its record's, and a card in a carousel to its own", () => {
+  const before = { type: "section", text: { type: "mrkdwn", text: "Checking first." } };
+  const choice = recordedOf(
+    questionMail("r1", "choice", { action: "choose", by: "ana", at: AT, note: "us-east" }),
+    "q-choose",
+  );
+  assert.ok(choice);
+  const container = { type: "container", block_id: "clarification:q-choose", child_blocks: [] };
+  const settled = settleCard([before, container], "r1", choice);
+  assert.equal(settled?.length, 2);
+  assert.deepEqual(settled?.[0], before);
+  const record = settled?.[1] as { type: string; block_id: string };
+  assert.equal(record.type, "container");
+  assert.equal(record.block_id, "clarification:q-choose");
+  assert.match(texts(record), /ana chose us-east/);
+  assert.deepEqual(buttons(settled ?? []), [], "no button is left to press");
+
+  const approval = recordedOf(
+    questionMail("r1", "approval", { action: "approve", by: "ana", at: AT }),
+    "q-approve",
+  );
+  assert.ok(approval);
+  // A card and the row of choices it could not hold: both give way to the record.
+  const card = { type: "card", block_id: "approval:q-approve:r0", actions: [] };
+  const more = { type: "actions", block_id: "approval:q-approve:r0:more", elements: [] };
+  const alone = settleCard([before, card, more], "r1", approval);
+  assert.equal(alone?.length, 2);
+  assert.equal((alone?.[1] as { type: string }).type, "card");
+  assert.match(texts(alone?.[1]), /Approved by ana/);
+  // One card of several: the carousel stays, with that card settled and the other waiting.
+  const other = { type: "card", block_id: "approval:q-other:r0", actions: [{ type: "button" }] };
+  const carousel = { type: "carousel", block_id: "batch:r1:cards", elements: [card, other] };
+  const many = settleCard([before, carousel], "r1", approval);
+  const cards = (many?.[1] as { elements: unknown[] }).elements;
+  assert.equal(cards.length, 2);
+  assert.match(texts(cards[0]), /Approved by ana/);
+  assert.deepEqual(cards[1], other);
+});
+
+test("the question on Slack's own card or container is read from its title", () => {
+  const container = {
+    type: "container",
+    block_id: "clarification:q1",
+    title: { type: "plain_text", text: "Ship <web> & api?" },
+  };
+  assert.equal(promptIn([container], "q1"), "Ship <web> & api?");
+  const card = {
+    type: "card",
+    block_id: "approval:a1:r0",
+    title: { type: "mrkdwn", text: "*Roll back &lt;payments&gt;?*" },
+  };
+  assert.equal(promptIn([{ type: "carousel", elements: [card] }], "a1"), "Roll back <payments>?");
 });
 
 test("the question above a card's buttons is read as plain words", () => {

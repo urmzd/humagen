@@ -1036,6 +1036,32 @@ export const homeOpened = (user = USER): Envelope =>
   });
 
 /** A click on a button the app rendered: the button is found in the blocks and sent back as Slack would. */
+type Row = { type: string; elements?: unknown[]; actions?: unknown[]; child_blocks?: Row[] };
+
+/**
+ * Every control in a message's blocks, wherever Slack draws it: an actions
+ * row, a rating row, a card, each card of a carousel, a container's rows.
+ */
+export function controls(blocks: unknown[]): { type: string; text?: { text: string } }[] {
+  return (blocks as Row[]).flatMap((b) =>
+    b.type === "actions" || b.type === "context_actions"
+      ? ((b.elements as { type: string }[]) ?? [])
+      : b.type === "card"
+        ? ((b.actions as { type: string }[]) ?? [])
+        : b.type === "carousel"
+          ? controls(b.elements ?? [])
+          : b.type === "container"
+            ? controls(b.child_blocks ?? [])
+            : [],
+  );
+}
+
+/** The labels of the buttons in a message's blocks, wherever they are drawn. */
+export const buttonLabels = (blocks: unknown[]) =>
+  controls(blocks)
+    .filter((e) => e.type === "button")
+    .map((e) => e.text?.text);
+
 export function click(
   blocks: unknown[],
   label: string,
@@ -1048,21 +1074,7 @@ export function click(
     positive_button?: Button;
     negative_button?: Button;
   };
-  type Row = { type: string; elements?: unknown[]; actions?: Element[]; child_blocks?: Row[] };
-  // Slack's own blocks hold their buttons too: a card, each card of a carousel, a container's rows.
-  const rows = (bs: Row[]): Element[] =>
-    bs.flatMap((b) =>
-      b.type === "actions" || b.type === "context_actions"
-        ? ((b.elements as Element[]) ?? [])
-        : b.type === "card"
-          ? (b.actions ?? [])
-          : b.type === "carousel"
-            ? rows((b.elements as Row[]) ?? [])
-            : b.type === "container"
-              ? rows(b.child_blocks ?? [])
-              : [],
-    );
-  const elements = rows(blocks as Row[]);
+  const elements = controls(blocks) as Element[];
   // A rating control is one element with two buttons, each with its own value.
   const buttons = elements.flatMap((e) =>
     e.type === "feedback_buttons"

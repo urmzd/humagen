@@ -38,6 +38,7 @@ import {
   alertMail,
   announcementMail,
   budgetMail,
+  controls,
   draftMail,
   failureMail,
   memoryMail,
@@ -120,13 +121,13 @@ function slackVisibleText(element: ReactElement): string {
 }
 
 function slackAction(element: ReactElement, id: string) {
-  const blocks = renderToSlack(element).pages.flat() as {
-    type: string;
-    elements?: { type: string; action_id: string; value?: string }[];
-  }[];
-  const found = blocks
-    .filter((block) => block.type === "actions")
-    .flatMap((block) => block.elements ?? [])
+  const found = (
+    controls(renderToSlack(element).pages.flat()) as {
+      type: string;
+      action_id: string;
+      value?: string;
+    }[]
+  )
     .filter((control) => control.type === "button")
     .map((control) => decodeSlackAction(control))
     .find((action) => action?.id === id);
@@ -469,13 +470,7 @@ test("a mention is a message to reply to, the same on both, and replying posts a
 
 /** The buttons a rendering offers, by label: what a person can do there. */
 function slackButtons(element: ReactElement): string[] {
-  const pages = renderToSlack(element).pages.flat() as {
-    type: string;
-    elements?: { type: string; text?: { text: string } }[];
-  }[];
-  return pages
-    .filter((b) => b.type === "actions")
-    .flatMap((b) => b.elements ?? [])
+  return controls(renderToSlack(element).pages.flat())
     .filter((e) => e.type === "button")
     .map((e) => e.text?.text ?? "")
     .sort();
@@ -492,19 +487,14 @@ function webButtons(element: ReactElement): string[] {
 type Offered = { id: string; label: string; name: string | undefined };
 /** Slack's buttons that act, in the order shown. */
 function slackOffers(element: ReactElement): Offered[] {
-  const blocks = renderToSlack(element).pages.flat() as {
+  const elements = controls(renderToSlack(element).pages.flat()) as {
     type: string;
-    elements?: {
-      type: string;
-      action_id: string;
-      value?: string;
-      text?: { text: string };
-      accessibility_label?: string;
-    }[];
+    action_id: string;
+    value?: string;
+    text?: { text: string };
+    accessibility_label?: string;
   }[];
-  return blocks
-    .filter((b) => b.type === "actions")
-    .flatMap((b) => b.elements ?? [])
+  return elements
     .filter((e) => e.type === "button")
     .map((e) => ({
       id: decodeSlackAction(e)?.id ?? "",
@@ -679,11 +669,21 @@ test("an approval the approval agent judged shows its view in Slack, the workspa
     }));
     return fromServer({ ...raw, parts });
   };
+  // Muted lines: a context block's, or a card's body, one line of it each.
   const contextTexts = (el: ReactElement) =>
-    (renderToSlack(el).pages.flat() as { type: string; elements?: { text?: string }[] }[])
-      .filter((b) => b.type === "context")
-      .flatMap((b) => b.elements ?? [])
-      .map((e) => e.text ?? "");
+    (
+      renderToSlack(el).pages.flat() as {
+        type: string;
+        elements?: { text?: string }[];
+        body?: { text: string };
+      }[]
+    ).flatMap((b) =>
+      b.type === "context"
+        ? (b.elements ?? []).map((e) => e.text ?? "")
+        : b.type === "card" && b.body
+          ? b.body.text.split(/\n| \| /)
+          : [],
+    );
 
   const asked = (
     <MessageView

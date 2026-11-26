@@ -232,6 +232,25 @@ credential and the people it answers for:
 Under `tailscale` sign-in the app's subject is `slack-app:<team id>`, such as
 `slack-app:T0123ABCD`, and a mapped person is `tailscale:<login>`.
 
+**How the cards are drawn.** In a message, the app uses Slack's own blocks
+(`packages/render-slack/src/native.tsx`):
+
+| What waits | Block | Buttons |
+|------------|-------|---------|
+| One approval | `card`: the action as its title, the preview and the approval agent's line as its body, who may act or the record as its subtext | Approve, Ask a Question and Decline on the card. Edit, Always Allow and **Set this thread to Auto** in a row under it |
+| Several approvals | A line, then a `carousel` with one card for each | Each card decides its own call. **Approve All** and a menu with **Set this thread to Auto** and **Cancel All** under the carousel |
+| A question | `container`: the question as its title | One button for each option, I'm Not Sure, and a field for an answer of the reader's own that sends on Enter. A question with no options keeps Something Else, which opens the reply form |
+| An inbox alert | `card`: the service and what is wrong as its title, its status as its subtitle | Acknowledge, Snooze and Open Rule |
+
+A decided card stays in place with its record and no buttons. A modal and
+the Home tab keep the sections and buttons. A text longer than a card holds
+is never cut: that card is drawn as sections. When Slack refuses a message's
+blocks as `invalid_blocks`, the app sends the same message again as sections,
+and then as its text alone (`apps/slack/src/fallback.ts`).
+
+The app does not handle Approve All, Approve Selected or Cancel All yet, so
+those buttons do nothing. Each approval's own buttons work.
+
 **Ask a Question** on an approval opens a form for one question. Sent, the
 question is said in the thread (who asked, about which action, and what)
 and asked of the agent that made the call, as a message typed in the

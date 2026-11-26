@@ -515,8 +515,12 @@ const SlackClarificationCard: Override<ClarificationCardProps> = ({ base: Base, 
   } else {
     const described = options.filter((x) => x.description);
     const textBlock = `${TEXT_BLOCK}${encodeAction(payload)}`;
-    // The words ride in the input's block_id; one too long for it asks with a button instead.
-    const typed = clarification.allowOther && textBlock.length <= LIMITS.blockId;
+    // Beside options, an answer of the reader's own is typed in place. The words
+    // ride in the input's block_id; one too long for it asks with a button
+    // instead, as does a question with no options, whose form shows the
+    // question above a field of several lines.
+    const typed =
+      clarification.allowOther && options.length > 0 && textBlock.length <= LIMITS.blockId;
     const buttons: ButtonProps[] = [
       ...options.map((x) => ({
         label: x.label,
