@@ -7,6 +7,7 @@ import {
   brandCopy,
   servedBranding,
   setEntryAgent,
+  titled,
 } from "./branding.ts";
 import { documentTitle } from "./route.ts";
 
@@ -20,7 +21,7 @@ test("the workspace accent, and no choice yet, draw with the branded accent", ()
 test("before the workspace's branding is read, the served name brands the console", () => {
   assert.deepEqual(servedBranding("Humagen"), {
     name: "Humagen",
-    wordmark: "humagen",
+    wordmark: "Humagen",
     title: "Humagen",
     logo: null,
     logo_dark: null,
@@ -29,6 +30,7 @@ test("before the workspace's branding is read, the served name brands the consol
     starters: null,
     copy: {},
     entry_agent: "humagen",
+    terms_url: null,
   });
   const acme = servedBranding("Acme");
   assert.equal(acme.wordmark, "Acme");
@@ -77,13 +79,30 @@ test("a tab title follows the workspace's words for the page", async () => {
   }
 });
 
-test("the entry agent is shown by the workspace's name, every other agent by its own", () => {
+test("the entry agent is shown by the workspace's name, every other agent by its handle written as a name", () => {
   setEntryAgent("", "");
-  assert.equal(agentShown("humagen"), "humagen");
+  assert.equal(agentShown("humagen"), "Humagen");
   brandCopy({}, { ...servedBranding("Acme"), entry_agent: "humagen" });
   assert.equal(agentShown("humagen"), "Acme");
-  assert.equal(agentShown("billing"), "billing");
+  assert.equal(agentShown("billing"), "Billing");
+  assert.equal(agentShown("security-reviewer"), "Security Reviewer");
+  assert.equal(agentShown("data_analyst"), "Data Analyst");
   brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
   assert.equal(agentShown("front-desk"), "Acme");
-  assert.equal(agentShown("humagen"), "humagen");
+  assert.equal(agentShown("humagen"), "Humagen");
+  // A name the workspace typed is shown as typed, whatever its words or capitals.
+  for (const typed of ["Github Sre Devops", "acme ai", "the qa_desk", "front-desk"]) {
+    brandCopy({}, { ...servedBranding(typed), entry_agent: "front-desk" });
+    assert.equal(agentShown("front-desk"), typed);
+  }
+  brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
+  // A name already written as one is kept as it is.
+  assert.equal(titled("GitHub-bot"), "GitHub Bot");
+  // A short word a name writes in capitals stays in capitals.
+  assert.equal(agentShown("qa-reviewer"), "QA Reviewer");
+  // A brand keeps its own capitals.
+  assert.equal(agentShown("github-reviewer"), "GitHub Reviewer");
+  assert.equal(agentShown("slack_triage"), "Slack Triage");
+  assert.equal(agentShown("openai-evals"), "OpenAI Evals");
+  assert.equal(titled("GITHUB bigquery-analyst"), "GitHub BigQuery Analyst");
 });

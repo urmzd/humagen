@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { PlusIcon, SearchIcon } from "@humagen/render-web";
+import { CheckIcon, SearchIcon } from "@humagen/render-web";
 import {
   Sheet,
   SheetContent,
@@ -20,14 +20,14 @@ import {
   type ToolCredentials,
 } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
+import { ConnectedAccounts, LinkedPeople } from "./ConnectedAccounts.tsx";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { ConnectionSection } from "./ConnectionSection.tsx";
-import { ItemCard, Pill, type Tone } from "./cards.tsx";
+import { Pill, type Tone } from "./cards.tsx";
 import { type ConnectionPreset, connectionApi } from "./connectionApi.ts";
 import {
-  CONNECT_PERMISSION,
   cannotConnect,
   destination,
   offers,
@@ -37,9 +37,11 @@ import {
   ways,
   whereReferences,
 } from "./connections.ts";
+import { consentReturn } from "./consentReturn.ts";
 import { GitHubRules } from "./GitHubRules.tsx";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
+import { SplitButton } from "./SplitButton.tsx";
 import { AddToolServer, ToolList, YourToolServers } from "./ToolServers.tsx";
 import { credentialWords, hostOf, withoutToolServer } from "./toolServers.ts";
 import {
@@ -73,7 +75,6 @@ export function YourConnections({
   section,
   onOpen,
   canConnect = true,
-  onWhy,
   embedded = false,
 }: {
   embedded?: boolean;
@@ -82,8 +83,6 @@ export function YourConnections({
   onOpen: (provider?: string) => void;
   /** May give or remove a credential, which the server holds to CONNECT_PERMISSION. */
   canConnect?: boolean;
-  /** Opens why the person may not connect, in Settings > Access. */
-  onWhy?: () => void;
 }) {
   const [state, setState] = useState<ToolCredentials | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -117,21 +116,7 @@ export function YourConnections({
     <ConnectionSection embedded={embedded} title="MCPs" narrow>
       <Problem message={problem} />
       {section !== "tools" && !canConnect && state && state.providers.length > 0 && (
-        <p className="text-aui-sm text-aui-muted">
-          {cannotConnect}
-          {onWhy && (
-            <>
-              {" "}
-              <a
-                href={href({ page: "settings", section: "access", permission: CONNECT_PERMISSION })}
-                onClick={follow(onWhy)}
-                className="rounded-aui text-aui-fg underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-              >
-                Why can't I?
-              </a>
-            </>
-          )}
-        </p>
+        <p className="text-aui-sm text-aui-muted">{cannotConnect}</p>
       )}
       {section !== "tools" &&
         state?.providers.map((c) => (
@@ -334,16 +319,9 @@ export function ConnectForm({
   );
 }
 
-/** The groups a connection belongs to, in the order the page shows them. */
+/** The groups a connection belongs to. */
 type Group = "apps" | "mcps" | "skills";
 const words = defaultCopy.plugins;
-
-/** Apps are the workspace's and have a page of their own; the rest are a person's plugins. */
-const groups: { id: Group; title: string; lede?: string; scope?: "apps" }[] = [
-  { id: "apps", title: words.apps.title, scope: "apps" },
-  { id: "mcps", title: words.mcps },
-  { id: "skills", title: words.skills, lede: words.skillsLede },
-];
 
 /** The shelves of the catalog, in the order the page shows them. */
 type Family = "google" | "work" | "yours";
@@ -368,7 +346,7 @@ type Item = {
   note?: string;
   pill?: { text: string; tone: Tone };
   action?: { label: string; run: () => void; disabled?: boolean };
-  /** Where the card goes instead of opening the sheet: a skill opens in the skill library. */
+  /** Where the row goes instead of opening the sheet: a skill opens in the skill library. */
   go?: () => void;
   /** Already yours: connected, added or written by you. The Installed tab lists these. */
   installed?: boolean;
@@ -386,7 +364,7 @@ function unavailable(reason?: string): { text: string; tone: Tone } {
 
 /**
  * Connections: apps installed for the workspace and MCPs, each item once. A
- * card shows where it stands and the one thing to do next; its menu and side
+ * row shows where it stands and the one thing to do next; its menu and side
  * sheet hold the rest. Data sources are added inside a corpus, not here.
  */
 export function Connections({
@@ -433,15 +411,17 @@ export function Connections({
   const selectConnection = useCallback((id?: string) => {
     if (selectedRef.current === id) return;
     if (id) {
-      // Focus goes back to what opened the sheet: the card's button, or its ⋯
-      // button when a menu item did (the menu hands focus back to it first).
+      // Focus goes back to what opened the sheet: the row's button, or, when a
+      // menu's item did, the arrow that opened that menu.
       const active = document.activeElement;
+      const menu =
+        active instanceof HTMLElement ? active.closest<HTMLElement>('[role="menu"]') : null;
+      const trigger = menu?.id
+        ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(menu.id)}"]`)
+        : null;
       sheetOpener.current =
-        active instanceof HTMLElement &&
-        active !== document.body &&
-        !active.closest('[role="menu"]')
-          ? active
-          : null;
+        trigger ??
+        (active instanceof HTMLElement && active !== document.body && !menu ? active : null);
     }
     selectedRef.current = id;
     reviewRequest.current++;
@@ -464,7 +444,7 @@ export function Connections({
       .personContext()
       .then(setContext)
       .catch(() => setContext(null));
-    // What the workspace installed; a person who may not read it sees the cards alone.
+    // What the workspace installed; a person who may not read it sees the available apps alone.
     api
       .clients()
       .then((r) => setClients(r.clients))
@@ -496,17 +476,20 @@ export function Connections({
   }, [provider, resolve, selectConnection]);
   const callbackStarted = useRef(false);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has("state") || callbackStarted.current) return;
+    if (callbackStarted.current) return;
+    // Taken from the address when the console started (consentReturn.ts).
+    const back = consentReturn();
+    if (!back) return;
     callbackStarted.current = true;
     const provider = sessionStorage.getItem("humagen.connection.provider");
-    const nonce = params.get("state");
-    const code = params.get("code");
-    const installation = params.get("installation_id") ?? undefined;
-    // Remove authorization material from browser history before any request.
-    window.history.replaceState(window.history.state, "", "/connections");
+    const nonce = back.get("state");
+    const code = back.get("code");
+    const installation = back.get("installation_id") ?? undefined;
     sessionStorage.removeItem("humagen.connection.provider");
     if (!provider || !nonce || !code) {
+      // A return this tab cannot complete still ends the consent it names,
+      // by its state alone.
+      if (nonce) connectionApi.endConsent(nonce).catch(() => undefined);
       setProblem("Connection was not authorized. Choose Connect to try again.");
       return;
     }
@@ -818,10 +801,111 @@ export function Connections({
     return <p className="text-aui-sm text-aui-muted">{reason}</p>;
   };
 
+  // A row's one control. Once the item is the person's, its status is the control
+  // ("Connected", "Installed"): pressing it manages it, and its arrow holds the rest
+  // (the row's own action, such as Review Tools, then Remove). Before that, the verb that
+  // makes it theirs (Connect, Enable, Install), with any other choices under its arrow.
+  const rowControl = (it: Item) => {
+    const choices = it.menu.map((m) => ({
+      label: m.label,
+      onSelect: m.run,
+      destructive: m.destructive,
+      disabled: busy && m.destructive,
+    }));
+    const manage = () => (it.go ? it.go() : open(it.id));
+    if (it.pill?.tone === "ok")
+      return (
+        <SplitButton
+          label={it.pill.text}
+          icon={<CheckIcon size={14} aria-hidden />}
+          onClick={manage}
+          menuLabel={`More for ${it.name}`}
+          choices={[
+            ...(it.action
+              ? [{ label: it.action.label, onSelect: it.action.run, disabled: it.action.disabled }]
+              : [{ label: "Manage", onSelect: manage }]),
+            ...choices,
+          ]}
+        />
+      );
+    if (it.action)
+      return (
+        <SplitButton
+          label={it.action.label}
+          onClick={it.action.run}
+          disabled={it.action.disabled}
+          menuLabel={`More for ${it.name}`}
+          choices={choices}
+        />
+      );
+    return choices.length > 0 ? <MoreMenu items={choices} label={`More for ${it.name}`} /> : null;
+  };
+
+  const rows = (label: string, shown: Item[]) => (
+    <ul
+      aria-label={label}
+      className={`grid min-w-0 grid-cols-1 gap-x-8 ${scope === "apps" ? "" : "@3xl:grid-cols-2"}`}
+    >
+      {shown.map((it) => (
+        <li
+          key={it.id}
+          aria-label={it.name}
+          // In a narrow column the status and the action drop under the name rather than squeeze it out.
+          // A row whose menu is open rises over the rows after it, so the menu is not drawn
+          // under the next row and its items take the click.
+          className="group/row relative isolate flex min-h-16 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-b py-3 hover:bg-aui-hover has-[[aria-expanded=true]]:z-20"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
+            <ConnectionLogo id={it.logo} name={it.name} />
+          </span>
+          {/*
+            The whole row opens its details, so its other controls sit above it. The
+            button holds the name and the note, so it is itself as wide as its column
+            and as tall as a finger needs.
+          */}
+          <button
+            type="button"
+            aria-label={it.name}
+            onClick={() => (it.go ? it.go() : open(it.id))}
+            // Apps keep their actions as words, so the name gives up more room to stay on their line.
+            className={`flex min-h-6 ${scope === "apps" ? "min-w-16" : "min-w-28"} flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11`}
+          >
+            <span className="w-full min-w-0 truncate font-medium text-aui-sm text-aui-fg">
+              {it.name}
+            </span>
+            {it.note && (
+              <span className="w-full min-w-0 truncate text-aui-muted text-aui-xs">{it.note}</span>
+            )}
+          </button>
+          {/*
+            An app's status and controls wrap as one, to the row's end, so its menu never
+            drops alone under the logo. The group takes no clicks: its gaps still open the row.
+            In a column narrower than the group it wraps inside the row, the status first, so the
+            menu still ends the row beside its action.
+          */}
+          {/*
+            One control at the row's end, as a person reads it: a verb to do the next thing
+            (Connect, Enable, Install), or, once it is theirs, "Connected" with what else they
+            can do (Manage, Replace, Remove) under its arrow. A status that needs attention
+            stays beside it; "Not enabled" beside an Enable says nothing more.
+          */}
+          <span className="relative z-10 ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+            {/* A status that is not the control: why it is off, or what needs attention. "Not
+                enabled" beside Enable says nothing more, so it is left out there. */}
+            {it.pill && it.pill.tone !== "ok" && !(it.action && it.pill.text === "Not enabled") && (
+              <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
+            )}
+            {rowControl(it)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+  const apps = items.filter((it) => it.group === "apps");
+
   return (
     <Page
       title={scope === "apps" ? words.apps.title : words.title}
-      lede={scope === "apps" ? words.apps.lede : words.lede}
       tabs={
         scope === "apps" ? undefined : (
           <Tabs
@@ -838,97 +922,18 @@ export function Connections({
     >
       <Problem message={sheetOpen ? null : problem} />
       {busy && <output>Connecting…</output>}
-      {scope === "apps" &&
-        groups
-          .filter((g) => g.scope === "apps")
-          .map((g) => {
-            const shown = items.filter((it) => it.group === g.id);
-            const add = g.id === "mcps" && mayAdd;
-            const manage = g.id === "skills" && !!onNavigate;
-            // A group with nothing in it and nothing to do is left out.
-            if (shown.length === 0 && !add && !manage) return null;
-            return (
-              <section
-                key={g.id}
-                aria-labelledby={`connections-${g.id}`}
-                className="flex min-w-0 flex-col gap-3"
-              >
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <div className="min-w-0">
-                    {/* Apps is the page's own title, so its one group is named for a screen reader only. */}
-                    <h2
-                      id={`connections-${g.id}`}
-                      className={
-                        g.scope === "apps" ? "sr-only" : "text-aui-base font-medium text-aui-fg"
-                      }
-                    >
-                      {g.title}
-                    </h2>
-                    {g.lede && <p className="text-aui-sm text-aui-muted">{g.lede}</p>}
-                  </div>
-                  {add && (
-                    <button type="button" className={button} onClick={() => open("other")}>
-                      Add MCP
-                    </button>
-                  )}
-                  {manage && (
-                    <button
-                      type="button"
-                      className={button}
-                      onClick={() =>
-                        onNavigate?.({ page: "customize", section: "skills", scope: "personal" })
-                      }
-                    >
-                      {words.manageSkills}
-                    </button>
-                  )}
-                </div>
-                {shown.length === 0 && manage && (
-                  <p className="text-aui-sm text-aui-muted">{words.noSkills}</p>
-                )}
-                {shown.length > 0 && (
-                  <ul
-                    aria-label={g.title}
-                    className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3"
-                  >
-                    {shown.map((it) => (
-                      <li key={it.id} aria-label={it.name} className="min-w-0">
-                        <ItemCard
-                          mark={<ConnectionLogo id={it.logo} name={it.name} />}
-                          title={it.name}
-                          status={it.pill && <Pill tone={it.pill.tone}>{it.pill.text}</Pill>}
-                          description={it.note}
-                          menu={it.menu.map((m) => ({
-                            label: m.label,
-                            onSelect: m.run,
-                            destructive: m.destructive,
-                            disabled: busy && m.destructive,
-                          }))}
-                          menuLabel={`More for ${it.name}`}
-                          // The whole card opens its details, so the menu holds only what else it can do.
-                          onOpen={() => (it.go ? it.go() : open(it.id))}
-                          actions={
-                            it.action && (
-                              <button
-                                type="button"
-                                className={button}
-                                disabled={it.action.disabled}
-                                onClick={it.action.run}
-                              >
-                                {it.action.label}
-                              </button>
-                            )
-                          }
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            );
-          })}
+      {scope === "apps" && apps.length > 0 && rows(words.apps.title, apps)}
       {scope !== "apps" && (
         <>
+          {kind === "mcps" && (
+            <ConnectedAccounts
+              presets={presets}
+              busy={busy}
+              canConnect={canConnect}
+              onConnect={(preset) => connect(preset, "person")}
+              onDisconnect={disconnect}
+            />
+          )}
           <div className={kind === "mcps" ? "flex min-w-0 flex-wrap items-center gap-3" : "hidden"}>
             <label className="flex h-9 min-w-0 flex-1 basis-56 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
               <SearchIcon size={14} />
@@ -961,82 +966,6 @@ export function Connections({
             // Skills are all yours already, so their tab has no catalog to search.
             const mine = kind === "skills" ? items.filter((it) => it.group === "skills") : [];
             const manage = !!onNavigate;
-            const rows = (label: string, shown: Item[]) => (
-              <ul aria-label={label} className="grid min-w-0 grid-cols-1 gap-x-8 @3xl:grid-cols-2">
-                {shown.map((it) => (
-                  <li
-                    key={it.id}
-                    aria-label={it.name}
-                    // In a narrow column the status and the action drop under the name rather than squeeze it out.
-                    className="group/row relative isolate flex min-h-16 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-b py-3 hover:bg-aui-hover"
-                  >
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
-                      <ConnectionLogo id={it.logo} name={it.name} />
-                    </span>
-                    {/*
-                      The whole row opens its details, so its other controls sit above it. The
-                      button holds the name and the note, so it is itself as wide as its column
-                      and as tall as a finger needs.
-                    */}
-                    <button
-                      type="button"
-                      aria-label={it.name}
-                      onClick={() => (it.go ? it.go() : open(it.id))}
-                      className="flex min-h-6 min-w-28 flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11"
-                    >
-                      <span className="w-full min-w-0 truncate font-medium text-aui-sm text-aui-fg">
-                        {it.name}
-                      </span>
-                      {it.note && (
-                        <span className="w-full min-w-0 truncate text-aui-muted text-aui-xs">
-                          {it.note}
-                        </span>
-                      )}
-                    </button>
-                    {it.pill && (
-                      <span className="relative z-10 shrink-0">
-                        <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
-                      </span>
-                    )}
-                    {it.action &&
-                      (ADDS.has(it.action.label) ? (
-                        <button
-                          type="button"
-                          aria-label={it.action.label}
-                          title={`${it.action.label} ${it.name}`}
-                          disabled={it.action.disabled}
-                          onClick={it.action.run}
-                          className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
-                        >
-                          <PlusIcon size={16} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`${button} relative z-10 shrink-0`}
-                          disabled={it.action.disabled}
-                          onClick={it.action.run}
-                        >
-                          {it.action.label}
-                        </button>
-                      ))}
-                    {it.menu.length > 0 && (
-                      <span className="relative z-10 shrink-0">
-                        <MoreMenu
-                          items={it.menu.map((m) => ({
-                            label: m.label,
-                            onSelect: m.run,
-                            destructive: m.destructive,
-                            disabled: busy && m.destructive,
-                          }))}
-                          label={`More for ${it.name}`}
-                        />
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            );
             return (
               <>
                 {kind === "mcps" && (mcps.length > 0 || (mayAdd && !q && tab === "catalog")) && (
@@ -1205,6 +1134,11 @@ export function Connections({
                             onChanged={changed}
                           />
                         )}
+                        {c.surface === "github" &&
+                          link(
+                            { page: "repositories", client: c.id },
+                            defaultCopy.githubRepos.open,
+                          )}
                         {c.surface === "github" && (
                           <GitHubRules
                             key={`${c.id}:rules:${c.version}`}
@@ -1212,6 +1146,9 @@ export function Connections({
                             canWrite={c.managed !== "file"}
                             onChanged={changed}
                           />
+                        )}
+                        {(c.surface === "github" || c.surface === "slack") && (
+                          <LinkedPeople client={c.id} canUnlink={canWrite} />
                         )}
                         {link(
                           {
@@ -1225,7 +1162,9 @@ export function Connections({
                     ))}
                   {(selected === "slack" || selected === "github") && (
                     <details className="text-aui-sm">
-                      <summary className="cursor-pointer text-aui-muted">Set up by hand</summary>
+                      <summary className="-mx-1.5 w-fit cursor-pointer rounded-aui px-1.5 py-0.5 text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
+                        Set up by hand
+                      </summary>
                       <div className="pt-3">
                         <ClientConnect
                           key={selected}

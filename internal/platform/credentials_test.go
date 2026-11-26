@@ -458,14 +458,14 @@ func TestAMachinesOwnRunActsForNobody(t *testing.T) {
 }
 
 // A Slack connector's run acts for the person the team's clients map its
-// Slack user to, and a Slack user nobody maps is nobody.
+// Slack user to, and a Slack user nobody maps starts no run.
 func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 	f := &fakes{}
 	cfg := f.config()
 	cfg.Policy = operators(t, "ana")
 	w := newWorld(t, cfg)
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
-	in := slackClient("help-app", "A0HELP", team, "worker")
+	in := mapsNobody(slackClient("help-app", "A0HELP", team, "worker"))
 	create(t, w.p, tenant, in)
 	// The people map is on the client the Slack app built on the API signs
 	// in as, which is not the client that receives the mention.
@@ -490,29 +490,24 @@ func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 	if code := signedSlack(ingress, "secret-help-app", stranger); code != http.StatusOK {
 		t.Fatalf("the mention answered %d", code)
 	}
-	eventually(t, "the stranger's run finished", func() bool {
-		n := 0
-		for _, r := range w.p.Runs.List(tenant, 50) {
-			if r.Status == runs.Completed {
-				n++
-			}
-		}
-		return n == 2
-	})
+	// The connector answers before anything is raised, so nothing is pending.
+	if all := w.p.Runs.List(tenant, 50); len(all) != 1 {
+		t.Fatalf("an unmapped Slack user's mention left %d runs, want the mapped person's one", len(all))
+	}
 	if calls := w.server.Calls(); len(calls) != 1 {
-		t.Fatalf("an unmapped Slack user's run reached the server: %q", calls)
+		t.Fatalf("an unmapped Slack user's mention reached the server: %q", calls)
 	}
 	w.leaks(t, environment["HUMAGEN_PERSON_ANA_ISSUES"])
 }
 
-// Two clients mapping one Slack user to two people make the run act for
-// nobody, rather than for either.
-func TestASlackUserMappedToTwoPeopleActsForNobody(t *testing.T) {
+// Two clients mapping one Slack user to two people make that user nobody,
+// rather than either, so their mention starts no run.
+func TestASlackUserMappedToTwoPeopleStartsNothing(t *testing.T) {
 	f := &fakes{}
 	w := newWorld(t, f.config())
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
-	create(t, w.p, tenant, slackClient("help-app", "A0HELP", team, "worker"))
+	create(t, w.p, tenant, mapsNobody(slackClient("help-app", "A0HELP", team, "worker")))
 	for id, who := range map[string]string{"one": "ana", "two": "ben"} {
 		in := slackClient("map-"+id, "A0MAP"+strings.ToUpper(id), team, "worker")
 		in.Slack.Machine, in.Slack.People = "svc-"+id, map[string]string{"U0HUMAN1": who}
@@ -521,15 +516,12 @@ func TestASlackUserMappedToTwoPeopleActsForNobody(t *testing.T) {
 	if code := signedSlack(w.p.IngressHandler(), "secret-help-app", mentionOf("A0HELP", team, "Ev1", "C01", "1700000000.000100")); code != http.StatusOK {
 		t.Fatalf("the mention answered %d", code)
 	}
-	eventually(t, "the run finished", func() bool {
-		r, ok := runOf(w.p, tenant, "worker")
-		return ok && r.Status == runs.Completed
-	})
-	if r, _ := runOf(w.p, tenant, "worker"); r.Actor.User != "" {
-		t.Fatalf("an ambiguous Slack user acts for %q", r.Actor.User)
+	// The connector answers before anything is raised, so nothing is pending.
+	if r, ok := runOf(w.p, tenant, "worker"); ok {
+		t.Fatalf("an ambiguous Slack user started a run acting for %q", r.Actor.User)
 	}
 	if got := w.server.Requests(); len(got) != 0 {
-		t.Fatalf("an ambiguous Slack user's run reached the server with %q", got)
+		t.Fatalf("an ambiguous Slack user's mention reached the server with %q", got)
 	}
 }
 

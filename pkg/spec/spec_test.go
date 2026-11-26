@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if c := cfg.System.Spec.Connections; c == nil || c.EncryptionKey.Ref != "env:HUMAGEN_CONNECTION_KEY" || c.Redirect(cfg.System.Spec.Server.PublicURL) != "http://localhost:8080/connections/callback" {
+		t.Fatalf("the example's connections = %+v", c)
+	}
 	if sl := cfg.Platforms[0].Spec.Surfaces.Slack; sl.Machine != "humagen-slack" || len(sl.People) != 1 || sl.People["U0123456"] != "issuer|person-subject" {
 		t.Fatalf("the example's Slack app acts for %v as %q", sl.People, sl.Machine)
 	}
@@ -67,6 +71,11 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	}
 	if r, err := cfg.System.Spec.Rooms.Config(); err != nil || r.CoalesceAbove != 200 || r.TailInterval != 3*time.Second || r.RoomRunsPerMinute != 600 || r.PersonRuns != 25 {
 		t.Fatalf("rooms = %+v %v", r, err)
+	}
+	if a := cfg.Platforms[0].Spec.Agents; !slices.ContainsFunc(a, func(a Agent) bool {
+		return a.Spec != nil && a.Spec.Name == "pr-reviewer" && a.Spec.Review == wire.Review{Approve: wire.ReviewApproveWhenClean, BlockOn: "warning"} && a.Spec.Validate() == nil
+	}) {
+		t.Fatalf("the example's review policy did not load: %+v", a)
 	}
 	w := cfg.Platforms[0].Spec.Workspace
 	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes || w.Retention() != 180*24*time.Hour {
@@ -84,6 +93,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if f := w.Projects[1]; w.Run == nil || f.Run == nil || w.Run.Ceilings.Depth(5) != 2 || len(w.Run.Ceilings.ToolServers) != 1 || !w.Run.Ceilings.AllowsEgress("api.github.com") ||
 		w.Run.Preferences.Model != "anthropic/claude-sonnet-4-5" || f.Run.Ceilings.Depth(5) != 1 || len(f.Run.Ceilings.Tools) != 3 || f.Run.Preferences.CompactionTokens != 120000 {
 		t.Fatalf("the example's run settings = %+v %+v", w.Run, f.Run)
+	}
+	if lead := cfg.Platforms[0].Spec.Agents[0].Spec; lead == nil || lead.Name != "lead" || !lead.Loads("secure-review") || lead.Loads("other") {
+		t.Fatalf("the example's lead loads %+v", lead)
 	}
 	if f := w.Projects[1]; len(w.Skills) != 1 || len(f.Skills) != 1 || f.Skills[0].Name != "review" || f.Skills[0].ArgumentHint != "[account]" ||
 		len(w.MentionKinds) != 1 || w.MentionKinds[0].Resolves != "role" {

@@ -89,6 +89,54 @@ refuse --set replicaCount=2 --set system.spec.stores.kind=memory --set system.sp
 refuse --set worker.enabled=true
 refuse -f "$chart/ci/scale-values.yaml" --set system.spec.blobs.kind=disk --set system.spec.blobs.s3=null
 refuse -f "$chart/ci/scale-values.yaml" --set existingSecret=
+# The browser is one page and one set of sign-ins, so it belongs to one
+# workspace: several platforms need it named, the name must be a platform's,
+# and its tool server may not take a name the workspace already uses.
+# (--set on a list replaces it, so each case names every platform.)
+on="--set browser.enabled=true --set browser.image.repository=registry.example.com/humagen-browser --set browser.image.tag=1"
+two="--set platforms[0].metadata.name=default --set platforms[1].metadata.name=other"
+# shellcheck disable=SC2086
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" $two >/dev/null
+# shellcheck disable=SC2086
+refuse $on $two
+# shellcheck disable=SC2086
+refuse $on --set browser.workspace=nobody
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" --set 'platforms[0].metadata.name=default' --set 'platforms[0].spec.tools[0].name=browser' --set 'platforms[0].spec.tools[0].kind=mcp' >/dev/null
+# shellcheck disable=SC2086
+refuse $on --set 'platforms[0].metadata.name=default' --set 'platforms[0].spec.tools[0].name=browser' --set 'platforms[0].spec.tools[0].kind=mcp'
+# shellcheck disable=SC2086
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" $on $two --set browser.workspace=other >/dev/null
+# The image is not the chart's version and is published nowhere: both parts
+# of its name are required. A tool server's name is one Humagen takes, and
+# the port is a port, or the server would stop at start.
+refuse --set browser.enabled=true
+refuse --set browser.enabled=true --set browser.image.repository=r
+# shellcheck disable=SC2086
+refuse $on --set browser.tool=BROWSER
+# shellcheck disable=SC2086
+refuse $on --set browser.tool=my.browser
+# shellcheck disable=SC2086
+refuse $on --set browser.tool=my_browser
+# shellcheck disable=SC2086
+refuse $on --set-string browser.port=abc
+# shellcheck disable=SC2086
+refuse $on --set browser.port=99999
+# The bound on output files is a size under the pod's disk, never zero.
+# shellcheck disable=SC2086
+refuse $on --set-string browser.outputMaxBytes=abc
+# shellcheck disable=SC2086
+refuse $on --set browser.outputMaxBytes=5
+# shellcheck disable=SC2086
+refuse $on --set browser.outputMaxBytes=3221225472
+# A name that already ends in -browser at full length would make the
+# browser's objects the server's.
+# shellcheck disable=SC2086
+refuse $on --set fullnameOverride=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-browser
+# A policy with nowhere to ask for names would leave the browser unable to
+# open any page.
+printf 'browser:\n  networkPolicy:\n    dns:\n      namespace: ""\n      cidrs: []\n' >"$work/no-dns.yaml"
+# shellcheck disable=SC2086
+refuse $on -f "$work/no-dns.yaml"
 # What the chart renders for each blobs kind and stores kind.
 python3 -I - "$chart" "$helm" <<'EOF'
 import subprocess, sys, yaml
@@ -104,6 +152,82 @@ def data_volume(docs, name="humagen"):
 def system(docs):
     cm = next(d for d in docs if d["kind"] == "ConfigMap")
     return next(yaml.safe_load_all(cm["data"]["humagen.yaml"]))
+def platforms(docs):
+    cm = next(d for d in docs if d["kind"] == "ConfigMap")
+    return list(yaml.safe_load_all(cm["data"]["humagen.yaml"]))[1:]
+# The browser: off, nothing of it is rendered; on, one pod only this
+# release's pods reach, and its tool server in the one workspace it is for.
+ON = ["--set", "browser.enabled=true", "--set", "browser.image.repository=registry.example.com/humagen-browser", "--set", "browser.image.tag=1"]
+def browser(docs, name="humagen-browser"):
+    return {d["kind"]: d for d in docs if d["metadata"]["name"] == name}
+docs = render()
+assert not [d for d in docs if d["metadata"]["name"].endswith("-browser")], "browser off: something was rendered"
+assert not any("tools" in p.get("spec", {}) for p in platforms(docs)), "browser off: a tool server was added"
+docs = render(*ON)
+named = browser(docs)
+assert set(named) == {"ServiceAccount", "Service", "Deployment", "NetworkPolicy"}, sorted(named)
+assert named["ServiceAccount"]["automountServiceAccountToken"] is False
+pod = named["Deployment"]["spec"]["template"]["spec"]
+c = pod["containers"][0]
+assert c["image"] == "registry.example.com/humagen-browser:1", c["image"]
+assert pod["automountServiceAccountToken"] is False and named["Deployment"]["spec"]["replicas"] == 1
+assert c["securityContext"]["readOnlyRootFilesystem"] and c["securityContext"]["capabilities"]["drop"] == ["ALL"]
+assert "httpGet" not in c["readinessProbe"], "the browser refuses a probe's Host: probe the port"
+assert c["resources"]["limits"] == {"memory": "2Gi", "ephemeral-storage": "2Gi"}, c["resources"]
+env = {e["name"]: e["value"] for e in c["env"]}
+hosts = env["HUMAGEN_BROWSER_ALLOWED_HOSTS"].split(",")
+assert int(env["HUMAGEN_BROWSER_OUTPUT_MAX_BYTES"]) < 2 * 1024**3, "the output files may pass the pod's disk"
+tool = platforms(docs)[0]["spec"]["tools"][0]
+assert tool["name"] == "browser" and tool["mcp"]["transport"] == "http", tool
+endpoint = tool["mcp"]["endpoint"]
+assert endpoint == "http://humagen-browser:8931/mcp", endpoint
+assert endpoint.split("/")[2] in hosts, "the server would refuse the endpoint's own Host"
+assert len(tool["mcp"]["accept"]) == 13 and all(t["class"] == "write" and len(t["schema_hash"]) == 64 for t in tool["mcp"]["accept"])
+def check_policy(policy):
+    assert policy["policyTypes"] == ["Ingress", "Egress"]
+    assert [p["port"] for p in policy["ingress"][0]["ports"]] == [8931]
+    names = sorted(f["podSelector"]["matchLabels"]["app.kubernetes.io/name"] for f in policy["ingress"][0]["from"])
+    assert names == ["humagen", "humagen-worker"], names
+    assert len(policy["egress"]) == 2
+    dns, out = policy["egress"]
+    # Names are asked of the cluster's resolvers, never of any address.
+    assert dns["to"], "the DNS rule reaches every address"
+    assert sorted({p["port"] for p in dns["ports"]}) == [53]
+    block = out["to"][0]["ipBlock"]
+    assert block["cidr"] == "0.0.0.0/0"
+    for cidr in ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "168.63.129.16/32", "198.18.0.0/15", "240.0.0.0/4", "0.0.0.0/8"]:
+        assert cidr in block["except"], cidr + " is not refused"
+    assert [p["port"] for p in out["ports"]] == [80, 443], out["ports"]
+check_policy(named["NetworkPolicy"]["spec"])
+# Reused values from before the browser carry none of its keys but the ones
+# set by name. The policy and every bound are then the defaults, never off.
+docs = render(*ON, "--set", "browser.networkPolicy=null", "--set", "browser.resources=null", "--set", "browser.port=null", "--set", "browser.tool=null", "--set", "browser.outputMaxBytes=null")
+named = browser(docs)
+assert "NetworkPolicy" in named, "reused values: the browser has no network policy"
+check_policy(named["NetworkPolicy"]["spec"])
+c = named["Deployment"]["spec"]["template"]["spec"]["containers"][0]
+assert c["resources"]["limits"] == {"memory": "2Gi", "ephemeral-storage": "2Gi"}, "reused values: no limits"
+# An empty list of ports is not every port.
+docs = render(*ON, "--set", "browser.networkPolicy.ports=null")
+check_policy(browser(docs)["NetworkPolicy"]["spec"])
+# Off only by name.
+docs = render(*ON, "--set", "browser.networkPolicy.enabled=false", "--set", "browser.tool=web", "--set", "browser.port=9000")
+assert "NetworkPolicy" not in kinds(docs), "browser.networkPolicy off: a policy was rendered"
+tool = platforms(docs)[0]["spec"]["tools"][0]
+assert (tool["name"], tool["mcp"]["endpoint"]) == ("web", "http://humagen-browser:9000/mcp"), tool
+# A long name never makes the browser's objects the server's own.
+long = "a" * 63
+docs = render(*ON, "--set", "fullnameOverride=" + long)
+names = [(d["kind"], d["metadata"]["name"]) for d in docs]
+assert len(names) == len(set(names)), "two objects of one kind share a name"
+named = browser(docs, "a" * 55 + "-browser")
+assert set(named) >= {"Service", "Deployment"}, sorted(named)
+tool = platforms(docs)[0]["spec"]["tools"][0]
+assert tool["mcp"]["endpoint"].split("/")[2] in next(e["value"] for e in named["Deployment"]["spec"]["template"]["spec"]["containers"][0]["env"] if e["name"] == "HUMAGEN_BROWSER_ALLOWED_HOSTS").split(",")
+docs = render(*ON, "--set", "nameOverride=" + long)
+server = next(d for d in docs if d["kind"] == "Deployment" and "browser" not in d["metadata"]["name"])
+b = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-browser"))
+assert server["spec"]["selector"]["matchLabels"] != b["spec"]["selector"]["matchLabels"], "the browser has the server's selector"
 docs = render()
 assert "PersistentVolumeClaim" in kinds(docs), "disk blobs: no claim"
 assert "persistentVolumeClaim" in data_volume(docs), "disk blobs: data is not the claim"

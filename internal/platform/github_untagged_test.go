@@ -93,10 +93,19 @@ func fromGitHub(id, agent, text string) event.Envelope {
 // message in the workspace unless the test says so.
 func githubRoom(t *testing.T, b platform.Backends, mutate func(*platform.ClientInput)) (*platform.Platform, *raiser, *logs) {
 	t.Helper()
+	return githubRoomWith(t, b, mutate, nil)
+}
+
+// githubRoomWith is githubRoom on a configuration the test changes first.
+func githubRoomWith(t *testing.T, b platform.Backends, mutate func(*platform.ClientInput), configure func(*platform.Config)) (*platform.Platform, *raiser, *logs) {
+	t.Helper()
 	f := &fakes{}
 	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here.")}, "ops": {say("Ops here.")}}}
 	cfg := f.config()
 	cfg.Backends = b
+	if configure != nil {
+		configure(&cfg)
+	}
 	said := &logs{}
 	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
 	p := stage(t, c, cfg)
@@ -280,5 +289,40 @@ func TestASignedCommentToTheAppIsAnsweredByTheClientsDefault(t *testing.T) {
 	})
 	if got := p.Runs.List(tenant, 10); len(got) != 1 {
 		t.Fatalf("%d runs, want one", len(got))
+	}
+}
+
+// The host saves what a GitHub run answers with on its tag when it starts:
+// a review for a request that asks for one on a pull request, and a reply
+// for anything else. The model reads it in its trigger context.
+func TestAGitHubRunCarriesTheShapeTheHostChose(t *testing.T) {
+	p, r, _ := githubRoom(t, platform.Backends{}, nil)
+	pull := address.MustParse("github://acme/handbook/pull/9?head_sha=" + strings.Repeat("a", 40))
+	for _, tc := range []struct {
+		id, text string
+		on       address.Address
+		want     string
+	}{
+		{"gh-review", "@humagen review", pull, wire.ShapeReview},
+		{"gh-slash", "/review", pull, wire.ShapeReview},
+		{"gh-in-words", "@humagen please review this", pull, wire.ShapeReply},
+		{"gh-more-after", "@humagen review this function's naming?", pull, wire.ShapeReply},
+		{"gh-asked-as-question", "@humagen can you review this?", pull, wire.ShapeReply},
+		{"gh-inside-a-sentence", "hey @humagen review", pull, wire.ShapeReply},
+		{"gh-question", "why does the retry give up?", pull, wire.ShapeReply},
+		{"gh-issue", "review this please", issue, wire.ShapeReply},
+		{"gh-issue-command", "@humagen review", issue, wire.ShapeReply},
+	} {
+		tag := fromGitHub(tc.id, "docs", tc.text)
+		tag.Channel, tag.Source = tc.on.String(), tc.on.String()
+		wire.SetMeta(&tag, wire.MetaAnswerShape, wire.ShapeReview)
+		if tc.on.Path[1] == "pull" {
+			wire.DeleteMeta(&tag, wire.MetaAnswerShape)
+		}
+		r.raise(t, tag)
+		run := await(t, p, runIDOf(tag), runs.Completed)
+		if got := wire.ShapeOf(run.Tag()); got != tc.want {
+			t.Errorf("%s: the run's shape is %q, want %q", tc.id, got, tc.want)
+		}
 	}
 }

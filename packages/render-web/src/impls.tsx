@@ -28,6 +28,7 @@ import { CodeBlock, Terminal } from "./code";
 import { Feedback } from "./feedback";
 import { FileTile } from "./file";
 import { Checkboxes } from "./form";
+import { chipRefOf, GitHubRefLink, remarkGitHubRefs } from "./github-refs";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
@@ -132,6 +133,17 @@ const linkRenderer: Components["a"] = ({ href, children }) => {
   const label = textOf(children);
   const cite = CITE.exec(label);
   if (cite?.[1]) return <CitationChip href={href} label={cite[1]} />;
+  const ref = chipRefOf(href, label);
+  if (ref && href)
+    return (
+      <GitHubRefLink
+        href={href}
+        label={label}
+        bare={ref.kind === "issue" && label.trim() === ref.label}
+      >
+        {children}
+      </GitHubRefLink>
+    );
   return isExternal(href) ? (
     <a href={href} target="_blank" rel="noopener noreferrer">
       {children}
@@ -174,7 +186,7 @@ const markdownComponents: Components = {
 const Inline = memo(function Inline({ text }: { text: string }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkGitHubRefs]}
       components={{ p: ({ children }) => <>{children}</>, a: linkRenderer }}
       allowedElements={["p", "strong", "em", "code", "a", "del"]}
       unwrapDisallowed
@@ -193,7 +205,7 @@ function Text({ text }: PrimitiveProps["Text"]) {
   );
 }
 
-const remarkPlugins = [remarkGfm];
+const remarkPlugins = [remarkGfm, remarkGitHubRefs];
 
 /** One piece of a document, parsed again only when its own text changes. */
 const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
@@ -325,7 +337,9 @@ function Fields({ items }: PrimitiveProps["Fields"]) {
   );
 }
 
-function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
+function Callout({ tone, title, text, details }: PrimitiveProps["Callout"]) {
+  const [open, setOpen] = useState(false);
+  const detailId = useId();
   return (
     <div
       data-aui="callout"
@@ -341,6 +355,28 @@ function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
           <p className="max-w-[68ch] break-words leading-relaxed">
             <Inline text={text} />
           </p>
+        )}
+        {details && (
+          <>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={detailId}
+              onClick={() => setOpen(!open)}
+              className="w-fit rounded-aui-sm text-aui-xs text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+            >
+              {open ? details.hide : details.show}
+            </button>
+            {open && (
+              <pre
+                id={detailId}
+                data-testid="callout-details"
+                className="m-0 max-h-64 overflow-auto whitespace-pre-wrap rounded-aui-sm bg-aui-hover px-2.5 py-1.5 font-mono text-aui-2xs text-aui-fg/85 [overflow-wrap:anywhere]"
+              >
+                {details.text}
+              </pre>
+            )}
+          </>
         )}
       </div>
     </div>

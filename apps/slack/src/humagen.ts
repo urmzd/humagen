@@ -30,6 +30,18 @@ export interface Agent {
   description?: string;
 }
 
+/**
+ * How an agent chose to look, as `GET /api/agents` gives it. Only the fields
+ * this app reads: the name its messages carry, its picture, and what it
+ * offers on Home.
+ */
+export interface AgentLook {
+  display_name?: string;
+  image_url?: string;
+  greeting?: string;
+  starters?: { title: string; prompt: string }[];
+}
+
 /** An agent revision, as `GET /api/agents` lists them. Only the fields this app reads. */
 export interface Revision {
   spec: Agent;
@@ -74,6 +86,12 @@ export interface RunRequest {
   project?: string;
   /** The Slack person asking, when the client maps them: the run is theirs, not the app's. */
   act_as?: ActAs;
+  /**
+   * The Slack person the client maps who asked for a run that acts for
+   * nobody: about someone else's message, or a turn that acted for nobody
+   * asked again. Humagen starts no run for this app without act_as or this.
+   */
+  asked_by?: ActAs;
 }
 
 /**
@@ -96,6 +114,13 @@ export interface ThreadPostRequest {
   act_as: ActAs;
   surface: SurfaceRef;
   post_only?: boolean;
+  /**
+   * The message addressed nobody: a reply in a thread that does not mention
+   * the app. The platform answers it only in a thread that is listening, and
+   * only when the agent says it calls for it; anywhere else it answers 409
+   * and keeps nothing.
+   */
+  listen?: boolean;
 }
 
 /** What posting a message did, as `POST /api/threads` answers. Only the fields this app reads. */
@@ -191,10 +216,19 @@ export class HumagenError extends Error {
     message: string,
     /** Set when a limit refused the run (429 or 402). */
     readonly refusal?: Refusal,
+    /** Which failure it is, where humagen says (`ErrorBody.code`): the words may change, this does not. */
+    readonly code?: string,
   ) {
     super(message);
   }
 }
+
+/**
+ * The conflict `POST /api/sessions` answers for a Slack thread that started
+ * as a conversation, before threads outside a bound channel were sessions.
+ * The thread stays a conversation: it is posted to with `postThread`.
+ */
+export const THREAD_BEFORE_SESSIONS = "thread_before_sessions";
 
 /**
  * What this app asks of humagen. The names and shapes follow the generated
@@ -215,13 +249,16 @@ export interface ToolConnections {
   values: boolean;
 }
 export interface Humagen {
-  deliveryAllowed(client: string, channel: string, run: string): Promise<boolean>;
+  /** Whether a run may be posted in a Slack channel, in the thread `ts` when given. */
+  deliveryAllowed(client: string, channel: string, run: string, ts?: string): Promise<boolean>;
   connections(as: ActAs): Promise<ToolConnections>;
   connect(provider: string, ref: string, as: ActAs): Promise<unknown>;
   disconnect(provider: string, as: ActAs): Promise<void>;
   saveFeedback(run: string, body: FeedbackInput): Promise<unknown>;
   getMe(options?: CallOptions): Promise<Me>;
-  listAgents(options?: CallOptions): Promise<{ agents: Revision[]; builtin?: string[] }>;
+  listAgents(
+    options?: CallOptions,
+  ): Promise<{ agents: Revision[]; builtin?: string[]; looks?: Record<string, AgentLook> }>;
   /** One client record, or null when it does not exist for this caller. */
   getClient(id: string, options?: CallOptions): Promise<ClientRecord | null>;
   /** Start a conversation or continue one. The key goes only in the `Idempotency-Key` header. */
@@ -261,6 +298,13 @@ export interface Humagen {
    * found by its surface or started where the platform files it.
    */
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
+  /**
+   * Post a Slack person's message into the root session its Slack thread
+   * is, started on the thread's first message. A session is what the console
+   * lists, so a conversation that starts in Slack is found there as one that
+   * starts in the console is. Same request and same answer as `postThread`.
+   */
+  postSession(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
   /**
    * Set how a humagen thread's gated actions are approved, for a person the
    * client maps: `auto`, the approval agent decides as them, or `ask`. The
@@ -451,6 +495,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
+ * | postSession | `POST /api/sessions` with a surface |
  * | setApprovalMode | `PUT /api/threads/{id}/approval` with `act_as` |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
@@ -503,7 +548,10 @@ export function httpHumagen(cfg: {
   ): Promise<T> => {
     const res = await send(method, path, { json, headers });
     if (res.status === 204) return undefined as T;
-    const data = (await res.json().catch(() => ({}))) as { error?: string } & Refusal;
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+    } & Refusal;
     if (!res.ok) {
       const refused = res.status === 429 || res.status === 402;
       throw new HumagenError(
@@ -517,6 +565,7 @@ export function httpHumagen(cfg: {
               policy: data.policy,
             }
           : undefined,
+        typeof data.code === "string" ? data.code : undefined,
       );
     }
     return data as T;
@@ -620,7 +669,11 @@ export function httpHumagen(cfg: {
         ),
       ),
     getMe: () => http<Me>("GET", "/api/me"),
-    listAgents: () => http<{ agents: Revision[]; builtin?: string[] }>("GET", "/api/agents"),
+    listAgents: () =>
+      http<{ agents: Revision[]; builtin?: string[]; looks?: Record<string, AgentLook> }>(
+        "GET",
+        "/api/agents",
+      ),
     getClient: (id) => orNull(http<ClientRecord>("GET", `/api/clients/${enc(id)}`)),
     createRun: (body, key) =>
       http<Run>("POST", "/api/runs", body, key ? { "Idempotency-Key": key } : undefined),
@@ -644,6 +697,22 @@ export function httpHumagen(cfg: {
       }
     },
     postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    postSession: async (body) => {
+      // A session answers as itself, with what the post did under `posted`.
+      const view = await http<{
+        thread: ThreadPosted["thread"];
+        posted?: Omit<ThreadPosted, "thread">;
+      }>("POST", "/api/sessions", body);
+      return {
+        runs: [],
+        notified: [],
+        refused: [],
+        rule: "",
+        message: { id: "", text: body.text },
+        ...view.posted,
+        thread: view.thread,
+      };
+    },
     setApprovalMode: (thread, mode, actAs) =>
       http<unknown>("PUT", `/api/threads/${enc(thread)}/approval`, { mode, act_as: actAs }),
     threadSurface: (id) =>
@@ -673,10 +742,10 @@ export function httpHumagen(cfg: {
       orNull(http<{ message: WireMessage }>("GET", `/api/inbox/${enc(id)}`)).then(
         (r) => r?.message ?? null,
       ),
-    deliveryAllowed: (client, channel, run) =>
+    deliveryAllowed: (client, channel, run, ts) =>
       http<{ allowed: boolean }>(
         "GET",
-        `/api/clients/${enc(client)}/delivery?${new URLSearchParams({ channel, run })}`,
+        `/api/clients/${enc(client)}/delivery?${new URLSearchParams({ channel, run, ...(ts ? { ts } : {}) })}`,
       ).then((r) => r.allowed),
     bindings: (client) =>
       http<{ bindings: Binding[] }>("GET", `/api/clients/${enc(client)}/bindings`).then(

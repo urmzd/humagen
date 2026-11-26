@@ -42,6 +42,12 @@ export interface Citation {
 }
 
 /** The agent a step was handed to, and the run it did the work in. */
+/** A connection a run needed: the provider's id, as Connections names it, and its display name. */
+export interface ConnectionNeed {
+  provider: string;
+  name: string;
+}
+
 export interface Subagent {
   name: string;
   /** The child run. With it the step is clickable: `openRun` carries it as the target. */
@@ -70,6 +76,11 @@ export interface Task {
   /** Bounded arguments for an explicit technical detail view. */
   input?: string;
   durationMs?: number;
+  /**
+   * When the call started running (ISO 8601), so a surface can count the
+   * time it has taken while it runs. Set once, from the first event that says so.
+   */
+  startedAt?: string;
   sources?: Citation[];
   /** The approval gating this call, when status is `waiting` or `denied`. */
   interruptId?: string;
@@ -219,7 +230,7 @@ export interface Clarification {
    */
   forOthers?: string;
   /**
-   * What the approval agent said about it, in a session set to Run and Answer:
+   * What the approval agent said about it, in a session set to Auto:
    * `allow` is an answer it gave as the person, `ask` a question it left for them.
    */
   judgement?: Judgement;
@@ -278,8 +289,44 @@ export type FailureKind =
   /** A bug on our side. */
   | "internal";
 
+/**
+ * What stopped a run, read from the runtime's error, so a surface can say it
+ * in one plain sentence. `unknown` is an error no cause matched.
+ */
+export type FailureCause =
+  /** None of the agent's model providers is enabled. */
+  | "no_model_provider"
+  /** A sign-in or key the run used was refused, by a tool or an app. */
+  | "credential"
+  /** The model provider's key could not be read. */
+  | "provider_credential"
+  /** A spending limit was reached. */
+  | "budget"
+  /** Something the run used got too many requests. */
+  | "rate_limited"
+  /** The model provider got too many requests. */
+  | "provider_rate_limited"
+  /** The agent was not allowed to do what it tried. */
+  | "permission_denied"
+  | "timeout"
+  /** A service the run needed did not answer. */
+  | "unavailable"
+  /** Several steps in a row failed, so the engine stopped the run. */
+  | "failed_steps"
+  /** The agent used every step it may take for one answer. */
+  | "max_iterations"
+  /** The surface the conversation is on refused the answer. */
+  | "undeliverable"
+  /** Every attempt failed, for a reason no other cause names. */
+  | "max_attempts"
+  | "unknown";
+
 export interface Failure {
   kind: FailureKind;
+  /** What stopped the run, when it came from the runtime: decides the plain sentence. */
+  cause?: FailureCause;
+  /** The runtime's own words, shown only on request (Show details). */
+  detail?: string;
   /** A safe, specific cause supplied by the adapter. */
   title?: string;
   /** Plain-language cause, e.g. "The deploys service timed out after 30s". */
@@ -473,6 +520,13 @@ export interface Turn {
   feedbackReason?: string;
   /** Set when status is "failed". */
   failure?: Failure;
+  /**
+   * Connections the run needed and the person has not made: the platform
+   * records each when a tool group could not be opened for want of the
+   * person's own credential (`needs_connection` on the run). A surface
+   * offers to connect each one.
+   */
+  needsConnection?: ConnectionNeed[];
   /** Set while or after a stop is in flight. */
   stop?: StopState;
   activity?: AgentActivity;
@@ -484,7 +538,7 @@ export interface Turn {
   detached?: boolean;
   usage?: Usage;
   handoff?: Handoff;
-  /** Wall time so far; a finished plan is titled with it ("Worked for 12s"). */
+  /** Wall time so far; Slack's finished plan is titled with it ("Worked for 12s"). */
   durationMs?: number;
   /** Deep link to the full session, if the host has one. */
   sessionUrl?: string;

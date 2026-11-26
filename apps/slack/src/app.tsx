@@ -30,6 +30,7 @@ import {
   type Failure,
   feedbackEvent,
   HOME_ID,
+  type HomeAgentCard,
   messageState,
   partMatches,
   type QueueState,
@@ -47,6 +48,7 @@ import {
   escapeMentions,
   feedbackModal,
   homeView,
+  inertName,
   LIMITS,
   type ReplyTarget,
   reactionChanges,
@@ -55,7 +57,7 @@ import {
   type SerializeResult,
   suggestedPrompts,
 } from "@humagen/render-slack";
-import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
+import { BUILDER, choose, mayRoute, namesAgent, type Routing, tagLeading } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
 import { CodeChannels } from "./codechannel.ts";
@@ -65,6 +67,7 @@ import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./histo
 import { homeModel } from "./home.ts";
 import {
   type AskCall,
+  type AskFormAgent,
   askCallForm,
   askCallOf,
   askForm,
@@ -76,6 +79,7 @@ import {
 import {
   type ActAs,
   type Agent,
+  type AgentLook,
   type Binding,
   type ClientRecord,
   type Humagen,
@@ -85,13 +89,15 @@ import {
   type Run,
   type StreamItem,
   type SurfaceRef,
+  THREAD_BEFORE_SESSIONS,
   type ThreadPosted,
+  type ThreadPostRequest,
   type WireMessage,
   type WireProject,
 } from "./humagen.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { memoryPlanStore, PlanCanvas, type PlanStore } from "./plancanvas.ts";
-import { Presenter } from "./present.tsx";
+import { type Author, Presenter } from "./present.tsx";
 import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 
@@ -166,6 +172,11 @@ interface Job {
   /** The message that asked. Lifecycle reactions go on it. */
   triggerTs: string;
   user: string;
+  /**
+   * The sender's own team, as the delivery said, when it said: a sender
+   * whose team is another company's (Slack Connect) is nobody.
+   */
+  team?: string;
   /** Names the Slack event, so the same event is one run. */
   key: string;
   /**
@@ -187,6 +198,18 @@ interface Job {
   notTheirs?: boolean;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
+  /**
+   * The message opens with the app's own mention, the one place the word
+   * after it names an agent (`leadingAgent`): "@Humagen ask docs-bot ...".
+   */
+  addressed?: boolean;
+  /**
+   * The message addressed nobody: a reply, with no mention, in a channel
+   * thread. Humagen takes it only where the thread began with a mention, and
+   * answers only when the agent says it calls for it. Until a run starts
+   * nothing is shown: no reaction, no status, no notice.
+   */
+  listen?: boolean;
 }
 
 type Item =
@@ -209,6 +232,9 @@ interface Thread {
   jobs: Map<string, Job>;
   live?: Live;
 }
+
+/** How many threads remember the agent they were asked for by name. The oldest is forgotten first. */
+const NAMED_THREADS = 5000;
 
 const terminal = (s: Run["status"]) => s === "completed" || s === "failed" || s === "stopped";
 
@@ -371,6 +397,11 @@ const NO_AGENT: Failure = {
 // humagen: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
 
+/** How long one person the client maps to nobody is told so only once. */
+export const TURNED_AWAY_MS = 10 * 60_000;
+/** How many people the app tells they are not connected in a minute, at most. */
+export const TURNED_AWAY_BURST = 20;
+
 /** Wait, or stop waiting when the signal aborts. */
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -464,10 +495,21 @@ const sentToThem = (p: ActionPayload): boolean => {
 
 export class App {
   private readonly threads = new Map<string, Thread>();
+  /**
+   * The agent each thread was last asked for by name. An untagged message in
+   * the thread goes to it instead of the default, as the platform does for a
+   * person the client maps (RFC 0012), until another is named. It outlives
+   * the thread's queue, and is forgotten on a restart.
+   */
+  private readonly named = new Map<string, string>();
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
   private readonly seen = new Recent<true>(10_000);
   /** Who asked for each run, by Slack user id. */
   private readonly requesters = new Recent<string>(10_000);
+  /** When each person the client maps to nobody was last told so (turnAway). */
+  private readonly turnedAway = new Recent<number>(10_000);
+  /** When anyone was told so in the last minute, oldest first. */
+  private readonly turnedAwayAt: number[] = [];
   /** Inbox messages posted to a thread, so a change edits the post instead of adding one. */
   private readonly mail = new Recent<{ channel: string; ts: string; threadTs?: string }>(2_000);
   private readonly work = new Set<Promise<unknown>>();
@@ -518,6 +560,11 @@ export class App {
   private readonly confirmed = new Recent<true>(10_000);
   /** Runs followed slowly right now, and how to make each one look again at once. */
   private readonly slow = new Map<string, () => void>();
+  /**
+   * The session of each run followed slowly right now, by run. A person's
+   * run is keyed by humagen, not by the thread, so stop finds it here.
+   */
+  private readonly slowIn = new Map<string, string>();
   /** The presenter of each run followed right now, by run: the cards its questions are on. */
   private readonly presenting = new Map<string, Presenter>();
   private readonly branding: Branding;
@@ -765,10 +812,60 @@ export class App {
 
   private async agents(): Promise<Agent[]> {
     if (this.agentList && Date.now() - this.agentList.at < 30_000) return this.agentList.agents;
-    const agents = (await this.humagen.listAgents()).agents.map((r) => r.spec);
+    const listed = await this.humagen.listAgents();
+    const agents = listed.agents.map((r) => r.spec);
     this.agentList = { at: Date.now(), agents };
+    this.agentLooks = listed.looks ?? {};
     return agents;
   }
+
+  /**
+   * The agents `/agent` offers to ask: those this app may reach by name, the
+   * client's default first, each by the name people call it and its
+   * greeting or description.
+   */
+  private async pickable(): Promise<AskFormAgent[]> {
+    const routing = await this.routing().catch(() => undefined);
+    const first = routing?.client?.default_agent || this.opts.defaultAgent || "";
+    return (await this.agents().catch(() => [] as Agent[]))
+      .filter((a) => !routing || choose(`@${a.name}`, [a], routing).how === "named")
+      .map((a) => {
+        const look = this.agentLooks[a.name];
+        const about = look?.greeting || a.description;
+        return {
+          id: a.name,
+          name: look?.display_name || a.name,
+          ...(about ? { description: about } : {}),
+        };
+      })
+      .sort((x, y) => (x.id === first ? -1 : y.id === first ? 1 : x.name.localeCompare(y.name)));
+  }
+
+  /** Each agent's look, as the agent list last gave it. */
+  private agentLooks: Record<string, AgentLook> = {};
+
+  /**
+   * Who a turn's messages are posted as: an agent someone gave a look is
+   * posted by its name and, once the console drew it, its picture. An agent
+   * nobody styled is posted as the app, as it always was.
+   */
+  private authorOf = (agent: string): Author | undefined => {
+    const look = this.agentLooks[agent];
+    if (!look || (!look.display_name && !look.image_url)) return undefined;
+    return {
+      username: look.display_name || agent,
+      ...(look.image_url ? { icon_url: look.image_url } : {}),
+    };
+  };
+
+  /**
+   * The name people gave an agent, for a sentence about it; nothing when it
+   * has only its handle. A person chose it, so it is made inert first.
+   */
+  private nameOf = (agent: string): string | undefined => {
+    const name = this.agentLooks[agent]?.display_name?.trim();
+    return name ? inertName(name) : undefined;
+  };
 
   /** Nothing answers by default: say how to tag an agent this app may reach, naming one. */
   private async tagOne(routing: Routing | undefined): Promise<Failure> {
@@ -822,6 +919,18 @@ export class App {
     }
     if (event.type === "agent_session_stopped") {
       const channel = event.channel ?? event.channel_id;
+      // Stop is a button too: someone the client maps to nobody, or a stop
+      // that names nobody, stops nobody's run.
+      if (!event.user) {
+        this.log("a stop that names nobody was ignored");
+        return;
+      }
+      if (!(await this.mapped(event.user, senderTeam(event))))
+        return this.turnAway({
+          user: event.user,
+          ...(channel ? { channel } : {}),
+          ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
+        });
       if (channel && !event.thread_ts && this.code) {
         // A code channel is one session with no thread: every turn in flight in it stops.
         const inChannel = `${this.opts.team}/${channel}/`;
@@ -835,6 +944,24 @@ export class App {
       }
       if (!channel || !event.thread_ts) return;
       await this.stop({ team: this.opts.team, channel, threadTs: event.thread_ts });
+      return;
+    }
+    // The manifest asks for channel messages only so the app can listen in a
+    // thread that began with a mention. A channel message that does not
+    // mention the app is offered to that rule and otherwise dropped unread,
+    // unless the client's own subscriptions name channel messages (a bridge
+    // that mirrors a bound channel). One that mentions the app arrives as its
+    // own app_mention as well, and is taken from there.
+    if (
+      event.type === "message" &&
+      event.channel_type !== "im" &&
+      !mentionsApp(event.text ?? "", this.opts.botUser) &&
+      !(
+        event.channel &&
+        (await this.bridgeControls(event.channel)).client?.capabilities?.events.includes("message")
+      )
+    ) {
+      await this.listenTo(event);
       return;
     }
     if (
@@ -854,14 +981,14 @@ export class App {
         (event.text ?? "").includes(`<@${this.opts.botUser}>`) &&
         subscribed(controls.client, "app_mention");
       if (passive && !duplicateMention) {
-        const as = await this.actAs(event.user);
+        const as = await this.actAs(event.user, senderTeam(event));
         if (!as || !event.ts) return;
         const session = {
           team: this.opts.team,
           channel: event.channel,
           threadTs: event.thread_ts ?? event.ts,
         };
-        const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+        const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
         if (!text && !event.files?.length) return;
         await this.humagen.postThread({
           text: text || defaultCopy.attachedFilesPrompt,
@@ -879,6 +1006,7 @@ export class App {
         return;
       }
     }
+    if (await this.listenTo(event)) return;
     const asked =
       event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
@@ -890,23 +1018,85 @@ export class App {
       channel: event.channel,
       threadTs: event.thread_ts ?? event.ts,
     };
-    const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+    const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
     if (!text && !event.files?.length) return;
+    // Only a person the client maps asks, in a direct message, a mention in
+    // any channel, or a reply in someone else's session: anyone else is told
+    // so, privately, and nothing is read, kept or run for them.
+    if (!(await this.mapped(event.user, senderTeam(event))))
+      return this.turnAway({ user: event.user, channel: event.channel, threadTs: event.thread_ts });
     await this.offerSkills(event.channel);
     // A mention in a code channel continues the conversation of the thread it was opened from.
     const conversation =
       this.code && event.type === "app_mention" ? await this.code.originOf(event.channel) : null;
+    const team = senderTeam(event);
     this.enqueue({
       files: Boolean(event.files?.length),
       session,
+      ...(team ? { team } : {}),
       ...(conversation ? { conversation } : {}),
       text: text || defaultCopy.attachedFilesPrompt,
       triggerTs: event.ts,
       user: event.user,
       key: eventKey(session, event.ts),
+      ...(opensWithApp(event.text ?? "", this.opts.botUser) ? { addressed: true } : {}),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
       history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
+  }
+
+  /**
+   * A reply in a channel thread that mentions nobody. Whether anyone is
+   * listening there is the platform's to say (`listen`): it is, where the
+   * thread's first message mentioned the app, and then the agent decides
+   * whether this message calls for it. A thread a later mention started was
+   * answered once, and a message outside a thread is nobody's. A reply that
+   * tags someone else and names no agent is addressed to them, not to the
+   * agent, so it is not offered. Reports whether the message was taken:
+   * offered, or dropped as from someone the client maps to nobody.
+   */
+  private async listenTo(event: SlackEvent): Promise<boolean> {
+    if (
+      event.type !== "message" ||
+      event.channel_type === "im" ||
+      !event.channel ||
+      !event.ts ||
+      !event.user ||
+      event.bot_id ||
+      // A reply also sent to the channel is still a reply in the thread.
+      (event.subtype && event.subtype !== "file_share" && event.subtype !== "thread_broadcast") ||
+      event.user === this.opts.botUser ||
+      !event.thread_ts ||
+      event.thread_ts === event.ts ||
+      mentionsApp(event.text ?? "", this.opts.botUser)
+    )
+      return false;
+    const text = (event.text ?? "").trim();
+    if (!text) return false;
+    // Someone the client maps to nobody is not listened to, and, as they
+    // asked nobody, not told so either: their reply is taken and dropped.
+    if (!(await this.mapped(event.user, senderTeam(event)))) return true;
+    if (
+      tagsSomeoneElse(text, this.opts.botUser) &&
+      !namesAgent(text, await this.agents().catch(() => [] as Agent[]))
+    )
+      return false;
+    const session: Session = {
+      team: this.opts.team,
+      channel: event.channel,
+      threadTs: event.thread_ts,
+    };
+    const team = senderTeam(event);
+    this.enqueue({
+      session,
+      text,
+      triggerTs: event.ts,
+      user: event.user,
+      ...(team ? { team } : {}),
+      key: eventKey(session, event.ts),
+      listen: true,
+    });
+    return true;
   }
 
   private readonly skillChannels = new Map<string, string>();
@@ -967,8 +1157,9 @@ export class App {
       this.track(this.drive(thread, job, false));
       return;
     }
-    // It waits behind the turn in flight. The reaction says it was seen.
-    this.track(this.react(job, null, "queued"));
+    // It waits behind the turn in flight. The reaction says it was seen: a
+    // message nobody was asked about gets none until someone answers it.
+    if (!job.listen) this.track(this.react(job, null, "queued"));
   }
 
   private async react(job: Job, prev: Turn["status"] | null, next: Turn["status"]) {
@@ -1070,6 +1261,19 @@ export class App {
   }
 
   private async answer(thread: Thread, job: Job, queued: boolean) {
+    // Every way in checks the sender first; this is the check behind them
+    // all. A person the client maps no longer (as since a message queued)
+    // starts nothing, and a reply that asked nobody is not answered at all.
+    const who = await this.mapped(job.user, job.team);
+    if (!who) {
+      if (!job.listen)
+        await this.turnAway({
+          user: job.user,
+          channel: job.session.channel,
+          threadTs: job.session.threadTs,
+        });
+      return "done" as const;
+    }
     const controls = await this.bridgeControls(job.session.channel);
     if (!controls.policy.inbound) return "done" as const;
     if (controls.policy.passive) {
@@ -1084,15 +1288,35 @@ export class App {
       return "done" as const;
     }
     let outputRun = "";
+    // One answer is one run: a refusal is logged once for it, before or after the run exists.
+    let refusalLogged = false;
     // Continue in a Code Channel is offered under an answer this app keyed by its thread.
     let movable = false;
     const items = new Mailbox<Item>();
     const live: Live = { stopped: false, wake: (item) => items.push(item) };
     thread.live = live;
+    // The looks are read before the turn is shown, so its first message carries its agent.
+    await this.agents().catch(() => [] as Agent[]);
     const presenter = new Presenter(this.slack, this.target(job), {
+      authorOf: this.authorOf,
+      nameOf: this.nameOf,
       native: this.native,
       outcomesOnly: controls.policy.bound,
-      canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
+      // A refused delivery is said once per run, never dropped without a word.
+      canDeliver: async () => {
+        const refusal = await this.deliveryRefusal(
+          job.session.channel,
+          outputRun,
+          job.session.threadTs,
+        );
+        if (refusal && !refusalLogged) {
+          refusalLogged = true;
+          this.log(
+            `run ${outputRun || "(none yet)"} not delivered to ${job.session.channel}: ${refusal}`,
+          );
+        }
+        return !refusal;
+      },
       copy: this.copy,
       capabilities: this.capabilities,
       log: (line) => this.log(line),
@@ -1118,6 +1342,8 @@ export class App {
       // asked again acts for whom again() decided, never for whoever else is
       // known, and someone else's words are asked for nobody.
       const asking = job.again ? job.again.as : job.notTheirs ? null : await this.actAs(job.user);
+      // Only a person the client maps is listened to: nobody else's words are posted for them.
+      if (job.listen && !asking) return "done" as const;
       // In a code channel the conversation is its thread's, which the app
       // names, so a mapped person asks through the app as themselves there.
       if (asking && !job.again && !job.conversation) {
@@ -1127,10 +1353,19 @@ export class App {
           );
           return "stopped" as const;
         }
-        const posted = await this.cowork(job, asking);
+        let posted: ThreadPosted;
+        try {
+          posted = await this.cowork(job, asking);
+        } catch (e) {
+          // Nobody is listening in that thread: the message was nobody's.
+          if (job.listen && e instanceof HumagenError && e.status === 409) return "done" as const;
+          throw e;
+        }
         // Humagen already has this message: it was answered before a restart.
         if (posted.repeated) return "done" as const;
         const first = posted.runs[0];
+        // Heard, and not for the agent: kept as what was said, with nothing shown.
+        if (!first && job.listen) return "done" as const;
         if (!first) return this.unanswered(job, presenter, posted, routing);
         if (posted.runs.length > 1) {
           this.log(
@@ -1145,15 +1380,13 @@ export class App {
       } else {
         // A bound channel is a humagen channel: its thread, its default, its
         // allow list and its limits are the platform's, and only a person
-        // the client maps posts there, in their own words. Anyone else is
-        // told so, never answered around it, and so is someone asking about
-        // another's message there, which nobody may post as them.
+        // the client maps posts there, in their own words. Someone asking
+        // about another's message there is told so, never answered around
+        // it, as nobody may post it as them.
         if (!asking && !job.again && (await this.isBound(job.session.channel)))
           return this.refuse(job, presenter, "", {
             kind: "forbidden",
-            message: job.notTheirs
-              ? this.copy.threads.notTheirsInBound
-              : this.copy.threads.unmappedInBound,
+            message: this.copy.threads.notTheirsInBound,
           });
         if (job.files)
           throw new HumagenError(403, "Files need a connected workspace account and client.");
@@ -1161,9 +1394,22 @@ export class App {
         // Humagen already has a run for this Slack event: it was answered before a restart.
         if (placed === "duplicate") return "done" as const;
         if (!job.again) {
-          const choice = choose(job.text, await this.agents(), routing);
-          if (choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
-          agent = choice.agent;
+          const choice = choose(job.text, await this.agents(), routing, {
+            addressed: Boolean(job.addressed),
+          });
+          // A thread asked for an agent by name keeps it for the untagged messages after.
+          const where = sessionName(job.session);
+          const before = this.named.get(where);
+          const kept =
+            choice.how !== "named" && before && mayRoute(routing, before) ? before : null;
+          if (choice.how === "named") {
+            this.named.delete(where);
+            this.named.set(where, choice.agent);
+            const oldest = this.named.keys().next().value;
+            if (this.named.size > NAMED_THREADS && oldest !== undefined) this.named.delete(oldest);
+          }
+          if (!kept && choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
+          agent = kept ?? (choice.agent as string);
           text = choice.text;
         } else if (!mayRoute(routing, agent)) {
           // Asked again after the client was disabled or the agent left its list.
@@ -1194,13 +1440,15 @@ export class App {
         // Who asked, the client and the thread are known here and have nowhere to go:
         // the route takes none of them. See the README.
         // A person the client maps asks as themselves, so they do not approve
-        // their own run's calls.
+        // their own run's calls. A run for nobody (someone else's words, or
+        // a turn for nobody asked again) says which person asked for it:
+        // humagen starts none for this app without one.
         run = await this.humagen.createRun(
           {
             agent,
             text,
             ...(placed.after ? { after: placed.after } : {}),
-            ...(asking ? { act_as: asking } : {}),
+            ...(asking ? { act_as: asking } : { asked_by: who.as }),
           },
           placed.key,
         );
@@ -1208,6 +1456,9 @@ export class App {
       }
     } catch (e) {
       this.log(`Humagen refused the turn: ${(e as Error).message}`);
+      // Nobody was asked, so nobody is told: a heard reply that could not be
+      // offered leaves nothing in Slack, whatever stopped it.
+      if (job.listen) return "failed" as const;
       // A reply under an announcement that was withdrawn starts nothing.
       if (e instanceof HumagenError && e.status === 410)
         return this.refuse(job, presenter, "", {
@@ -1257,6 +1508,7 @@ export class App {
     this.native = this.native && presenter.streaming;
     if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
     if (stalled) {
+      this.slowIn.set(run.id, sessionName(job.session));
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,
       // as humagen orders any turn sent after one that is still running.
@@ -1288,6 +1540,24 @@ export class App {
    * the announcement, ahead of these messages.
    */
   private async cowork(job: Job, asking: ActAs): Promise<ThreadPosted> {
+    // A Slack channel bound to a project is that project's channel: its
+    // threads, announcements and limits are the project's, so it posts as
+    // before. Everywhere else, a direct message or a thread in any other
+    // channel, the Slack thread is a session, which the console lists.
+    // A thread there that began before sessions is a conversation still:
+    // humagen says so by code, with nothing kept, and it is posted to as one.
+    let conversation = (await this.bridgeControls(job.session.channel)).policy.bound;
+    const post = async (body: ThreadPostRequest) => {
+      if (!conversation) {
+        try {
+          return await this.humagen.postSession(body);
+        } catch (e) {
+          if (!(e instanceof HumagenError && e.code === THREAD_BEFORE_SESSIONS)) throw e;
+          conversation = true;
+        }
+      }
+      return this.humagen.postThread(body);
+    };
     if (job.history) {
       const at = {
         channel: job.session.channel,
@@ -1302,7 +1572,7 @@ export class App {
         for (const m of said) {
           const as = m.user && m.ts ? await this.actAs(m.user) : null;
           if (!as || !m.ts || !(m.text ?? "").trim()) continue;
-          await this.humagen.postThread({
+          await post({
             text: m.text ?? "",
             act_as: as,
             surface: this.surfaceOf(job, m.ts),
@@ -1313,10 +1583,16 @@ export class App {
         this.log(`thread history skipped: ${(e as Error).message}`);
       }
     }
-    return this.humagen.postThread({
-      text: job.text,
+    // The agent named right after the app's opening mention is a tag for the platform.
+    const text =
+      job.addressed && !job.listen
+        ? tagLeading(job.text, await this.agents().catch(() => [] as Agent[]))
+        : job.text;
+    return post({
+      text,
       act_as: asking,
       surface: this.surfaceOf(job, job.triggerTs),
+      ...(job.listen ? { listen: true } : {}),
     });
   }
 
@@ -1402,6 +1678,7 @@ export class App {
       }
     } finally {
       this.slow.delete(run.id);
+      this.slowIn.delete(run.id);
     }
   }
 
@@ -1553,6 +1830,8 @@ export class App {
     const conversation = runId(this.opts.tenant, this.opts.subject, threadKey(session));
     const turns = (await this.humagen.getThread(conversation).catch(() => null))?.turns;
     for (const t of turns ?? []) if (!t.parent && !terminal(t.status)) ids.add(t.id);
+    // A quiet run of a person's, which humagen keyed, followed slowly here.
+    for (const [id, where] of this.slowIn) if (where === sessionName(session)) ids.add(id);
 
     const stopped: Run[] = [];
     for (const id of ids) {
@@ -1610,7 +1889,14 @@ export class App {
     const turn = follow(run, { href: this.href }).settle(run);
     await this.postView(
       session,
-      renderToSlack(<TurnView copy={this.copy} capabilities={this.capabilities} turn={turn} />),
+      renderToSlack(
+        <TurnView
+          copy={this.copy}
+          capabilities={this.capabilities}
+          turn={turn}
+          agentName={this.nameOf(turn.agent.name)}
+        />,
+      ),
     ).catch((e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`));
   }
 
@@ -1688,6 +1974,15 @@ export class App {
     const dedupe = `action-${p.trigger_id ?? ""}`;
     if (p.trigger_id && this.seen.has(dedupe)) return;
     this.seen.set(dedupe, true);
+    // A button acts for whoever pressed it: Approve, Retry, an answer, a
+    // mode, a move, a rating, a form. Someone the client maps to nobody
+    // acts on none of them, an operator included, and is told so.
+    if (!(await this.mapped(p.user.id, p.user.team_id)))
+      return this.turnAway({
+        user: p.user.id,
+        ...(at ? { channel: at } : {}),
+        ...(p.message?.thread_ts ? { threadTs: p.message.thread_ts } : {}),
+      });
 
     if (ui.id === ActionId.feedback) return this.onFeedback(ui, p);
     if (ui.id === ActionId.runDetails) return this.onRunDetails(ui, p);
@@ -1729,10 +2024,13 @@ export class App {
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.humagen.getRun(ui.payload.turnId);
       const outcome = run
-        ? await this.again(run, p.user.id, p.message?.ts, {
-            channel: at,
-            threadTs: p.message?.thread_ts,
-          })
+        ? await this.again(
+            run,
+            p.user.id,
+            p.message?.ts,
+            { channel: at, threadTs: p.message?.thread_ts },
+            p.user.team_id,
+          )
         : "elsewhere";
       if (outcome !== "started") await this.refuseRetry(p, outcome);
     }
@@ -1780,6 +2078,7 @@ export class App {
     user: string,
     clickedTs?: string,
     clicked?: { channel?: string; threadTs?: string },
+    team?: string,
   ): Promise<Again> {
     const session = await this.sessionOfRun(run);
     if (!session || session.team !== this.opts.team) return "elsewhere";
@@ -1795,10 +2094,13 @@ export class App {
     const person = acted === this.opts.subject ? "" : acted;
     let as: ActAs | null = null;
     if (person) {
-      const mapped = await this.mapped(user);
+      const mapped = await this.mapped(user, team);
       if (!mapped || mapped.person !== person) return "not-theirs";
       as = mapped.as;
     } else {
+      // Asked again for nobody, it is still asked at a person's asking: the
+      // presser must be someone the client maps, an operator included.
+      if (!(await this.mapped(user, team))) return "not-yours";
       const operator = (this.opts.operators ?? []).includes(user);
       if (!operator && (!owner || owner !== user)) return "not-yours";
     }
@@ -1810,6 +2112,7 @@ export class App {
       text,
       triggerTs: clickedTs ?? session.threadTs,
       user,
+      ...(team ? { team } : {}),
       // A turn asked again for its person is theirs to settle; one asked again
       // for nobody stays its first asker's.
       requester: person ? user : (owner ?? null),
@@ -1907,17 +2210,67 @@ export class App {
    * or null. Only the client this app is maps people, and only for the
    * credential it names, which must be this app's own.
    */
-  private async actAs(user: string): Promise<ActAs | null> {
-    return (await this.mapped(user))?.as ?? null;
+  private async actAs(user: string, team?: string): Promise<ActAs | null> {
+    return (await this.mapped(user, team))?.as ?? null;
   }
 
-  /** How to ask as a Slack person, and whom the client maps them to, or null (see actAs). */
-  private async mapped(user: string): Promise<{ as: ActAs; person: string } | null> {
+  /**
+   * How to ask as a Slack person, and whom the client maps them to, or null
+   * (see actAs). This is the one place a Slack sender becomes a person, and
+   * nothing starts for anyone it answers null for. A sender whose delivery
+   * names another team (a Slack Connect user from another company) is
+   * nobody, whatever the map says.
+   */
+  // humagen: once linked accounts land (#541), a person linked in this team
+  // counts here too; the platform resolves them, so this asks it rather than
+  // reading `slack.people` alone.
+  private async mapped(user: string, team?: string): Promise<{ as: ActAs; person: string } | null> {
+    if (team && team !== this.opts.team) return null;
     const routing = await this.routing().catch(() => null);
     const client = routing?.client;
     if (!client || !this.opts.clientId || !client.enabled) return null;
     const person = client.slack?.machine === this.opts.subject ? client.slack?.people?.[user] : "";
     return person ? { as: { client: this.opts.clientId, user }, person } : null;
+  }
+
+  /**
+   * Tell someone the client maps to nobody, privately, that nothing was
+   * started for them and how to be let in: in the thread they wrote in, by
+   * the command's own reply, or else in their messages with the app. They
+   * are told once per TURNED_AWAY_MS, and the app tells at most
+   * TURNED_AWAY_BURST people a minute, so the reply cannot be used to flood
+   * a channel or Slack's rate limits.
+   */
+  private async turnAway(to: {
+    user: string;
+    channel?: string;
+    threadTs?: string;
+    responseUrl?: string;
+  }): Promise<void> {
+    const now = (this.opts.now ?? Date.now)();
+    const last = this.turnedAway.get(to.user);
+    this.log(`nothing started for ${to.user}: this client maps them to nobody`);
+    if (last !== undefined && now - last < TURNED_AWAY_MS) return;
+    while (this.turnedAwayAt.length && now - (this.turnedAwayAt[0] ?? 0) >= 60_000)
+      this.turnedAwayAt.shift();
+    if (this.turnedAwayAt.length >= TURNED_AWAY_BURST) return;
+    this.turnedAway.set(to.user, now);
+    this.turnedAwayAt.push(now);
+    const text = this.copy.threads.notConnected(this.selfName);
+    try {
+      if (to.responseUrl)
+        await this.slack.respond(to.responseUrl, { response_type: "ephemeral", text });
+      else if (to.channel)
+        await this.slack.call("chat.postEphemeral", {
+          channel: to.channel,
+          user: to.user,
+          ...(to.threadTs ? { thread_ts: to.threadTs } : {}),
+          text,
+        });
+      else await this.slack.call("chat.postMessage", { channel: to.user, text });
+    } catch (e) {
+      this.log(`${to.user} was not told they are not connected: ${(e as Error).message}`);
+    }
   }
 
   /**
@@ -1996,9 +2349,6 @@ export class App {
     const channel = p.channel?.id ?? p.container?.channel_id ?? "";
     const { turnId: run, target: question } = ui.payload;
     if (!p.trigger_id || !run || !question) return;
-    // Nobody posts in a bound channel's thread but a person the client maps.
-    if (channel && !(await this.actAs(p.user.id)) && (await this.isBound(channel)))
-      return this.whisper(p, this.copy.threads.unmappedInBound);
     const threadTs = p.message?.thread_ts ?? p.message?.ts;
     const at: AskCall = {
       run,
@@ -2026,7 +2376,7 @@ export class App {
    * would be. It is answered beside the call, not behind it: the call's
    * card keeps waiting, with its buttons, and the answer streams below.
    */
-  private async askCall(user: string, at: AskCall, question: string): Promise<void> {
+  private async askCall(user: string, at: AskCall, question: string, team?: string): Promise<void> {
     const run = await this.humagen.getRun(at.run).catch(() => null);
     const session = run ? await this.sessionOfRun(run) : null;
     if (!run || !session || session.team !== this.opts.team) {
@@ -2054,6 +2404,7 @@ export class App {
       text: `${run.agent ? `@${run.agent} ` : ""}${this.words.askCallAsked(action, question)}`,
       triggerTs: said.ts,
       user,
+      ...(team ? { team } : {}),
       key: eventKey(session, said.ts),
     };
     this.seen.set(job.key, true);
@@ -2067,9 +2418,10 @@ export class App {
   }
 
   /**
-   * Let the approval agent decide a thread's gated actions, or ask a person
-   * again: the console's toggle, set through the same route as the person
-   * who pressed, whom the client must map. Humagen decides whether they may,
+   * Set a thread to Auto, where the approval agent decides gated actions and
+   * answers what the thread settles, or back to Ask: the console's two
+   * modes, set through the same route as the person who pressed, whom the
+   * client must map. Humagen decides whether they may,
    * as it does in the console. What changed is said in the thread, with the
    * way back.
    */
@@ -2154,7 +2506,9 @@ export class App {
       return null;
     }
     const run = part.failure.reference ? await this.humagen.getRun(part.failure.reference) : null;
-    const outcome = run ? await this.again(run, p.user.id, clickedTs) : "elsewhere";
+    const outcome = run
+      ? await this.again(run, p.user.id, clickedTs, undefined, p.user.team_id)
+      : "elsewhere";
     if (outcome !== "started") {
       await this.refuseRetry(p, outcome);
       return null;
@@ -2302,7 +2656,7 @@ export class App {
     at: { channel: string; ts: string; threadTs?: string },
   ) {
     const about = message.about.find((item) => item.kind === "run");
-    if (!(await this.bridgeOutputAllowed(at.channel, about?.id ?? ""))) return;
+    if (!(await this.bridgeOutputAllowed(at.channel, about?.id ?? "", at.threadTs))) return;
     const view = renderToSlack(<MessageView message={forSlack(message)} />);
     const [first = [], ...rest] = view.pages;
     await this.slack.call("chat.update", {
@@ -2359,12 +2713,28 @@ export class App {
       };
     }
   }
-  private async bridgeOutputAllowed(channel: string, run = ""): Promise<boolean> {
+  private async bridgeOutputAllowed(
+    channel: string,
+    run = "",
+    threadTs?: string,
+  ): Promise<boolean> {
+    return (await this.deliveryRefusal(channel, run, threadTs)) === "";
+  }
+  /**
+   * Why a run may not be posted in a Slack channel's thread, or "" when it
+   * may. A private session's run is allowed only in the Slack thread that
+   * started its session, so the thread is always sent when there is one.
+   */
+  private async deliveryRefusal(channel: string, run = "", threadTs?: string): Promise<string> {
     const controls = await this.bridgeControls(channel);
-    if (!controls.policy.outbound) return false;
-    if (run && this.opts.clientId)
-      return this.humagen.deliveryAllowed(this.opts.clientId, channel, run);
-    return true;
+    if (!controls.policy.outbound) return "this client or channel delivers no outcomes";
+    if (
+      run &&
+      this.opts.clientId &&
+      !(await this.humagen.deliveryAllowed(this.opts.clientId, channel, run, threadTs))
+    )
+      return "humagen refused delivery of this run here";
+    return "";
   }
   private async isBound(channel: string): Promise<boolean> {
     return (await this.bound()).some((b) => b.slack_channel === channel);
@@ -2759,7 +3129,15 @@ export class App {
     const about = message.about.find((s) => s.kind === "run");
     const run = about ? await this.humagen.getRun(about.id) : null;
     const session = run ? await this.sessionOfRun(run) : null;
-    if (!session || session.team !== this.opts.team) return;
+    if (!run || !session || session.team !== this.opts.team) return;
+    // Held to the rule every answer is, as an edit of a posted one is (showMail).
+    const refusal = await this.deliveryRefusal(session.channel, run.id, session.threadTs);
+    if (refusal) {
+      this.log(
+        `inbox message ${message.id} about run ${run.id} not posted to ${session.channel}: ${refusal}`,
+      );
+      return;
+    }
     const ts = await this.postView(
       session,
       renderToSlack(<MessageView message={forSlack(message)} />),
@@ -2829,7 +3207,32 @@ export class App {
       workspace: this.opts.tenant,
       build,
       href: this.href,
+      meet: await this.meet(),
     });
+  }
+
+  /**
+   * The agents this app may reach that someone introduced: a greeting or
+   * starters on their look. The rest are reached as always, by handle.
+   */
+  private async meet(): Promise<HomeAgentCard[]> {
+    const agents = await this.agents().catch(() => [] as Agent[]);
+    const routing = await this.routing().catch(() => undefined);
+    return agents
+      .filter((a) => !routing || mayRoute(routing, a.name))
+      .flatMap((a) => {
+        const look = this.agentLooks[a.name];
+        if (!look?.greeting && !(look?.starters ?? []).length) return [];
+        return [
+          {
+            handle: a.name,
+            name: look?.display_name || a.name,
+            ...(look?.greeting ? { greeting: look.greeting } : {}),
+            ...(look?.starters?.length ? { starters: look.starters } : {}),
+          },
+        ];
+      })
+      .sort((x, y) => x.name.localeCompare(y.name));
   }
 
   /** Whether Build an Agent is offered: the builder is there, and this app may reach it. */
@@ -2882,10 +3285,20 @@ export class App {
    * what, then answer in that message's thread.
    */
   private async start(
-    where: { channel: string; user: string },
+    where: { channel: string; user: string; team?: string },
     text: string,
     responseUrl?: string,
   ): Promise<void> {
+    // Nothing is posted for someone the client maps to nobody, not even their words.
+    if (!(await this.mapped(where.user, where.team)))
+      return this.turnAway({
+        user: where.user,
+        ...(responseUrl
+          ? { responseUrl }
+          : where.channel !== where.user
+            ? { channel: where.channel }
+            : {}),
+      });
     let root: { ts: string; channel: string };
     try {
       root = await this.slack.call("chat.postMessage", {
@@ -2905,7 +3318,14 @@ export class App {
       return;
     }
     const session: Session = { team: this.opts.team, channel: root.channel, threadTs: root.ts };
-    this.enqueue({ session, text, triggerTs: root.ts, user: where.user, key: threadKey(session) });
+    this.enqueue({
+      session,
+      text,
+      triggerTs: root.ts,
+      user: where.user,
+      ...(where.team ? { team: where.team } : {}),
+      key: threadKey(session),
+    });
   }
 
   private async onCommand(c: CommandPayload): Promise<void> {
@@ -2920,17 +3340,24 @@ export class App {
       if (this.seen.has(`command-${c.trigger_id}`)) return;
       this.seen.set(`command-${c.trigger_id}`, true);
     }
+    // Only a person the client maps uses a command. `/agent connections`
+    // says itself how to be connected, so it is left to say so.
+    const text = (c.text ?? "").trim();
+    if (
+      !(c.command === ENTRY.command && text === "connections") &&
+      !(await this.mapped(c.user_id, c.team_id))
+    )
+      return this.turnAway({ user: c.user_id, responseUrl: c.response_url });
     if (c.command !== ENTRY.command && c.command !== "/skill") {
       const skills = (await this.routing()).client?.slack?.commands ?? [];
       const skill = skills.find((skill) => `/${skill.name}` === c.command);
       if (!skill) return;
       return this.start(
-        { channel: c.channel_id, user: c.user_id },
+        { channel: c.channel_id, user: c.user_id, team: c.team_id },
         `/${skill.name} ${(c.text ?? "").trim()}`,
         c.response_url,
       );
     }
-    const text = (c.text ?? "").trim();
     if (c.command === "/skill" || text === "skills" || text.startsWith("skill ")) {
       const skills = (await this.routing()).client?.slack?.commands ?? [];
       const args = c.command === "/skill" ? text : text === "skills" ? "" : text.slice(6).trim();
@@ -2952,13 +3379,21 @@ export class App {
         return;
       }
       return this.start(
-        { channel: c.channel_id, user: c.user_id },
+        { channel: c.channel_id, user: c.user_id, team: c.team_id },
         `/${name} ${rest.join(" ")}`.trim(),
         c.response_url,
       );
     }
     if (text === "connections") return this.openConnections(c);
     if (text.startsWith("canvas ")) return this.publishCanvas(c, text.slice(7).trim());
+    if (!text && c.trigger_id) {
+      // `/agent` alone opens the ask form with a picker of who to ask.
+      await this.slack.call("views.open", {
+        trigger_id: c.trigger_id,
+        view: askForm(this.words, await this.pickable()),
+      });
+      return;
+    }
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
       // humagen: needs an AgentList component (name, description), as the console's agent menu shows.
@@ -2974,7 +3409,11 @@ export class App {
       }
       return;
     }
-    await this.start({ channel: c.channel_id, user: c.user_id }, text, c.response_url);
+    await this.start(
+      { channel: c.channel_id, user: c.user_id, team: c.team_id },
+      text,
+      c.response_url,
+    );
   }
 
   private async openConnections(c: CommandPayload) {
@@ -3042,6 +3481,15 @@ export class App {
       if (this.seen.has(once)) return;
       this.seen.set(once, true);
     }
+    // A shortcut, a form or a modal submitted acts for whoever used it, so
+    // someone the client maps to nobody uses none of them: they are told
+    // where they were, or in their messages with the app.
+    if (!(await this.mapped(p.user.id, p.user.team_id)))
+      return this.turnAway({
+        user: p.user.id,
+        ...(p.channel?.id ? { channel: p.channel.id } : {}),
+        ...(p.message ? { threadTs: p.message.thread_ts ?? p.message.ts } : {}),
+      });
     if (p.type === "shortcut" && p.callback_id === ENTRY.ask) {
       await this.slack.call("views.open", { trigger_id: p.trigger_id, view: askForm(this.words) });
       return;
@@ -3061,6 +3509,7 @@ export class App {
         text,
         triggerTs: message.ts,
         user: p.user.id,
+        ...(p.user.team_id ? { team: p.user.team_id } : {}),
         key: eventKey(session, message.ts, p.trigger_id),
         // Someone else's message, or a bot's, is not the presser's to run as them.
         ...(message.user !== p.user.id ? { notTheirs: true } : {}),
@@ -3108,17 +3557,59 @@ export class App {
     const about = p.type === "view_submission" && p.view ? askCallOf(p.view) : null;
     if (about) {
       const question = p.view?.state?.values?.text?.value?.value?.trim() ?? "";
-      if (question) await this.askCall(p.user.id, about, question);
+      if (question) await this.askCall(p.user.id, about, question, p.user.team_id);
       return;
     }
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
     const said = p.view.state?.values?.text?.value?.value?.trim() ?? "";
     if (!said) return;
+    // The agent picked in the form is tagged as anyone would tag it, when this app may reach it.
+    const picked = (
+      p.view.state?.values?.agent?.value as { selected_option?: { value?: string } } | undefined
+    )?.selected_option?.value;
+    const routing = picked ? await this.routing().catch(() => undefined) : undefined;
+    const asked = picked && routing && mayRoute(routing, picked) ? `@${picked} ${said}` : said;
     // Build an Agent's words go to the builder, tagged as anyone would tag it.
-    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : said;
+    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : asked;
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
-    await this.start({ channel: p.user.id, user: p.user.id }, text);
+    await this.start({ channel: p.user.id, user: p.user.id, team: p.user.team_id }, text);
   }
+}
+
+/**
+ * A Slack message as it is sent on: the whole message, as the person wrote
+ * it. The app's own mention is how the message reached it and tags nobody,
+ * so one that opens the message is the address and is dropped, with the
+ * colon or comma after it ("<@app>: summarise" asks "summarise"). Anywhere
+ * else the mention is part of the sentence and reads as the app's name
+ * ("could <@app> take a look" asks "could Humagen take a look"): cut out, it
+ * would leave "could take a look".
+ */
+export function wholeMessage(text: string, botUser: string, name: string): string {
+  const own = new RegExp(`<@${botUser}(?:\\|[^<>]*)?>`, "g");
+  const opened = new RegExp(`^\\s*<@${botUser}(?:\\|[^<>]*)?>[ \\t]*[:,]?[ \\t]*`);
+  return text.replace(opened, "").replace(own, name).trim();
+}
+
+/** Whether Slack text opens with the app's own mention, `<@U…>` or `<@U…|name>`. */
+export function opensWithApp(text: string, botUser: string): boolean {
+  return Boolean(botUser) && new RegExp(`^\\s*<@${botUser}(?:\\|[^<>]*)?>`).test(text);
+}
+
+/** Whether Slack text mentions the app, wherever in it: `<@U…>` or `<@U…|name>`. */
+export function mentionsApp(text: string, botUser: string): boolean {
+  return text.includes(`<@${botUser}>`) || text.includes(`<@${botUser}|`);
+}
+
+/**
+ * Whether a message tags someone other than this app: it is addressed to
+ * them. Someone is a Slack user or bot, a user group (`<!subteam^S…>`), or
+ * everyone in the channel (`<!here>`, `<!channel>`, `<!everyone>`). Any other
+ * `<!…>`, such as a date, tags nobody.
+ */
+export function tagsSomeoneElse(text: string, botUser: string): boolean {
+  for (const m of text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g)) if (m[1] !== botUser) return true;
+  return /<!(?:subteam\^[A-Z0-9]+|here|channel|everyone)(?:\|[^>]*)?>/.test(text);
 }
 
 /** Words for Slack's mrkdwn with nothing in them read as markup: no mention, link or broadcast. */
@@ -3151,7 +3642,7 @@ export function approvalModeNote(
             action_id: `${ActionId.approvalMode}#0`,
             text: {
               type: "plain_text",
-              text: back === "ask" ? copy.approvals.askMeAgain : copy.approvals.letAgentDecideAgain,
+              text: back === "ask" ? copy.approvals.switchToAsk : copy.approvals.switchToAuto,
             },
             value: encodeAction({ turnId: run, target: back }),
           },
@@ -3164,6 +3655,12 @@ export function approvalModeNote(
 /** One person's reply to one question, as `replying` keeps the card it was opened from. */
 const replyingKey = (user: string, at: { run: string; question: string }) =>
   `${user}\n${at.run}\n${at.question}`;
+
+/**
+ * The team a message's sender belongs to, as the event says: in a Slack
+ * Connect channel, another company's. Undefined when the event names none.
+ */
+const senderTeam = (e: SlackEvent): string | undefined => e.user_team ?? e.team;
 
 /** The team a delivery says it is from. Each kind of delivery carries it somewhere else. */
 function teamOf(type: string, p: Record<string, unknown>): string | undefined {
@@ -3184,6 +3681,9 @@ interface SlackEvent {
   channel_id?: string;
   channel_type?: string;
   user?: string;
+  /** The sender's own team, which in a Slack Connect channel is another company's. */
+  user_team?: string;
+  team?: string;
   bot_id?: string;
   text?: string;
   ts?: string;
@@ -3193,7 +3693,7 @@ interface SlackEvent {
 }
 
 interface ActionPayload {
-  user: { id: string };
+  user: { id: string; team_id?: string };
   channel?: { id: string };
   container?: { type?: string; channel_id?: string };
   view?: { type?: string };
@@ -3207,7 +3707,7 @@ interface InteractivePayload {
   type: string;
   callback_id?: string;
   trigger_id: string;
-  user: { id: string };
+  user: { id: string; team_id?: string };
   channel?: { id: string };
   message?: { ts: string; thread_ts?: string; text?: string; user?: string };
   view?: {
@@ -3224,6 +3724,8 @@ interface InteractivePayload {
 
 interface CommandPayload {
   command: string;
+  /** The team the command was used in, which the app serves (handle). */
+  team_id?: string;
   text?: string;
   user_id: string;
   channel_id: string;

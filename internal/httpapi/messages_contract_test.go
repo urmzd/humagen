@@ -14,7 +14,7 @@ import (
 func exerciseMessagesContract(t *testing.T, c *contract, token, other string) {
 	t.Helper()
 	f := c.f
-	pr := `"ref":{"type":"github","repo":"acme/web","kind":"pull","number":5}`
+	pr := `"ref":{"type":"url","url":"https://example.com/acme/web/pull/5"}`
 	first := c.call(token, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"user","content":"@helper review the change"}],`+pr+`}`, http.StatusCreated)
 	id := first.str("id")
 	c.call(token, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"user","content":[{"type":"text","text":"and the tests"}]}],`+pr+`}`, http.StatusOK)
@@ -53,7 +53,7 @@ func exerciseMessagesContract(t *testing.T, c *contract, token, other string) {
 	// agent is still answering an earlier one is a follow-up, queued behind
 	// that answer, and starts no run to name here until that answer ends.
 	c.call(token, "POST", "/api/agents", "/api/agents", `{"name":"asker","model":"x","provider":"anthropic","system_prompt":"Ask.","tools":["ask_person"]}`, http.StatusCreated)
-	asked := c.call(token, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"user","content":"@asker pick a colour"}],"ref":{"type":"github","repo":"acme/web","kind":"pull","number":6}}`, http.StatusCreated)
+	asked := c.call(token, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"user","content":"@asker pick a colour"}],"ref":{"type":"url","url":"https://example.com/acme/web/pull/6"}}`, http.StatusCreated)
 	started := sliceOf(obj(asked.field("posted"))["runs"])
 	if len(started) != 1 {
 		t.Fatalf("a question asked in a new place started %d runs: %s", len(started), asked.raw)

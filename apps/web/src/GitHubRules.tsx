@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import { EllipsisIcon } from "@humagen/render-web";
 import {
   DropdownMenu,
@@ -28,6 +29,14 @@ const events: EventKind[] = [
   { id: "check_run", label: "Check run", actions: ["completed"] },
   { id: "push", label: "Push", actions: [] },
 ];
+
+type Shape = NonNullable<GitHubAutomation["shape"]>;
+
+/** Only a session on a pull request can review: a pull request rule, or a check run on one. */
+const canReview = (e: Event) => e === "pull_request" || e === "check_run";
+
+/** What a rule answers with when it does not say: a pull request rule reviews, any other replies. */
+const defaultShape = (e: Event): Shape => (e === "pull_request" ? "review" : "reply");
 
 /** A rule as one line: what happens, and where. */
 export function ruleWords(r: GitHubAutomation): string {
@@ -170,6 +179,8 @@ export function GitHubRules({
   );
 }
 
+const shapeCopy = defaultCopy.githubRules.shape;
+
 function RuleForm({
   initial,
   agents,
@@ -207,6 +218,7 @@ function RuleForm({
       repository: rule.repository.trim(),
       action: rule.event === "push" ? "" : rule.action.trim(),
       conclusion: rule.event === "check_run" ? rule.conclusion?.trim() || undefined : undefined,
+      shape: canReview(rule.event) ? rule.shape : undefined,
       instructions: rule.instructions.trim(),
     };
     const why = !next.name
@@ -259,7 +271,14 @@ function RuleForm({
             value={rule.event}
             onChange={(e) => {
               const next = events.find((x) => x.id === e.target.value) ?? pullRequest;
-              set({ event: next.id, action: next.actions[0] ?? "" });
+              // The answer stays while the event still offers it, and the stored
+              // one comes back with the rule's own event.
+              const stored = next.id === initial?.event ? initial.shape : undefined;
+              set({
+                event: next.id,
+                action: next.actions[0] ?? "",
+                shape: canReview(next.id) ? (rule.shape ?? stored) : undefined,
+              });
             }}
           >
             {events.map((x) => (
@@ -312,6 +331,18 @@ function RuleForm({
             ))}
           </select>
         </Label>
+        {canReview(rule.event) && (
+          <Label text={shapeCopy.label} hint={shapeCopy.hint}>
+            <select
+              className={field}
+              value={rule.shape ?? defaultShape(rule.event)}
+              onChange={(e) => set({ shape: e.target.value as Shape })}
+            >
+              <option value="review">{shapeCopy.review}</option>
+              <option value="reply">{shapeCopy.reply}</option>
+            </select>
+          </Label>
+        )}
       </div>
       <Label text="Instructions">
         <textarea

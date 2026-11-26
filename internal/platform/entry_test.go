@@ -462,7 +462,7 @@ func TestAMentionedAgentThatCannotBeAskedIsToldToTheEntryAgent(t *testing.T) {
 func TestAMentionSentThroughTheMessagesAPIAnswersInThePlacesRoot(t *testing.T) {
 	c := entryCast([][]saigetypes.Delta{say("Hello.")}, map[string][][]saigetypes.Delta{"ops": {say("A migration was missing.")}})
 	p := stageEntry(t, c)
-	ref := &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/shop", Kind: "pull", Number: 7}
+	ref := &platform.ExternalRef{Type: platform.RefURL, URL: "https://example.com/acme/shop/deploys"}
 	out, err := p.SendMessages(t.Context(), admin, sayIn("@ops why did the deploy fail last night?", ref))
 	if err != nil {
 		t.Fatal(err)

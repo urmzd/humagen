@@ -19,6 +19,13 @@ import (
 func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions", s.authed(auth.RunsWrite, s.startSession))
 	mux.HandleFunc("GET /api/sessions", s.authed(auth.RunsRead, s.listSessions))
+	mux.HandleFunc("GET /api/sessions/options", s.authed(auth.RunsRead, s.sessionOptions))
+	// A workspace's own sandbox images (internal/platform/images.go).
+	mux.HandleFunc("GET /api/images", s.authed(auth.RunsRead, s.listImages))
+	mux.HandleFunc("POST /api/images", s.authed(auth.ClientsWrite, s.addImage))
+	mux.HandleFunc("PATCH /api/images/{id}", s.authed(auth.ClientsWrite, s.changeImage))
+	mux.HandleFunc("DELETE /api/images/{id}", s.authed(auth.ClientsWrite, s.removeImage))
+	mux.HandleFunc("GET /api/sessions/{id}/browser", s.authed(auth.RunsRead, s.seenSession(s.sessionBrowserAvailable)))
 	mux.HandleFunc("GET /api/sessions/{id}", s.authed(auth.RunsRead, s.seenSession(s.getSession)))
 	mux.HandleFunc("POST /api/sessions/{id}/messages", s.authed(auth.RunsWrite, s.seenSession(s.postSession)))
 	mux.HandleFunc("GET /api/sessions/{id}/stream", s.authed(auth.RunsRead, s.seenSession(s.sessionEvents)))
@@ -30,6 +37,38 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/sessions/{id}/messages/{mid}/feedback", s.authed(auth.RunsRead, s.seenSession(s.deleteSessionFeedback)))
 	mux.HandleFunc("POST /api/sessions/{id}/alerts", s.authed(auth.AlertsWrite, s.seenSession(s.createSessionAlert)))
 	mux.HandleFunc("PATCH /api/alerts/{id}", s.authed(auth.AlertsWrite, s.seenAlert(s.patchAlert)))
+	mux.HandleFunc("POST /api/alerts/{id}/review", s.authed(auth.RunsWrite, s.seenAlert(s.reviewAlert)))
+	mux.HandleFunc("GET /api/sessions/{id}/messages/{mid}/attachments/{n}", s.authed(auth.RunsRead, s.seenSession(s.messageAttachment)))
+}
+
+// messageAttachment opens a text file attached to a message in a session.
+func (s *Server) messageAttachment(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	n, err := strconv.Atoi(r.PathValue("n"))
+	if err != nil || n < 0 {
+		fail(w, http.StatusBadRequest, "n must be a file's index")
+		return
+	}
+	text, err := s.P.MessageAttachment(r.Context(), who, r.PathValue("id"), r.PathValue("mid"), n)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, text)
+}
+
+// reviewAlert opens the session where the caller reviews an alert, which
+// starts with the agent's recap of it.
+func (s *Server) reviewAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	v, started, err := s.P.ReviewAlert(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	status := http.StatusOK
+	if started {
+		status = http.StatusCreated
+	}
+	ok(w, status, v)
 }
 func (s *Server) seenSession(next handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -385,4 +424,68 @@ func (s *Server) sessionEvents(w http.ResponseWriter, r *http.Request, who auth.
 			}
 		}
 	}
+}
+
+// sessionOptions lists what a person may choose when starting a session. The
+// tenant is the principal's.
+func (s *Server) sessionOptions(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	opts, err := s.P.SessionOptions(r.Context(), who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, opts)
+}
+
+// sessionBrowserAvailable says whether the session has a browser to look at.
+func (s *Server) sessionBrowserAvailable(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	v, err := s.P.SessionBrowserAvailability(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, v)
+}
+
+func (s *Server) listImages(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+	imgs, err := s.P.ListImages(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"images": imgs, "registries": s.P.ImageRegistries()})
+}
+
+func (s *Server) addImage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.ImageInput
+	if !decode(w, r, &in) {
+		return
+	}
+	img, err := s.P.AddImage(r.Context(), who, in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, img)
+}
+
+func (s *Server) changeImage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.ImageChange
+	if !decode(w, r, &in) {
+		return
+	}
+	img, err := s.P.ChangeImage(r.Context(), who, r.PathValue("id"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, img)
+}
+
+func (s *Server) removeImage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.RemoveImage(r.Context(), who, r.PathValue("id")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

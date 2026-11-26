@@ -1,15 +1,19 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   AgentHome,
+  AgentLook,
+  AgentLookView,
   AgentSession,
   AgentSetup,
   AgentSetupPlan,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
+  AgentSlackApp,
   AnalyticsBucket,
   AnalyticsGroup,
   AuditRecord,
   Branding,
+  ContinueImportedDocumentBody,
   DriveVersion,
   EvalCandidate,
   EvalCandidatePage,
@@ -56,8 +60,11 @@ import type {
   StoreInstall,
   StorePackage,
   StoreRemoval,
+  ThreadCommand,
   ThreadFollowup,
+  ThreadImport,
   ThreadShare,
+  ThreadUsage,
   VoiceSettings,
   VoiceTranscript,
 } from "../../../packages/client/src/generated/types.ts";
@@ -69,8 +76,11 @@ import { track } from "./transition.ts";
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
   AgentHome,
+  AgentLook,
+  AgentLookView,
   AgentOffer,
   AgentPlace,
+  AgentSlackApp,
   Branding,
   ContextLayer,
   DefaultResolved,
@@ -155,21 +165,6 @@ export interface Me {
   handle?: string;
 }
 
-/** Why the caller may or may not do one thing. Only ever about the caller. */
-export interface AccessDecision {
-  permission: string;
-  allowed: boolean;
-  /** "scope" when a machine's token decided rather than the policy. */
-  outcome: "allowed" | "denied" | "no match" | "scope";
-  role?: string;
-  path?: string[];
-  rule?: string;
-  /** The grant that gave `role`, when the sign-in kept it. */
-  grant?: string;
-  held: { role: string; grant?: string; group?: string }[];
-  unknown?: string[];
-}
-
 export interface ModelRef {
   provider: string;
   model: string;
@@ -208,6 +203,10 @@ export interface AgentSpec {
   tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
+  /** Library skills it may load as sub-agents. */
+  skills?: { loadable?: string[] };
+  /** How its reviews decide; absent is never and error. */
+  review?: { approve?: "never" | "when_clean"; block_on?: "error" | "warning" | "info" };
 }
 
 export interface Revision {
@@ -431,6 +430,12 @@ export interface Doc {
   excluded: boolean;
   added_by?: string;
   added_at: string;
+  /** The revision's digest; absent on a document kept before digests were. */
+  digest?: string;
+  /** The size of the imported session's structure kept with this revision. */
+  structure_bytes?: number;
+  /** That structure's digest, when the write that kept it recorded one. */
+  structure_digest?: string;
 }
 
 export interface Hit {
@@ -449,6 +454,8 @@ export interface ThreadSummary {
   title: string;
   /** The title is a name, not just the first message. */
   named: boolean;
+  /** Who gave the title: the start of the first message until a short generated name replaces it, or a person. */
+  title_source?: TitleSource;
   origin: string;
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
@@ -459,6 +466,22 @@ export interface ThreadSummary {
   visibility: "shared" | "private";
   /** How many messages people have posted in it. */
   messages: number;
+  /** Where it started when not the console or the API; its runs' origin cannot say a Slack thread. */
+  source?: "slack" | "slack_dm" | "github" | "scheduled";
+  /** On a session listing: the reader takes part in a session someone else started. */
+  joined?: boolean;
+  /**
+   * On a session listing: what the latest parked run waits on, and whether it
+   * asks the reader. waiting_on_you is always sent; a missing one reads as not.
+   * waiting_unknown says it waits and the listing could not tell whether on
+   * the reader: neither "you" nor "someone else" is then said.
+   */
+  waiting_for?: string;
+  waiting_kind?: "approval" | "question";
+  waiting_on_you?: boolean;
+  waiting_unknown?: boolean;
+  /** On a session listing: why the latest turn failed, when it did. */
+  failure?: string;
   turns: number;
   branches: number;
   active: number;
@@ -507,6 +530,8 @@ export interface VertexLocation {
 export interface ModelProvider {
   name: string;
   kind: ModelProviderKind;
+  /** Configured and kept with its key, but unavailable to agents. */
+  disabled?: boolean;
   base_url?: string;
   vertex?: VertexLocation;
   /** The key's env:NAME reference, when it is one. */
@@ -746,6 +771,7 @@ export interface PolicyChange {
 }
 
 export type Note = GeneratedNote;
+export type { ThreadUsage };
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -878,10 +904,33 @@ export interface Suite {
   cases: EvalCase[];
   k?: number;
   pass_rate?: number;
+  /** How often the schedule runs the suite, from an hour to thirty days; 0 or absent is no schedule. */
+  every_seconds?: number;
+  /** Set by the server: who saved the suite last, the person its schedule acts for. */
+  created_by?: string;
+  updated_at?: string;
 }
 
 export interface SuiteView extends Suite {
   runs: EvalRun[];
+  /** What the person who saved the suite last is called. */
+  created_by_name?: string;
+  /** When the schedule next starts the suite; absent without a schedule. */
+  next_run_at?: string;
+  /** A run of the scheduled suite is going; the next starts after it ends. */
+  schedule_busy?: boolean;
+}
+
+/** A suite as it is saved: what a listing adds to it left off, as the server takes no unknown field. */
+function suiteBody(s: Suite): Suite {
+  const {
+    runs: _runs,
+    created_by_name: _name,
+    next_run_at: _next,
+    schedule_busy: _busy,
+    ...body
+  } = s as Partial<SuiteView> & Suite;
+  return body;
 }
 
 /**
@@ -1011,9 +1060,15 @@ import type {
   AgentControl,
   AgentControlInput,
   AgentNetwork,
+  AgentTemplateCatalog,
   Assignment,
   AssignmentInput,
   HandoffContract,
+} from "../../../packages/client/src/generated/types.ts";
+
+export type {
+  AgentTemplate,
+  AgentTemplateCatalog,
 } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
@@ -1214,12 +1269,10 @@ export const api = {
   readAudit: () =>
     call<{ records: ReadAuditRecord[] }>("GET", "/api/read-audit").then((r) => r.records),
   me: () => call<Me>("GET", "/api/me"),
-  explain: (permission: string) =>
-    call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
   agentHues: (names: string[], path = "/api/agent-hues") =>
-    call<{ hues: Record<string, number> }>(
+    call<{ hues: Record<string, number>; looks?: Record<string, AgentLook> }>(
       "GET",
       `${path}?names=${encodeURIComponent(names.join(","))}`,
     ),
@@ -1239,6 +1292,8 @@ export const api = {
   modelProviderSetup: () => call<ModelProviderSetup>("GET", "/api/model-providers"),
   setModelProvider: (name: string, input: ModelProviderInput) =>
     call<ModelProvider>("PUT", `/api/model-providers/${encodeURIComponent(name)}`, input),
+  setModelProviderEnabled: (name: string, enabled: boolean) =>
+    call<ModelProvider>("PATCH", `/api/model-providers/${encodeURIComponent(name)}`, { enabled }),
   deleteModelProvider: (name: string) =>
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>
@@ -1254,7 +1309,17 @@ export const api = {
       homes?: Record<string, string>;
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
+      looks?: Record<string, AgentLook>;
     }>("GET", "/api/agents"),
+  /** How an agent looks, its color, the colors others hold, and every choice. */
+  agentLook: (name: string) =>
+    call<AgentLookView>("GET", `/api/agents/${encodeURIComponent(name)}/look`),
+  /** Keep how an agent looks, and with `hue` move it to that color. */
+  setAgentLook: (name: string, look: AgentLook, hue?: number) =>
+    call<AgentLookView>("PUT", `/api/agents/${encodeURIComponent(name)}/look`, {
+      look,
+      ...(hue === undefined ? {} : { hue }),
+    }),
   /** The agent store's packages, and what the workspace has of each. */
   storePackages: () =>
     call<{ packages: StorePackage[] }>("GET", "/api/store/packages").then((r) => r.packages),
@@ -1271,6 +1336,11 @@ export const api = {
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
+  /** The goals a new agent can start from, blank first, and the model it starts on. */
+  agentTemplates: () => call<AgentTemplateCatalog>("GET", "/api/agent-templates"),
+  /** Retires an agent: it leaves the workspace; its sessions and revisions stay readable. */
+  retireAgent: (name: string, rev?: number) =>
+    call<void>("DELETE", `/api/agents/${encodeURIComponent(name)}${rev ? `?rev=${rev}` : ""}`),
   reviseAgent: (spec: AgentSpec, expectedRev: number) =>
     call<Revision>("PUT", `/api/agents/${encodeURIComponent(spec.name)}`, {
       spec,
@@ -1337,6 +1407,12 @@ export const api = {
     call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
   /** Stop a run and everything attached to it. Runs it delegated keep going. */
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
+  /** What a conversation's runs have used so far. */
+  threadUsage: (id: string) =>
+    call<ThreadUsage>("GET", `/api/threads/${encodeURIComponent(id)}/usage`),
+  /** Stop every run in a session and in its child sessions. */
+  stopSession: (id: string) =>
+    call<void>("POST", `/api/sessions/${encodeURIComponent(id)}/stop`, { children: true }),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
   /** A message alone, without its children: who its root's place was asked in front of. */
@@ -1605,6 +1681,27 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
     return data as VoiceTranscript;
   },
+  /** An agent's own Slack app: its manifest, the link that creates it, and the client it is linked as. */
+  agentSlackApp: (name: string) =>
+    call<AgentSlackApp>("GET", `/api/agents/${encodeURIComponent(name)}/slack-app`),
+  /** Connect an agent's own Slack app from its bot token and signing secret. */
+  linkAgentSlackApp: (name: string, token: string, signing: string) =>
+    call<AgentSlackApp>("POST", `/api/agents/${encodeURIComponent(name)}/slack-app`, {
+      token: { value: token },
+      ...(signing ? { signing_secret: { value: signing } } : {}),
+    }),
+  /** Keep the picture the console drew of an agent, for surfaces that need an image, such as Slack. */
+  setAgentMark: async (name: string, png: Blob) => {
+    const res = await fetch(`/api/agents/${encodeURIComponent(name)}/mark`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "image/png" },
+      body: png,
+    });
+    const data = (await res.json().catch(() => ({}))) as AgentLookView & { error?: string };
+    if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+    return data as AgentLookView;
+  },
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
   uploadPhoto: async (file: Blob) => {
@@ -1619,8 +1716,9 @@ export const api = {
   },
 
   suites: () => call<{ suites: SuiteView[] }>("GET", "/api/evals").then((r) => r.suites),
-  createSuite: (s: Suite) => call<Suite>("POST", "/api/evals", s),
-  saveSuite: (s: Suite) => call<Suite>("PUT", `/api/evals/${encodeURIComponent(s.name)}`, s),
+  createSuite: (s: Suite) => call<Suite>("POST", "/api/evals", suiteBody(s)),
+  saveSuite: (s: Suite) =>
+    call<Suite>("PUT", `/api/evals/${encodeURIComponent(s.name)}`, suiteBody(s)),
   deleteSuite: (name: string) => call<void>("DELETE", `/api/evals/${encodeURIComponent(name)}`),
   runSuite: (name: string) => call<EvalRun>("POST", `/api/evals/${encodeURIComponent(name)}/run`),
   /** A page of the questions behind answers rated down, awaiting review, newest first. */
@@ -1789,6 +1887,13 @@ export const api = {
     ),
   addDocument: (name: string, d: { title: string; uri: string; text: string }) =>
     call<Doc>("POST", `/api/knowledge/${encodeURIComponent(name)}/documents`, d),
+  /** Starts a private conversation that continues an imported document, as it was listed. */
+  continueImport: (name: string, id: string, body: ContinueImportedDocumentBody) =>
+    call<Thread>(
+      "POST",
+      `/api/knowledge/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}/continue`,
+      body,
+    ),
   removeDocument: (name: string, id: string) =>
     call<void>(
       "DELETE",
@@ -2073,11 +2178,15 @@ export interface ThreadParticipant {
 }
 
 /** A shared thread's record. A conversation from before threads reads at version 0. */
+/** Who gave a session its title. The server replaces only a placeholder, so a person's title stays. */
+export type TitleSource = "placeholder" | "generated" | "person";
+
 export interface Thread {
   id: string;
   project: string;
   channel: string;
   title?: string;
+  title_source?: TitleSource;
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
@@ -2099,15 +2208,26 @@ export interface Thread {
       at: string;
     }[];
   };
+  /** The imported conversation it continues: the pinned revision and the turns its agent is sent. */
+  import?: ThreadImport;
   /**
-   * How its gated tool actions are approved: absent asks a person; auto approves for `by`
-   * (DES-057); decide does that and also answers what the session settles (DES-079).
+   * How its gated tool actions are approved: absent is Ask, a person; auto is Auto, where the
+   * approval agent approves and answers what the session settles for `by` (DES-057, DES-079).
    */
-  approval?: { mode: "auto" | "decide"; by: string; roles?: string[]; at: string };
+  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
+  /** A session's own: its agent, and what it was set up with before its first message. */
+  session?: {
+    agent: string;
+    parent: string;
+    label?: string;
+    source_alert?: string;
+    image?: string;
+    repos?: string[];
+  };
   version: number;
   created_by: string;
   created_at: string;
@@ -2138,6 +2258,8 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Files posted with it, by name where the poster gave one. */
   attachments?: { name?: string; alt?: string; media_type: string; unread?: string }[];
+  /** A command its author ran in the session's sandbox ("!" and the command), and how it came out. */
+  command?: ThreadCommand;
   at: string;
 }
 
@@ -2476,6 +2598,11 @@ export const coworking = {
     visibility?: "shared" | "private";
     agents?: string[];
     mode?: "join" | "all";
+    /** A private session's image and repositories, chosen before its first message. */
+    image?: string;
+    repos?: string[];
+    /** The text is "!" and a command to run in the new session's sandbox, in place of a message to its agent. */
+    command?: boolean;
   }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
@@ -2484,6 +2611,9 @@ export const coworking = {
           uploads: t.uploads,
           project: t.project,
           agent: t.agents?.[0],
+          ...(t.image && t.image !== "default" ? { image: t.image } : {}),
+          ...(t.repos?.length ? { repos: t.repos } : {}),
+          ...(t.command ? { command: true } : {}),
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)
@@ -2501,7 +2631,7 @@ export const coworking = {
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** Sets how a conversation's gated tool actions are approved: ask, or auto or decide for the caller. */
-  setApprovalMode: (id: string, mode: "ask" | "auto" | "decide") =>
+  setApprovalMode: (id: string, mode: "ask" | "auto") =>
     call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>

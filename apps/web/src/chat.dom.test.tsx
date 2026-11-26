@@ -9,6 +9,7 @@ import { forgetApprover } from "./ApprovalToggle.tsx";
 import type { Run } from "./adapter.ts";
 import { api, type ProjectAgentsView, type Revision, type ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
+import { takeDeparture } from "./dockArrival.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 import { globex } from "./projects.fixtures.ts";
@@ -184,6 +185,19 @@ function openChat(
 }
 
 const box = () => screen.getByLabelText("Message", { selector: "textarea" }) as HTMLTextAreaElement;
+/** Home's settings menu, opened from its control beside +. */
+const settings = async () => {
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.chat.setup.label }));
+  return await screen.findByRole("dialog", { name: defaultCopy.chat.setup.label });
+};
+/** Opens one of the settings menu's rows: "project", "agents", "repos" or "image". */
+const pane = (menu: HTMLElement, id: string) =>
+  fireEvent.click(menu.querySelector(`[data-pane-row="${id}"]`) as HTMLElement);
+/** The left of the row under the bar: the approval mode. */
+const footerStart = () =>
+  screen
+    .getByRole("group", { name: defaultCopy.dock.footer })
+    .querySelector<HTMLElement>('[data-layer="composer-footer-start"]') as HTMLElement;
 
 test("Home's chat bar has no menu of who answers and no line saying who does", async () => {
   openChat(workspace("lead"));
@@ -244,7 +258,7 @@ test("Home's chat bar starts a private conversation in the picked project and op
   assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
 });
 
-test("Home's composer shows no project control, and Run chosen there is applied once the session starts", async () => {
+test("Home's bar holds the settings control beside +, the approval mode sits under it, and Auto chosen there is applied once the session starts", async () => {
   forgetApprover();
   forgetConfiguredProviders();
   const { opened } = openChat(
@@ -265,8 +279,17 @@ test("Home's composer shows no project control, and Run chosen there is applied 
   );
   const bar = screen.getByRole("form", { name: "Message" });
   assert.deepEqual(within(bar).queryAllByRole("button", { name: /project/i }), []);
-  fireEvent.click(within(bar).getByRole("button", { name: "Approvals: Ask Me" }));
-  assert.ok(within(bar).getByRole("button", { name: "Approvals: Run" }));
+  assert.deepEqual(within(bar).queryAllByRole("button", { name: /^Approval mode/ }), []);
+  // The session's settings are one control beside +; the approval mode is its own, under the bar.
+  assert.ok(within(bar).getByRole("button", { name: defaultCopy.chat.setup.label }));
+  const left = footerStart();
+  fireEvent.click(within(left).getByRole("button", { name: "Approval mode: Manual" }));
+  // The control opens a menu of the modes; Auto is picked from it.
+  await screen.findByRole("menu", { name: "Approval mode" });
+  const auto = document.querySelector<HTMLElement>('[data-approval-option="auto"]');
+  assert.ok(auto, "the menu has no Auto row");
+  fireEvent.click(auto);
+  assert.ok(within(left).getByRole("button", { name: "Approval mode: Auto" }));
   assert.ok(!net?.seen.some((s) => s.method === "PUT"), "nothing is saved before the session");
   fireEvent.change(box(), { target: { value: "Plan the launch" } });
   fireEvent.keyDown(box(), { key: "Enter" });
@@ -317,15 +340,15 @@ test("a link or suggestion @mentions the agent without submitting, and suggestio
   assert.ok(screen.getByRole("list", { name: chat.suggestions }));
 });
 
-test("+ picks mentions with Enter, and a session from Home is filed in the Personal project", async () => {
+test("the settings menu picks mentions, and a session from Home is filed in the Personal project", async () => {
   const { opened } = openChat(workspace("lead"), { personalProject: "Personal" });
-  // The shortcut opens it from the box.
-  fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  assert.ok(within(menu).getByRole("button", { name: chat.attach }));
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
+  // + attaches files at once: there is no + menu on Home.
+  assert.equal(screen.queryByRole("button", { name: chat.plus }), null);
+  assert.ok(screen.getByRole("button", { name: "Attach files" }));
+  const menu = await settings();
+  pane(menu, "agents");
   const lead = await within(menu).findByRole("checkbox", { name: /^lead/ });
-  // The arrows move between items; Space checks the one focused.
+  // The arrows move between items; a press checks one and the menu stays open.
   lead.focus();
   fireEvent.keyDown(lead, { key: "ArrowDown" });
   const helperRow = within(menu).getByRole("checkbox", { name: /^helper/ });
@@ -337,12 +360,8 @@ test("+ picks mentions with Enter, and a session from Home is filed in the Perso
     "@lead @helper ",
     "each pick is mentioned as the @ completion writes it",
   );
-  assert.equal(lead.getAttribute("aria-checked"), "true");
-  assert.equal(
-    screen.queryByRole("dialog", { name: chat.menu }) !== null,
-    true,
-    "the menu stays open",
-  );
+  await waitFor(() => assert.equal(lead.getAttribute("aria-checked"), "true"));
+  assert.ok(screen.getByRole("dialog", { name: chat.setup.label }), "the menu stays open");
   assert.ok(
     !within(menu).queryByRole("checkbox", { name: /globex-helper/ }),
     "an agent homed elsewhere is not offered at the workspace",
@@ -355,25 +374,28 @@ test("+ picks mentions with Enter, and a session from Home is filed in the Perso
   fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), {
     target: { value: "" },
   });
-  // Enter closes it.
-  fireEvent.keyDown(within(menu).getByRole("checkbox", { name: /^lead/ }), { key: "Enter" });
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
-  assert.deepEqual(chips(), [], "agents never show where the project is");
-  assert.equal(screen.queryByRole("group", { name: /routed/i }), null, "no routing toggle");
+  // Escape steps back to the rows, where Agents says who is mentioned, and Escape again closes.
+  fireEvent.keyDown(within(menu).getByRole("searchbox", { name: chat.findAgent }), {
+    key: "Escape",
+  });
+  await waitFor(() =>
+    assert.match(menu.querySelector('[data-pane-row="agents"]')?.textContent ?? "", /lead, helper/),
+  );
+  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  assert.equal(screen.queryByRole("dialog", { name: chat.setup.label }), null);
 
   // Deleting a mention's words takes the agent off: the menu reads the box.
   fireEvent.change(box(), { target: { value: "@lead " } });
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const again = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(again).getByRole("button", { name: /^Agents\b/ }));
-  const helperAgain = within(again).getByRole("checkbox", { name: /^helper/ });
+  const again = await settings();
+  pane(again, "agents");
+  const helperAgain = await within(again).findByRole("checkbox", { name: /^helper/ });
   assert.equal(helperAgain.getAttribute("aria-checked"), "false");
   fireEvent.click(helperAgain);
   // Picking a mentioned agent again takes its mention out.
   fireEvent.click(within(again).getByRole("checkbox", { name: /^lead/ }));
   assert.equal(box().value, "@helper ");
   fireEvent.click(within(again).getByRole("checkbox", { name: /^lead/ }));
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  fireEvent.click(screen.getByRole("button", { name: chat.setup.label }));
 
   fireEvent.change(box(), { target: { value: `${box().value}Plan the renewal` } });
   fireEvent.keyDown(box(), { key: "Enter" });
@@ -831,7 +853,7 @@ test("a task the reader may not read reads as one that does not exist, never as 
   assert.ok(!net?.seen.some((r) => r.method === "POST"));
 });
 
-test("completion and the + menu open toward the side of the chat bar with room, so on a phone neither runs off the screen", async () => {
+test("completion and the settings menu open toward the side of the chat bar with room, so on a phone neither runs off the screen", async () => {
   const real = HTMLFormElement.prototype.getBoundingClientRect;
   const height = window.innerHeight;
   // A phone's Home: the chat bar near the top of a tall screen.
@@ -855,8 +877,7 @@ test("completion and the + menu open toward the side of the chat bar with room, 
     assert.match(list.className, /(^|\s)top-full(\s|$)/, list.className);
     assert.ok(Number.parseInt(list.style.maxHeight, 10) <= 844 - 330 - 8, list.style.maxHeight);
     fireEvent.keyDown(box(), { key: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-    const menu = await screen.findByRole("dialog", { name: chat.menu });
+    const menu = await settings();
     assert.match(menu.className, /(^|\s)top-full(\s|$)/, menu.className);
     assert.ok(Number.parseInt(menu.style.maxHeight, 10) <= 844 - 330 - 8, menu.style.maxHeight);
   } finally {
@@ -886,24 +907,16 @@ function openChatClose() {
   net = undefined;
 }
 
-test("+ closes the menu it opened, though focus moves to it from the menu first", async () => {
+test("the settings control closes the menu it opened, and a press outside closes it too", async () => {
   openChat(workspace("lead"));
-  const plus = screen.getByRole("button", { name: chat.plus });
-  fireEvent.click(plus);
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  // A press on + moves focus there from the menu's search, then clicks it.
-  fireEvent.focusOut(within(menu).getByRole("button", { name: chat.attach }), {
-    relatedTarget: plus,
-  });
-  fireEvent.click(plus);
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
-  // Focus going anywhere else closes it.
-  fireEvent.click(plus);
-  const again = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.focusOut(within(again).getByRole("button", { name: chat.attach }), {
-    relatedTarget: document.body,
-  });
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  const control = screen.getByRole("button", { name: chat.setup.label });
+  await settings();
+  assert.equal(control.getAttribute("aria-expanded"), "true");
+  fireEvent.click(control);
+  assert.equal(screen.queryByRole("dialog", { name: chat.setup.label }), null);
+  await settings();
+  fireEvent.pointerDown(document.body);
+  assert.equal(screen.queryByRole("dialog", { name: chat.setup.label }), null);
 });
 
 test("all starter suggestions stay in one centered row that scrolls past its width, hiding none", async () => {
@@ -927,7 +940,7 @@ test("starters for store agents the workspace has not installed are not offered"
   assert.equal(screen.queryByRole("button", { name: "Build an agent" }), null);
 });
 
-test("a suggestion @mentions its agent, and the + menu mentions as many agents as are picked", async () => {
+test("a suggestion @mentions its agent, and the settings menu mentions as many agents as are picked", async () => {
   const builtin = [
     agent("a1"),
     agent("a2"),
@@ -941,9 +954,8 @@ test("a suggestion @mentions its agent, and the + menu mentions as many agents a
     { agents: builtin, startAgent: "a1" },
   );
   await waitFor(() => assert.equal(box().value, "@a1 "));
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
+  const menu = await settings();
+  pane(menu, "agents");
   for (const n of ["a2", "a3", "a4", "a5", "humagen-writer"])
     fireEvent.click(await within(menu).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
   assert.equal(box().value, "@a1 @a2 @a3 @a4 @a5 @humagen-writer ", "no cap on mentions");
@@ -1161,10 +1173,9 @@ test("the composer opens discovery in its picker and preserves the draft and att
   );
   assert.equal(screen.queryByRole("button", { name: c.title }), null);
 
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
-  fireEvent.click(within(menu).getByRole("button", { name: c.title }));
+  const menu = await settings();
+  pane(menu, "agents");
+  fireEvent.click(await within(menu).findByRole("button", { name: c.title }));
   const query = await within(menu).findByRole("textbox", { name: c.label });
   assert.equal((query as HTMLInputElement).value, "Keep my detailed request.");
   assert.equal(
@@ -1184,7 +1195,7 @@ test("the composer opens discovery in its picker and preserves the draft and att
   fireEvent.click(within(menu).getByRole("button", { name: c.choose }));
   // The match is mentioned where the cursor was, after the words kept.
   await waitFor(() => assert.equal(box().value, "Keep my detailed request. @globex-helper "));
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.equal(screen.queryByRole("dialog", { name: chat.setup.label }), null);
   assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("evidence.txt"));
   assert.equal(document.activeElement, box());
   assert.ok(
@@ -1219,10 +1230,9 @@ test("discovery seeds an empty composer only after an explicit match choice", as
       },
     ],
   });
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
-  fireEvent.click(within(menu).getByRole("button", { name: c.title }));
+  const menu = await settings();
+  pane(menu, "agents");
+  fireEvent.click(await within(menu).findByRole("button", { name: c.title }));
   fireEvent.change(await within(menu).findByRole("textbox", { name: c.label }), {
     target: { value: "Plan a customer renewal" },
   });
@@ -1238,23 +1248,26 @@ test("discovery seeds an empty composer only after an explicit match choice", as
 test("Escape returns from discovery to its picker trigger before closing the picker", async () => {
   const c = defaultCopy.home.findHelp;
   openChat(workspace("lead"), { findHelp: async () => [] });
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
-  fireEvent.click(within(menu).getByRole("button", { name: c.title }));
+  const menu = await settings();
+  pane(menu, "agents");
+  fireEvent.click(await within(menu).findByRole("button", { name: c.title }));
   const query = await within(menu).findByRole("textbox", { name: c.label });
   await waitFor(() => assert.equal(document.activeElement, query));
   fireEvent.keyDown(query, { key: "Escape" });
-  assert.ok(screen.getByRole("dialog", { name: chat.menu }));
+  assert.ok(screen.getByRole("dialog", { name: chat.setup.label }));
   assert.equal(within(menu).queryByRole("textbox", { name: c.label }), null);
   const trigger = within(menu).getByRole("button", { name: c.title });
   await waitFor(() => assert.equal(document.activeElement, trigger));
   fireEvent.keyDown(trigger, { key: "Escape" });
-  const agents = within(menu).getByRole("button", { name: /^Agents\b/ });
+  const agents = menu.querySelector<HTMLElement>('[data-pane-row="agents"]');
   await waitFor(() => assert.equal(document.activeElement, agents));
-  fireEvent.keyDown(agents, { key: "Escape" });
-  assert.equal(!!screen.queryByRole("dialog", { name: chat.menu }), false);
-  assert.equal(document.activeElement, box());
+  fireEvent.keyDown(agents as HTMLElement, { key: "Escape" });
+  assert.equal(!!screen.queryByRole("dialog", { name: chat.setup.label }), false);
+  assert.equal(
+    document.activeElement,
+    screen.getByRole("button", { name: chat.setup.label }),
+    "focus goes back to the control that opened the menu",
+  );
 });
 
 test("a starter suggestion keeps the project the session starts in and waits for explicit submission", async () => {
@@ -1276,7 +1289,7 @@ test("a starter suggestion keeps the project the session starts in and waits for
   });
 });
 
-test("choosing a project skill keeps the draft and attached file and waits for explicit Send", async () => {
+test("a skill typed with / keeps the attached file and waits for explicit Send", async () => {
   const { opened } = openChat(workspace("lead"));
   fireEvent.change(box(), { target: { value: "Review this launch change." } });
   const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
@@ -1285,12 +1298,12 @@ test("choosing a project skill keeps the draft and attached file and waits for e
     target: { files: [new File(["Launch evidence"], "launch.txt", { type: "text/plain" })] },
   });
   await screen.findByRole("list", { name: "Attached files" });
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
-  fireEvent.click(await within(menu).findByRole("button", { name: /^\$?review(?:\s|$)/i }));
-  await waitFor(() => assert.equal(box().value, "/review Review this launch change."));
-  assert.equal(!!screen.queryByRole("dialog", { name: chat.menu }), false);
+  // A skill is typed: / opens its completion at the start of the words.
+  fireEvent.change(box(), { target: { value: "/rev" } });
+  await screen.findByRole("listbox", { name: defaultCopy.threads.commands });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.equal(box().value, "/review "));
+  fireEvent.change(box(), { target: { value: "/review Review this launch change." } });
   assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("launch.txt"));
   assert.equal(document.activeElement === box(), true);
   assert.equal(
@@ -1517,4 +1530,32 @@ test("composer only, as a project's page draws it: no greeting, its own words, a
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find((s) => s.method === "POST");
   assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });
+});
+
+test("the project picked in the settings menu files the first message there, and the bar and its footer go down as one", async () => {
+  const { opened } = openChat(workspace("lead"), {
+    projects: [globex],
+    personalProject: "Personal",
+  });
+  const menu = await settings();
+  assert.match(menu.querySelector('[data-pane-row="project"]')?.textContent ?? "", /Personal/);
+  pane(menu, "project");
+  fireEvent.click(await within(menu).findByRole("button", { name: /Globex/, pressed: false }));
+  // A project is one pick: the menu closes, and says the project when opened again.
+  await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: chat.setup.label }), null));
+  assert.match(
+    (await settings()).querySelector('[data-pane-row="project"]')?.textContent ?? "",
+    /Globex/,
+  );
+  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  fireEvent.change(box(), { target: { value: "What changed this week?" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST" && s.path === "/api/sessions");
+  assert.equal((started?.body as { project?: string }).project, "Globex");
+  // What the conversation's loading screen draws in the bar's place: the bar and its footer together.
+  const left_behind = takeDeparture();
+  assert.ok(left_behind, "Home remembered its bar as it left");
+  assert.match(left_behind.html, /data-layer="composer-footer"/);
+  assert.match(left_behind.html, /humagen-composer-row/);
 });

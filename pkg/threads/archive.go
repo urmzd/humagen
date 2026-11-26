@@ -2,6 +2,8 @@ package threads
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -118,7 +120,7 @@ func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
 		when := at
 		next.Archive = next.Archive.clone()
 		next.Archive.Deleted, next.Archive.DeletedBy = &when, by
-		next.Title, next.Head, next.First = "", 0, ""
+		next.Title, next.TitleSource, next.Head, next.First = "", "", 0, ""
 		return nil
 	})
 	if err != nil {
@@ -137,4 +139,55 @@ func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
 		said = said[n:]
 	}
 	return nil
+}
+
+// Listen records that the app answered person's mention (its surface id)
+// in an addressed thread: the thread is listening, to that person
+// (Thread.Listener). An answer to a mention older than the listener's own
+// changes nothing, so a late answer cannot take the thread back. A thread
+// that is not addressed is left as it is. Its version does not change: it is
+// the record of what the app has answered, not an edit.
+func (s *Store) Listen(tenantName, id, person, message string, at time.Time) (Thread, error) {
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		if !next.Addressed || person == "" {
+			return state.ErrUnchanged
+		}
+		if l := next.Listener; next.Listening && l != nil && !OlderSurfaceID(l.Message, message) {
+			return state.ErrUnchanged
+		}
+		next.Listening, next.Listener, changed = true, &Listener{Person: person, Message: message}, true
+		return nil
+	})
+	if err != nil {
+		return Thread{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, nil
+}
+
+// OlderSurfaceID says whether surface id a came before b: Slack ts are
+// seconds, a dot, then microseconds. "" comes before anything.
+func OlderSurfaceID(a, b string) bool {
+	key := func(ts string) (int64, int64, bool) {
+		secs, micros, _ := strings.Cut(ts, ".")
+		s, err := strconv.ParseInt(secs, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		micros = (micros + "000000")[:6]
+		u, err := strconv.ParseInt(micros, 10, 64)
+		return s, u, err == nil
+	}
+	if a == "" || b == "" {
+		return a == "" && b != ""
+	}
+	as, au, aok := key(a)
+	bs, bu, bok := key(b)
+	if !aok || !bok {
+		return a < b
+	}
+	return as < bs || as == bs && au < bu
 }

@@ -13,7 +13,7 @@ import {
 } from "@testing-library/react";
 import { useCompletion } from "./completion.ts";
 import { stubFetch } from "./dom.ts";
-import { PlusMenu, type Selection } from "./Plus.tsx";
+import { PlusMenu } from "./Plus.tsx";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -23,26 +23,18 @@ afterEach(() => {
   net = undefined;
 });
 
-test("the composer menu offers Agents and Skills while the persistent folder owns project selection", async () => {
+test("a conversation's + menu offers files and Agents, never Skills or projects", async () => {
   net = stubFetch({
     "GET /api/projects/personal/channels": () => ({ channels: [{ name: "general" }] }),
   });
-  render(
-    <PlusMenu
-      agents={[{ name: "helper" }]}
-      skills={[]}
-      onSkill={() => {}}
-      projects={[]}
-      personalProject="personal"
-      selection={{ project: "personal", channel: "general" }}
-      onChange={() => {}}
-      onAttach={() => {}}
-      onClose={() => {}}
-    />,
-  );
+  render(<PlusMenu agents={[{ name: "helper" }]} onAttach={() => {}} onClose={() => {}} />);
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  for (const name of ["Agents", "Skills"])
-    assert.ok(within(menu).getByRole("button", { name: new RegExp(`^${name}\\b`) }));
+  assert.ok(within(menu).getByRole("button", { name: /^Agents\b/ }));
+  assert.equal(
+    within(menu).queryByRole("button", { name: /^Skills\b/ }),
+    null,
+    "skills are typed as /",
+  );
   assert.equal(within(menu).queryByRole("button", { name: /^Projects\b/ }), null);
   assert.equal(within(menu).queryByRole("radio", { name: "#general" }), null);
   assert.equal(net.seen.length, 0, "the menu does not read legacy channels");
@@ -149,97 +141,13 @@ test("a late skill lookup from the previous project cannot enter the current men
   );
 });
 
-test("Skills search Enter cannot submit work and Escape restores category focus before closing", async () => {
-  net = stubFetch({});
-  let closed = 0;
-  const chosen: string[] = [];
-  render(
-    <form
-      aria-label="Message"
-      onSubmit={(event) => {
-        event.preventDefault();
-        throw new Error("search submitted the message");
-      }}
-    >
-      <PlusMenu
-        agents={[]}
-        skills={[{ name: "review", description: "Review a change" }]}
-        onSkill={(name) => chosen.push(name)}
-        projects={[]}
-        selection={{ project: null, channel: "general" }}
-        onChange={() => {}}
-        onAttach={() => {}}
-        onClose={() => {
-          closed++;
-        }}
-      />
-    </form>,
-  );
-  const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
-  const search = await within(menu).findByRole("searchbox");
-  await waitFor(() => assert.equal(document.activeElement === search, true));
-  fireEvent.change(search, { target: { value: "no-such-skill" } });
-  const allowed = fireEvent.keyDown(search, { key: "Enter" });
-  assert.equal(allowed, false, "the search consumes Enter before the message form can submit");
-  assert.deepEqual(chosen, []);
-  assert.equal(closed, 0);
-  fireEvent.keyDown(search, { key: "Escape" });
-  assert.equal((search as HTMLInputElement).value, "", "Escape clears a nonempty filter first");
-  assert.equal(document.activeElement === search, true);
-  fireEvent.keyDown(search, { key: "Escape" });
-  await waitFor(() =>
-    assert.equal(
-      document.activeElement?.textContent?.startsWith("Skills"),
-      true,
-      `${document.activeElement?.tagName}: ${document.activeElement?.textContent?.slice(0, 100)}`,
-    ),
-  );
-  assert.equal(closed, 0);
-  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
-  assert.equal(closed, 1);
-});
-
-test("Skills loading and failure states never offer a stale skill choice", async () => {
-  net = stubFetch({});
-  const common = {
-    agents: [],
-    projects: [],
-    selection: { project: null, channel: "general" } as Selection,
-    onChange: () => {},
-    onAttach: () => {},
-    onClose: () => {},
-    onSkill: () => {},
-  };
-  const { rerender } = render(<PlusMenu {...common} skills={null} />);
-  const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
-  assert.ok(
-    within(menu).getByRole("status").textContent?.includes(defaultCopy.chat.picker.skillsLoading),
-  );
-  rerender(<PlusMenu {...common} skills={[{ name: "old-secret" }]} skillsFailed />);
-  assert.ok(
-    within(menu).getByRole("alert").textContent?.includes(defaultCopy.chat.picker.skillsFailed),
-  );
-  assert.equal(!!within(menu).queryByRole("button", { name: /^old-secret/ }), false);
-  rerender(<PlusMenu {...common} skills={[]} />);
-  assert.ok(
-    within(menu).getByRole("status").textContent?.includes(defaultCopy.chat.picker.noSkills),
-  );
-});
-
-for (const category of ["Agents", "Skills"] as const) {
+for (const category of ["Agents"] as const) {
   test(`${category} search keeps native caret movement when ArrowLeft is pressed`, async () => {
     net = stubFetch({});
     let closed = 0;
     render(
       <PlusMenu
         agents={[{ name: "helper", description: "Review changes" }]}
-        skills={[{ name: "review", description: "Review a change" }]}
-        onSkill={() => {}}
-        projects={[]}
-        selection={{ project: null, channel: "general" }}
-        onChange={() => {}}
         onAttach={() => {}}
         onClose={() => {
           closed++;
@@ -259,3 +167,44 @@ for (const category of ["Agents", "Skills"] as const) {
     assert.equal(closed, 0);
   });
 }
+
+test("a project's agents and skills read before show at once when its bar is drawn again", async () => {
+  let reads = 0;
+  let answer: (value: unknown) => void = () => {};
+  net = stubFetch({
+    "GET /api/projects/Globex/agents": () => {
+      reads++;
+      // The second read waits, as on a slow link: what was read before stands in.
+      return reads === 1
+        ? {
+            available: { all: true, names: [] },
+            default_resolved: { agent: "lead", from: "project:Globex" },
+          }
+        : new Promise((resolve) => {
+            answer = resolve;
+          });
+    },
+    "GET /api/skills": () => ({
+      skills: [{ name: "review", description: "Review", from: "Globex", argument_hint: "" }],
+    }),
+    "GET /api/mentions": () => ({ kinds: [] }),
+  });
+  const first = renderHook(() => useCompletion("Globex", [], {}, [], "ada"));
+  await waitFor(() => assert.equal(first.result.current.skills?.[0]?.name, "review"));
+  await waitFor(() => assert.equal(first.result.current.defaultAgent, "lead"));
+  first.unmount();
+  // Home again: nothing says loading, and the reads go out again behind it.
+  const again = renderHook(() => useCompletion("Globex", [], {}, [], "ada"));
+  assert.equal(again.result.current.agentsLoading, false);
+  assert.equal(again.result.current.defaultAgent, "lead");
+  assert.equal(again.result.current.skills?.[0]?.name, "review");
+  await waitFor(() => assert.equal(reads, 2));
+  await act(async () =>
+    answer({
+      available: { all: true, names: [] },
+      default_resolved: { agent: "writer", from: "project:Globex" },
+    }),
+  );
+  await waitFor(() => assert.equal(again.result.current.defaultAgent, "writer"));
+  again.unmount();
+});

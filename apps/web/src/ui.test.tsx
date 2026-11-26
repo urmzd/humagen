@@ -18,7 +18,7 @@ import { LimitsPanel } from "./Limits.tsx";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
-import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
+import { ProjectChoices, projectLabel } from "./ProjectPicker.tsx";
 import { RunItem, runManifest, runMarkdown, statusOf } from "./RunItem.tsx";
 import { replay } from "./Runs.tsx";
 import { Schedules } from "./Schedules.tsx";
@@ -81,7 +81,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar exposes seven canonical destinations, Projects and Scheduled among them, Settings and Connections in the account menu, with distinct icons and current-section state", () => {
+test("the sidebar exposes seven canonical destinations, Projects and Automations among them, Settings and Connections in the account menu, with distinct icons and current-section state", () => {
   const out = sidebar();
   assert.match(out, /aria-label="Sections"/);
   const nav = out.slice(out.indexOf('aria-label="Sections"'), out.indexOf("</nav>"));
@@ -91,7 +91,7 @@ test("the sidebar exposes seven canonical destinations, Projects and Scheduled a
     "/alerts",
     "/projects",
     "/agents",
-    "/scheduled",
+    "/automations",
     "/artifacts",
   ])
     assert.ok(nav.includes(`href="${route}"`), route);
@@ -129,7 +129,7 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
   assert.match(out, /aria-label="Manage Fix the build"/);
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
-  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Recents<"));
+  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Recent<"));
 });
 
 test("project pins work without recent conversations and omit unreadable projects", () => {
@@ -171,10 +171,9 @@ test("project selection: an empty directory offers the explicit Workspace home a
   );
   assert.match(loading, /Loading projects/);
   assert.doesNotMatch(loading, /No projects yet/);
-  const untouched = renderToStaticMarkup(<ProjectPicker projects={[]} value={null} {...actions} />);
-  assert.match(untouched, /aria-label="Select project"/);
-  const projectless = renderToStaticMarkup(<ProjectPicker projects={[]} value="" {...actions} />);
-  assert.match(projectless, /aria-label="Select project: Workspace"/);
+  assert.equal(projectLabel(null, []), "Select project");
+  assert.equal(projectLabel("", []), "Workspace");
+  assert.equal(projectLabel("mine", [], "mine"), "Personal");
 });
 
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
@@ -357,6 +356,30 @@ test("Stroke: waiting never animates, in markup or in the stylesheet", () => {
     ),
     "working is the state that animates",
   );
+});
+
+test("waiting on a person is the warning amber in the stylesheets, never the accent or an agent's hue", () => {
+  const rulesOf = (file: string) =>
+    [...readFileSync(new URL(file, import.meta.url), "utf8").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(
+      ([, selector = "", body = ""]) => ({ selector, body }),
+    );
+  // The edge of what an agent owns: its hue, until it waits on a person.
+  const edge = rulesOf("./styles.css").filter(
+    ({ selector }) => selector.trim() === '.humagen-stroke[data-state="waiting"]',
+  );
+  assert.equal(edge.length, 1);
+  assert.match(edge[0]?.body ?? "", /--humagen-stroke-color:\s*var\(--aui-warn\)/);
+  // The rail down an approval, a question and a batch of approvals.
+  const rails = rulesOf("../../../packages/render-web/src/theme.css").filter(
+    ({ selector, body }) =>
+      /data-aui-block="(approval|clarification|batch)"|data-aui="checkboxes"/.test(selector) &&
+      /(background|box-shadow):[^;]*var\(--aui-(accent|warn)\)/.test(body),
+  );
+  assert.equal(rails.length, 6, "three parts of a card, and three of a batch");
+  for (const { selector, body } of rails) {
+    assert.match(body, /var\(--aui-warn\)/, selector.trim());
+    assert.doesNotMatch(body, /var\(--aui-accent\)/, selector.trim());
+  }
 });
 
 test("parseDollars: amounts become micro-USD", () => {
@@ -670,7 +693,7 @@ test("an approval the approval agent judged shows its decision, reason and the w
   assert.doesNotMatch(plain, /Approval agent|Asked a person|Risk|Expires in|Based on/);
 });
 
-test("a question the approval agent answered in Run and Answer says so, and one it left says why", () => {
+test("a question the approval agent answered in Auto says so, and one it left says why", () => {
   const [raw] = wireMail().filter((m) => m.id === "m-question");
   assert.ok(raw);
   const withQuestion = (change: (part: Record<string, unknown>) => Record<string, unknown>) =>

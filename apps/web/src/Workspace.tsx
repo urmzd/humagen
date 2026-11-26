@@ -30,7 +30,6 @@ import { GitHubPicker, GitHubTab } from "./GitHubTab.tsx";
 import { Memories } from "./Memories.tsx";
 import {
   activeKey,
-  closeTab,
   openTab,
   type PaneKind,
   type PaneTab,
@@ -374,11 +373,7 @@ export function Workspace({
       setLabels((l) => (l[`artifact:${id}`] === label ? l : { ...l, [`artifact:${id}`]: label })),
     [],
   );
-  const close = (key: string) => {
-    const next = closeTab(view, key);
-    if (next) onView(next);
-    else onClose();
-  };
+
   const toggle = (field: "expanded" | "split") =>
     onView({ ...view, [field]: !view[field] || undefined });
 
@@ -482,74 +477,65 @@ export function Workspace({
     }
   };
 
+  // The drawer's sections, always the same and in the same order, as one row: a
+  // drawer does not grow a tab per thing opened. An item opened from a section
+  // (a file, an artifact, a memory) shows under it with the way back to its list,
+  // and closing the drawer is its own button, once.
+  const listOf: Partial<Record<PaneKind, PaneKind>> = {
+    file: "files",
+    scratchpad: "scratchpads",
+    artifact: "artifacts",
+    sandbox: "sandboxes",
+    memory: "memories",
+  };
+  const section = listOf[current.kind] ?? current.kind;
   const strip = (
-    <div className="flex min-w-0 items-center gap-1">
-      <div
-        role="tablist"
-        aria-label={pane.tabs}
-        className="aui-scroll flex min-w-0 flex-1 gap-1 overflow-x-auto"
-      >
-        {tabs.map((tab) => {
-          const key = tabKey(tab);
-          const label = tabLabel(tab, labels);
-          return (
-            <span
-              key={key}
-              className={`inline-flex min-w-0 shrink-0 items-center rounded-aui ${key === active ? "bg-aui-hover text-aui-fg" : "text-aui-muted"}`}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={key === active}
-                title={tab.ref ?? label}
-                onClick={() => onView(openTab(view, tab))}
-                className="inline-flex min-h-9 max-w-44 items-center gap-1.5 px-2 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
-              >
-                {icons[tab.kind]}
-                <span className="truncate">{label}</span>
-              </button>
-              <button
-                type="button"
-                aria-label={pane.close(label)}
-                onClick={() => close(key)}
-                className="inline-flex size-7 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
-              >
-                <XIcon size={12} />
-              </button>
-            </span>
-          );
-        })}
-      </div>
-      <Popover
-        label={pane.open}
-        button={<PlusIcon size={16} />}
-        className="inline-flex size-9 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
-        align="right"
-        narrow
-      >
-        {(closeMenu) => (
-          <div className="flex flex-col p-1">
-            {PICKS.map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                className="inline-flex min-h-9 items-center gap-2 rounded-aui px-2.5 text-left text-aui-xs hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
-                onClick={() => {
-                  closeMenu();
-                  onView(openTab(view, { kind }));
-                }}
-              >
-                {icons[kind]}
-                {pane.pick[kind]}
-              </button>
-            ))}
-            {extraPicks?.(closeMenu)}
-            <GitHubPicker close={closeMenu} onOpen={(tab) => onView(openTab(view, tab))} />
-          </div>
-        )}
-      </Popover>
+    <div
+      role="tablist"
+      aria-label={pane.tabs}
+      className="aui-scroll flex min-w-0 gap-1 overflow-x-auto"
+    >
+      {PICKS.map((kind) => {
+        const on = section === kind;
+        return (
+          <button
+            key={kind}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onView(openTab(view, { kind }))}
+            className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-aui px-2.5 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11 ${on ? "bg-aui-hover text-aui-fg" : "text-aui-muted hover:bg-aui-hover hover:text-aui-fg"}`}
+          >
+            {icons[kind]}
+            {pane.kind[kind]}
+          </button>
+        );
+      })}
     </div>
   );
+  // An item names itself above its content, after the list it came from.
+  const itemPath = current.ref ? (
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 pb-3 text-aui-xs">
+      {/* Only a list the drawer shows is a way back; a pull request's or a review's is a name. */}
+      {PICKS.includes(section) ? (
+        <button
+          type="button"
+          onClick={() => onView(openTab(view, { kind: section }))}
+          className="min-h-6 shrink-0 rounded-aui text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          {pane.kind[section]}
+        </button>
+      ) : (
+        <span className="shrink-0 text-aui-muted">{pane.kind[section]}</span>
+      )}
+      <span aria-hidden className="text-aui-muted/60">
+        /
+      </span>
+      <span aria-current="page" className="min-w-0 truncate text-aui-fg">
+        {tabLabel(current, labels)}
+      </span>
+    </nav>
+  ) : null;
   const actions = (
     <>
       <button
@@ -626,6 +612,7 @@ export function Workspace({
             </div>
           ) : (
             <div className="min-w-0" data-slot={`workspace-tab-${current.kind}`}>
+              {itemPath}
               {render(current, files)}
             </div>
           )}

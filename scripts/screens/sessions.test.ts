@@ -30,11 +30,12 @@ function recorder({ pickerVisible = true, fileContent = "" } = {}) {
         selector.includes('[data-slot="file-browser"]>button:')
           ? selector.endsWith(`button:${defaultCopy.workspaceFiles.files}`) && pickerVisible
           : true,
-      allTextContents: async () => ["Files", "Sources", "Steps", "Sessions"],
+      // A drawer has no tabs.
+      count: async () => 0,
       evaluate: async () => true,
       boundingBox: async () => ({ x: 0, width: 390 }),
       inputValue: async () => {
-        assert.equal(selector, `dialog:Details>textbox:${defaultCopy.editor.edit("plan.md")}`);
+        assert.equal(selector, `dialog:Workspace>textbox:${defaultCopy.editor.edit("plan.md")}`);
         return fileContent;
       },
       scrollIntoViewIfNeeded: async () => calls.push({ action: "scroll", selector }),
@@ -66,6 +67,7 @@ test("the canonical session suite keeps 24 unique states at all five widths", ()
     connections: "/settings/apps",
     artifacts: "/artifacts",
     settings: "/settings/appearance",
+    audit: "/settings/audit",
   })) {
     assert.equal(screens.find((screen) => screen.name === name)?.path, path);
   }
@@ -98,17 +100,17 @@ test("Files opens the actual native multi-step draft through either responsive p
           call.selector ===
             (pickerVisible
               ? "dialog:Conversation Files>button:plan.md"
-              : 'dialog:Details>[data-slot="file-browser"]>button:plan.md'),
+              : 'dialog:Workspace>[data-slot="file-browser"]>button:plan.md'),
       ),
     );
     assert.ok(
       calls.some(
-        (call) => call.action === "click" && call.selector === "dialog:Details>button:Preview",
+        (call) => call.action === "click" && call.selector === "dialog:Workspace>button:Preview",
       ),
     );
     assert.deepEqual(calls.at(-1), {
       action: "scroll",
-      selector: "dialog:Details>text:Developer owns the briefing",
+      selector: "dialog:Workspace>text:Developer owns the briefing",
     });
   }
   await assert.rejects(scenario.act(recorder({ fileContent: "A stale or missing draft" }).page), {
@@ -123,7 +125,7 @@ test("navigation checks every current destination as a real link", async () => {
     ?.act?.(page);
   assert.deepEqual(
     calls.filter((call) => call.action === "wait").map((call) => call.selector),
-    ["New", "Sessions", "Alerts", "Projects", "Agents", "Scheduled", "Artifacts"].map(
+    ["New", "Sessions", "Alerts", "Projects", "Agents", "Automations", "Artifacts"].map(
       (name) => `navigation:Sections>link:/^${name}(?:[ ,]|$)/`,
     ),
   );

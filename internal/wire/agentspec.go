@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -189,6 +190,98 @@ type AgentSpec struct {
 	// data. Nil is an answer in free text, as every revision written before
 	// it existed answers.
 	Output *Output `json:"output,omitempty"`
+	// Review is how the agent's pull request reviews decide. The zero value
+	// never approves and requests changes on a finding that must be fixed.
+	Review Review `json:"review,omitzero"`
+	// Skills is what the agent may do with the skill library beyond the
+	// skills a person names. Nil loads none.
+	Skills *Skills `json:"skills,omitempty"`
+}
+
+// The values Review.Approve takes.
+const (
+	// ReviewApproveNever never approves: a clean review is a comment. It
+	// is the default.
+	ReviewApproveNever = "never"
+	// ReviewApproveWhenClean approves when the host finds the review clean:
+	// the verdict approves, no finding blocks, every check on the reviewed
+	// commit passed, the author is not the app, and the run was an
+	// automatic review, a review request, or asked by a mapped person.
+	ReviewApproveWhenClean = "when_clean"
+)
+
+// ReviewSeverities are the severities Review.BlockOn names, most urgent
+// first, as a review report's findings carry them.
+var ReviewSeverities = []string{"error", "warning", "info"}
+
+// Review is how an agent's reviews decide. The model never chooses the
+// event: the host does, from the report and this policy.
+type Review struct {
+	// Approve is ReviewApproveNever ("" too) or ReviewApproveWhenClean.
+	Approve string `json:"approve,omitempty"`
+	// BlockOn is the least severity whose findings request changes: error
+	// ("" too), warning or info.
+	BlockOn string `json:"block_on,omitempty"`
+}
+
+// Skills is what an agent may do with the skill library.
+type Skills struct {
+	// Loadable names the library skills the agent may load with use_skill,
+	// each run as a subagent of its own: skill names, or "*" for any skill
+	// of the run's project chain. Empty loads none.
+	Loadable []string `json:"loadable,omitempty"`
+}
+
+// AnySkill in Skills.Loadable lets an agent load any skill of its run's
+// project chain.
+const AnySkill = "*"
+
+// MaxLoadableSkills bounds Skills.Loadable.
+const MaxLoadableSkills = 32
+
+// Loads reports whether the agent may load the skill name with use_skill.
+func (s AgentSpec) Loads(name string) bool {
+	if s.Skills == nil || name == "" {
+		return false
+	}
+	return slices.Contains(s.Skills.Loadable, AnySkill) || slices.Contains(s.Skills.Loadable, name)
+}
+
+// loadableSkill is a skill's name as the library takes it (projects.ValidSkill).
+var loadableSkill = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// validSkills checks Skills.Loadable: "*" alone, or distinct skill names.
+func validSkills(c AgentSpec) error {
+	if c.Skills == nil {
+		return nil
+	}
+	names := c.Skills.Loadable
+	if len(names) > MaxLoadableSkills {
+		return fmt.Errorf("%w: agent %q may load at most %d skills by name; use %q for any", ErrInvalidAgent, c.Name, MaxLoadableSkills, AnySkill)
+	}
+	if err := uniqueNonEmpty("loadable skill", c.Name, names); err != nil {
+		return err
+	}
+	for _, name := range names {
+		switch {
+		case name == AnySkill && len(names) > 1:
+			return fmt.Errorf("%w: agent %q names %q with other skills; %q already loads any", ErrInvalidAgent, c.Name, AnySkill, AnySkill)
+		case name != AnySkill && (len(name) > 64 || !loadableSkill.MatchString(name)):
+			return fmt.Errorf("%w: agent %q may load %q, which is not a skill name", ErrInvalidAgent, c.Name, name)
+		}
+	}
+	return nil
+}
+
+func normalizeSkills(s *Skills) *Skills {
+	if s == nil {
+		return nil
+	}
+	loadable := normalizeSet(s.Loadable, true)
+	if len(loadable) == 0 {
+		return nil
+	}
+	return &Skills{Loadable: loadable}
 }
 
 // Output is what an agent's answer must be.
@@ -330,6 +423,9 @@ func (s AgentSpec) Clone() AgentSpec {
 	if s.Output != nil {
 		s.Output = &Output{Schema: slices.Clone(s.Output.Schema)}
 	}
+	if s.Skills != nil {
+		s.Skills = &Skills{Loadable: slices.Clone(s.Skills.Loadable)}
+	}
 	if s.Sources != nil {
 		sources := make([]Source, len(s.Sources))
 		for i, src := range s.Sources {
@@ -381,6 +477,11 @@ func (s AgentSpec) Normalize() AgentSpec {
 			WorkspaceAreas: normalizeSet(s.Access.WorkspaceAreas, false),
 		},
 		Output: normalizeOutput(s.Output),
+		Review: Review{
+			Approve: strings.ToLower(strings.TrimSpace(s.Review.Approve)),
+			BlockOn: strings.ToLower(strings.TrimSpace(s.Review.BlockOn)),
+		},
+		Skills: normalizeSkills(s.Skills),
 	}
 	if len(s.Sources) > 0 {
 		sources := make([]Source, 0, len(s.Sources))
@@ -441,6 +542,10 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		return fmt.Errorf("%w: agent %q has an empty system prompt; an agent with no instructions is a definition of nothing", ErrInvalidAgent, c.Name)
 	case c.Effort != "" && !validEffort(c.Effort):
 		return fmt.Errorf("%w: agent %q asks for reasoning effort %q; an effort is one word, such as low, medium or high", ErrInvalidAgent, c.Name, c.Effort)
+	case c.Review.Approve != "" && c.Review.Approve != ReviewApproveNever && c.Review.Approve != ReviewApproveWhenClean:
+		return fmt.Errorf("%w: agent %q has review.approve %q; it is never or when_clean", ErrInvalidAgent, c.Name, c.Review.Approve)
+	case c.Review.BlockOn != "" && !slices.Contains(ReviewSeverities, c.Review.BlockOn):
+		return fmt.Errorf("%w: agent %q has review.block_on %q; it is error, warning or info", ErrInvalidAgent, c.Name, c.Review.BlockOn)
 	}
 	// The charset is pkg/topic's to decide, not this package's. An agent
 	// name becomes a topic segment the moment the agent emits anything, so a
@@ -543,6 +648,9 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 			return fmt.Errorf("%w: agent %q declares source %q twice; a source name is how the agent refers to a corpus and two corpora cannot answer to one name", ErrInvalidAgent, c.Name, src.Name)
 		}
 		seen[src.Name] = struct{}{}
+	}
+	if err := validSkills(c); err != nil {
+		return err
 	}
 	return validOutput(c)
 }

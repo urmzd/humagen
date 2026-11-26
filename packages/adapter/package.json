@@ -1,6 +1,6 @@
 {
   "name": "@humagen/adapter",
-  "version": "0.161.0",
+  "version": "0.205.1",
   "private": true,
   "type": "module",
   "description": "The one adapter between humagen's API and the humagen UI model, shared by the console and the Slack app.",
@@ -10,6 +10,7 @@
     "./mail": "./src/mail.ts",
     "./fold": "./src/fold.ts",
     "./home": "./src/home.ts",
+    "./imported": "./src/imported.ts",
     "./question": "./src/question.ts"
   },
   "scripts": {

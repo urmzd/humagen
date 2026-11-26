@@ -1703,6 +1703,50 @@ func (s *Store) ReadOpen(tenantName string, kind Kind) ([]Message, error) {
 	return out, nil
 }
 
+// MaxAsking is the most live messages Asking reads, of every kind: as many
+// as one statement returns.
+const MaxAsking = state.MaxList
+
+// Asking returns the live messages that ask a question still open about one
+// of threads, newest first: an approval or a clarification, open or snoozed
+// for everyone, with a question part nobody has answered. It says what the
+// runs of those threads wait on, which is the same for every reader and is
+// not changed by a reader hiding, snoozing or deleting their own copy: so
+// no reader's marks are read, and whom each message is for is the caller's
+// to decide (Message.For).
+//
+// It costs one statement whatever the inbox holds: the newest MaxAsking
+// live messages of the tenant, of every kind and for every reader, are read
+// in one list and nothing is looked up for any of them. The inbox keeps no
+// index by thread, so a read cannot be narrowed to one. complete is false
+// when the tenant holds more live messages than were read: a question
+// raised before the newest MaxAsking of them was not seen, and the caller
+// must not take its absence for an answer.
+func (s *Store) Asking(tenantName string, threads []string) (asking []Message, complete bool, err error) {
+	if len(threads) == 0 {
+		return nil, true, nil
+	}
+	c, cancel := ctx()
+	page, next, err := s.st.List(c, namespace, tenantName, state.Query{Prefix: "l:", Limit: MaxAsking, Desc: true})
+	cancel()
+	if err != nil {
+		return nil, false, fmt.Errorf("inbox: read: %w", err)
+	}
+	for _, r := range page {
+		var km keptMessage
+		if err := json.Unmarshal(r.Value, &km); err != nil {
+			return nil, false, fmt.Errorf("inbox: %q: %w", r.Key, err)
+		}
+		if km.Kind != KindApproval && km.Kind != KindClarification || !live(&km.Message) || !slices.Contains(threads, km.Source.Thread) {
+			continue
+		}
+		if slices.ContainsFunc(km.Parts, func(p Part) bool { return p.Question != nil && p.State == PartOpen }) {
+			asking = append(asking, km.message(tenantName).clone())
+		}
+	}
+	return asking, next == "", nil
+}
+
 // Raised returns the messages of a kind raised in [since, until), newest
 // first, at most most, reading at most maxScan.
 func (s *Store) Raised(tenantName string, kind Kind, since, until time.Time, most int) ([]Message, error) {

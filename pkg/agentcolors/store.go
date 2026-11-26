@@ -187,3 +187,61 @@ func (s *Store) Assign(tenant string, names []string) (map[string]float64, error
 	}
 	return out, nil
 }
+
+// ErrTaken reports a hue another agent holds.
+var ErrTaken = errors.New("agentcolors: hue taken")
+
+// Choose moves an agent's reservation to hue, which must be one no other
+// name holds, deleted agents included: a hue is never shared. The hue the
+// agent held is released for the next agent that needs one. Choosing the
+// hue it holds changes nothing.
+func (s *Store) Choose(tenant, requested string, hue float64) error {
+	name := legacy.BuiltinAgentKey(requested)
+	if name == "" || strings.HasPrefix(name, "#") {
+		return fmt.Errorf("agentcolors: %q is not an agent's name", requested)
+	}
+	if !validHue(hue) {
+		return fmt.Errorf("agentcolors: a hue is from 0 up to 360")
+	}
+	return state.Retry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		hues, version, err := s.reservations(ctx, tenant)
+		if err != nil {
+			return err
+		}
+		if held, ok := hues[name]; ok && held == hue {
+			return nil
+		}
+		for other, h := range hues {
+			if other != name && h == hue {
+				return fmt.Errorf("%w by %s", ErrTaken, other)
+			}
+		}
+		if _, ok := hues[name]; !ok && len(hues) >= Limit {
+			return fmt.Errorf("agentcolors: reservation limit reached")
+		}
+		hues[name] = hue
+		one, _ := json.Marshal(hue)
+		raw, err := json.Marshal(hues)
+		if err != nil {
+			return err
+		}
+		ops := []state.Op{state.Put(tenant, name, one)}
+		if version == 0 {
+			ops = append(ops, state.Create(tenant, all, raw))
+		} else {
+			ops = append(ops, state.PutAt(tenant, all, raw, version))
+		}
+		return s.st.Write(ctx, namespace, ops...)
+	})
+}
+
+// Taken returns every hue held in a workspace, by the name that holds it,
+// so a picker can show which are free. It is bounded by Limit.
+func (s *Store) Taken(tenant string) (map[string]float64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	hues, _, err := s.reservations(ctx, tenant)
+	return hues, err
+}

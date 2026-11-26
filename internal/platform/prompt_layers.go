@@ -31,6 +31,12 @@ func (p *Platform) promptLayers(tenant, project string) (prompts.Snapshot, error
 // pinPromptLayers replaces caller-supplied pins at the admission boundary.
 func (p *Platform) pinPromptLayers(tag event.Envelope, project string) (event.Envelope, error) {
 	snapshot, err := p.promptLayers(tag.Tenant, project)
+	// A run its GitHub client raised on a repository is also given the
+	// repository's instructions, last, so they are the nearest to the work.
+	if l, ok := p.repositoryLayer(tag); ok && err == nil {
+		snapshot.Layers = append(snapshot.Layers, l)
+		err = snapshot.Validate()
+	}
 	if wire.Origin(tag) == OriginEval && wire.Meta(tag)[metaEvalPrefix] != "" {
 		err = json.Unmarshal([]byte(wire.Meta(tag)[metaEvalPrefix]), &snapshot)
 		if err == nil {

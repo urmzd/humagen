@@ -4,7 +4,7 @@ import { defaultCopy as copy } from "@humagen/components";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Me, Preferences, ProjectChange, ProjectView, Settings as Workspace } from "./api.ts";
-import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
+import { ProjectChoices, placeOf, projectLabel } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
 import {
   east,
@@ -47,9 +47,15 @@ const page = (over: Partial<Parameters<typeof ProjectsPage>[0]> = {}) =>
       {...over}
     />,
   );
-/** The cards' titles, in the order they are drawn, each with where it links. */
+/** The rows' titles, in the order they are drawn, each with where it links. */
 const cardsIn = (out: string) =>
-  [...out.matchAll(/<a href="(\/projects\/[^"]+)"[^>]*>([^<]*)<\/a>/g)].map((m) => [m[2], m[1]]);
+  [
+    ...out.matchAll(
+      /<a href="(\/projects\/[^"]+)"[^>]*>.*?<span class="truncate">([^<]*)<\/span>/g,
+    ),
+  ].map((m) => [m[2], m[1]]);
+/** Each row of the table, as its markup. */
+const rowsIn = (out: string) => [...out.matchAll(/<tr[ >].*?<\/tr>/gs)].map((m) => m[0]).slice(1);
 /** A project made at `created`, last active at `active` when given, and changed when it was made. */
 const dated = (name: string, created: string, active?: string, over: Partial<ProjectView> = {}) =>
   projectView({
@@ -65,7 +71,7 @@ const partners = {
 };
 const reseller = view("Reseller", { kind: "partner", parent: field });
 
-test("the projects page is one title over a flat grid of cards: every project but the workspace, sub-projects too", () => {
+test("the projects page is one title over a flat table of rows: every project but the workspace, sub-projects too", () => {
   const out = page();
   assert.match(out, /<h1[^>]*>Projects<\/h1>/);
   assert.doesNotMatch(out, /Where work belongs/, "no lede");
@@ -84,7 +90,7 @@ test("the projects page is one title over a flat grid of cards: every project bu
     ],
   );
   assert.ok(cardsIn(out).some(([, to]) => to === "/projects/Globex"));
-  assert.doesNotMatch(out, /href="\/projects\/~"/, "the workspace is not a card");
+  assert.doesNotMatch(out, /href="\/projects\/~"/, "the workspace is not a row");
   // No tree: no groups, no indent, no expander, and no counts.
   for (const gone of [
     /Company-wide/,
@@ -97,7 +103,7 @@ test("the projects page is one title over a flat grid of cards: every project bu
     /running</,
   ])
     assert.doesNotMatch(out, gone);
-  assert.match(out, /<time dateTime="2026-10-01T09:00:00Z">Updated [^<]+<\/time>/);
+  assert.match(out, /<time dateTime="2026-10-01T09:00:00Z">[^<]+ ago<\/time>/);
   assert.doesNotMatch(out, /New Project/);
   assert.equal((page({ canCreate: true }).match(/New Project/g) ?? []).length, 1);
   assert.match(page({ projects: null }), /data-testid="skeleton"/);
@@ -115,7 +121,7 @@ test("with no projects the page is a title and one action", () => {
   assert.doesNotMatch(page({ projects: [] }), /New Project/);
 });
 
-test("cards come pinned first, then by last activity, by title or newest made, as the address asks", () => {
+test("rows come pinned first, then by last activity, by title or newest made, as the address asks", () => {
   const alpha = dated("alpha", "2026-01-01T00:00:00Z", "2026-10-05T00:00:00Z");
   const bravo = dated("bravo", "2026-03-01T00:00:00Z");
   const apex = dated("charlie", "2026-02-01T00:00:00Z", "2026-10-06T00:00:00Z", { title: "Apex" });
@@ -164,7 +170,7 @@ test("a kind filter shows only when the workspace defines kinds of its own", () 
   );
 });
 
-test("a card is its title, when it last changed and a pin: no agents, counts or unread marks", () => {
+test("a row is its title, when it last changed and a pin: no agents, counts or unread marks", () => {
   const busy = {
     ...dated("Busy", "2026-10-01T09:00:00Z", "2026-10-02T09:00:00Z"),
     unread: 2,
@@ -177,21 +183,23 @@ test("a card is its title, when it last changed and a pin: no agents, counts or 
   assert.doesNotMatch(out, /Unread updates|1 running|4 conversations/);
   assert.match(
     out,
-    /<time dateTime="2026-10-02T09:00:00Z">Updated /,
+    /<time dateTime="2026-10-02T09:00:00Z">[^<]+ ago</,
     "last activity, not last change",
   );
   assert.doesNotMatch(out, /animate-/);
 });
 
-test("a pinned project shows its pin and comes first; a card has a ⋯ menu only with a way to save pins", () => {
+test("a pinned project shows its pin and comes first; a row has a ⋯ menu only with a way to save pins", () => {
   const out = page({ pinned: ["Globex"], onPin: async () => {} });
   assert.equal((out.match(/aria-label="Pinned"/g) ?? []).length, 1);
   assert.equal(cardsIn(out)[0]?.[0], "Globex", "pinned first");
-  assert.match(out, /aria-label="More"/);
-  assert.doesNotMatch(page(), /aria-label="More"/, "no menu without a way to save pins");
+  assert.match(out, /aria-label="More for Globex"/);
+  assert.match(out, /<th[^>]*>.*?>More<\/span>/s, "the menu column has a hidden header");
+  assert.doesNotMatch(page(), /aria-label="More/, "no menu without a way to save pins");
+  assert.doesNotMatch(page(), />More</, "no menu column either");
 });
 
-test("a private project says so on its card; a workspace one and the reader's Personal project do not", () => {
+test("a private project says so on its row; a workspace one and the reader's Personal project do not", () => {
   const owned = [{ who: "ada", role: "owner" as const }];
   const secret = dated("Secret", "2026-10-01T09:00:00Z", undefined, { members: owned });
   const personal = dated("personal-ada", "2026-10-01T09:00:00Z", undefined, {
@@ -203,9 +211,10 @@ test("a private project says so on its card; a workspace one and the reader's Pe
   assert.equal((out.match(/>Private</g) ?? []).length, 1);
   assert.ok(
     cardsIn(out).some(([title]) => title === "Personal"),
-    "Personal is a card of its own",
+    "Personal is a row of its own",
   );
-  assert.match(out, /Secret<\/a>(?:(?!<article).)*>Private</s);
+  const secretRow = rowsIn(out).find((row) => row.includes(">Secret<"));
+  assert.match(secretRow ?? "", />Private</);
 });
 
 test("a project's visibility is the server's word for it, else read from its entries as the server reads them", () => {
@@ -325,11 +334,8 @@ test("the picker shows each project's path and kind, and searches its customer",
     ),
     /Partner in Field engineering/,
   );
-  // The closed picker names the chosen project by its title.
-  assert.match(
-    html(<ProjectPicker projects={tree} value="Field" onChange={noop} onCreated={noop} />),
-    /aria-label="Select project: Field engineering"/,
-  );
+  // The settings menu's Project row names the chosen project by its title.
+  assert.equal(projectLabel("Field", tree), "Field engineering");
 });
 
 test("settings no longer edit projects: the workspace section links to Projects and to the workspace itself", () => {
@@ -363,8 +369,6 @@ test("settings no longer edit projects: the workspace section links to Projects 
       canAdmin
       section="workspace"
       onSection={noop}
-      explain="runs:read"
-      onExplain={noop}
       onPrefs={noop}
       onWorkspace={noop}
       onOpenProjects={noop}

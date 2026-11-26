@@ -22,6 +22,10 @@ export const AgentBuilderStart = lazyPage(
   () => import("./AgentBuilder.tsx"),
   (m) => m.AgentBuilderStart,
 );
+export const AgentCreate = lazyPage(
+  () => import("./AgentCreate.tsx"),
+  (m) => m.AgentCreate,
+);
 export const AgentControls = lazyPage(
   () => import("./AgentControls.tsx"),
   (m) => m.AgentControls,
@@ -87,6 +91,11 @@ export const Connections = lazyPage(
   {
     title: () => "Plugins",
   },
+);
+export const GitHubRepositories = lazyPage(
+  () => import("./GitHubRepositories.tsx"),
+  (m) => m.GitHubRepositories,
+  { title: () => defaultCopy.githubRepos.title },
 );
 export const YourConnections = lazyPage(
   () => import("./Connections.tsx"),
@@ -254,6 +263,8 @@ function viewsOf(route: Route): Preloads {
       return [AgentDetail, AgentOperations];
     case "agent-setup":
       return [AgentBuilderStart];
+    case "agent-create":
+      return [AgentCreate];
     case "automations":
       return [Automations];
     case "schedules":
@@ -266,6 +277,8 @@ function viewsOf(route: Route): Preloads {
       return [PersonalPreferences];
     case "connections":
       return [Connections];
+    case "repositories":
+      return [GitHubRepositories, SettingsFrame];
     case "knowledge":
     case "corpus":
       return [KnowledgePage];
@@ -336,7 +349,28 @@ export function preloadWhenIdle(): () => void {
       Automations,
       Storage,
       Settings,
+      PlusMenu,
     ])
       void view.preload();
   });
 }
+
+/**
+ * A conversation's + menu (Plus.tsx), read once the browser is idle on Home
+ * (preloadWhenIdle), so its first open waits on nothing.
+ */
+export const PlusMenu = lazyPage(
+  () => import("./Plus.tsx"),
+  (m) => m.PlusMenu,
+  { frame: "none" },
+);
+
+/**
+ * The menu of a new session's settings, beside + on Home (SettingsMenu.tsx):
+ * read as soon as its control is drawn, so the first press waits on nothing.
+ */
+export const SettingsMenu = lazyPage(
+  () => import("./SettingsMenu.tsx"),
+  (m) => m.SettingsMenu,
+  { frame: "none" },
+);

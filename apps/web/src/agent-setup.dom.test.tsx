@@ -182,3 +182,24 @@ test("People & Access leaves sharing to the header's Share and offers no second 
   assert.equal(screen.queryByRole("button", { name: /share/i }), null);
   assert.ok(net.seen.every((request) => request.method === "GET"));
 });
+
+test("a new agent's appearance is chosen while it is set up: its name, greeting and character", async () => {
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/model-providers": () => ({ providers: [] }),
+  });
+  mount();
+  const legend = await screen.findByText(defaultCopy.agentLook.atCreate);
+  assert.ok(legend);
+  const shown = screen.getByLabelText(
+    new RegExp(`^${defaultCopy.agentLook.name}`),
+  ) as HTMLInputElement;
+  fireEvent.change(shown, { target: { value: "Barbara" } });
+  assert.equal(shown.value, "Barbara");
+  const writer = screen.getByRole("button", {
+    name: defaultCopy.agentLook.characters.writer,
+  }) as HTMLButtonElement;
+  fireEvent.click(writer);
+  assert.equal(writer.getAttribute("aria-pressed"), "true");
+});

@@ -13,24 +13,31 @@ import { loadTests } from "./testload.ts";
 // To add one, name it something.dom.test.tsx and list it here.
 //
 // Assert on what an element says or is (assert.ok(!queryByText(...)),
-// el.disabled), not on the element itself: a failing assertion prints its
-// values, and printing a happy-dom node does not finish.
+// el.disabled), not on the element itself. Printed in full, a happy-dom node
+// walks its whole window; ./test-assert.ts and ./dom-print.ts make a failing
+// assert or a log print it in a few words instead.
 //
 // The DOM stays registered for the life of the process, because node:test
 // may still be running the tests after this module returns.
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
+  "/src/composer-overlay.dom.test.tsx",
+  "/src/pane-menu.dom.test.tsx",
   "/src/bigquery-connection.dom.test.tsx",
+  "/src/transcript.dom.test.tsx",
   "/src/connection-flows.dom.test.tsx",
   "/src/sidebar-recents.dom.test.tsx",
   "/src/agent-builder.dom.test.tsx",
   "/src/session-panel.dom.test.tsx",
+  "/src/session-context-panel.dom.test.tsx",
+  "/src/session-setup.dom.test.tsx",
+  "/src/image-settings.dom.test.tsx",
+  "/src/github-repositories.dom.test.tsx",
+  "/src/session-attached.dom.test.tsx",
   "/src/workbench.dom.test.tsx",
   "/src/workbench-browser.dom.test.tsx",
   "/src/workbench-terminal.dom.test.tsx",
   "/src/workbench-changes.dom.test.tsx",
-  "/src/workbench-sidechat.dom.test.tsx",
-  "/src/workbench-search.dom.test.tsx",
   "/src/session-center.dom.test.tsx",
   "/src/session-ux.dom.test.tsx",
   "/src/conversation-overview.dom.test.tsx",
@@ -38,7 +45,15 @@ await loadTests([
   "/src/model-providers.dom.test.tsx",
   "/src/agent-store.dom.test.tsx",
   "/src/agent-effort.dom.test.tsx",
+  "/src/agent-review-settings.dom.test.tsx",
+  "/src/agent-look.dom.test.tsx",
+  "/src/agent-props.dom.test.tsx",
+  "/src/agent-slack-app.dom.test.tsx",
+  "/src/agent-home.dom.test.tsx",
+  "/src/agent-create.dom.test.tsx",
+  "/src/agent-settings.dom.test.tsx",
   "/src/eval-candidates.dom.test.tsx",
+  "/src/agent-health.dom.test.tsx",
   "/src/history.dom.test.tsx",
   "/src/voice-notes.dom.test.tsx",
   "/src/voice-settings.dom.test.tsx",
@@ -87,6 +102,7 @@ await loadTests([
   "/src/preferences.dom.test.tsx",
   "/src/home.dom.test.tsx",
   "/src/home-runs.dom.test.tsx",
+  "/src/composer-early.dom.test.tsx",
   "/src/library.dom.test.tsx",
   "/src/agent-setup.dom.test.tsx",
   "/src/conversation-sources.dom.test.tsx",

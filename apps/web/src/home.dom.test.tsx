@@ -79,7 +79,7 @@ test("announcement actions use the retained inbox callbacks", () => {
   const hide = screen.getByRole("button", { name: "Hide for Me" });
   assert.ok(hide.querySelector("svg"));
   fireEvent.click(hide);
-  fireEvent.click(screen.getByRole("button", { name: "Open Announcement" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
   assert.deepEqual(did, ["hide", "open"]);
   assert.equal(screen.queryByRole("button", { name: "Mark as Read" }), null);
 });

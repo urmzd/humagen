@@ -36,6 +36,7 @@
         "assistant:write",
         "channels:history",
         "chat:write",
+        "chat:write.customize",
         "commands",
         "groups:history",
         "im:history",
@@ -56,7 +57,10 @@
         "app_home_opened",
         "app_mention",
         "assistant_thread_started",
-        "message.im"
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "message.mpim"
       ]
     },
     "interactivity": {

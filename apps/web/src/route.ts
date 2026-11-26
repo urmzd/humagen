@@ -12,21 +12,31 @@ import { swap } from "./transition.ts";
  */
 
 export type AgentTab =
+  | "home"
+  | "general"
   | "prompt"
+  | "look"
   | "model"
   | "access"
+  | "slack"
   | "queue"
   | "context"
+  | "review"
   | "memory"
   | "evals"
   | "alerts"
   | "revisions";
 export const AGENT_TABS: AgentTab[] = [
+  "home",
+  "general",
   "prompt",
+  "look",
   "model",
   "access",
+  "slack",
   "queue",
   "context",
+  "review",
   "memory",
   "evals",
   "alerts",
@@ -75,11 +85,11 @@ export type SettingsSection =
   | "workspace"
   | "providers"
   | "models"
+  | "images"
   | "limits"
   | "voice"
   | "connections"
   | "access"
-  | "read-audit"
   | "deletions";
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   "notifications",
@@ -88,11 +98,11 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "workspace",
   "providers",
   "models",
+  "images",
   "limits",
   "voice",
   "connections",
   "access",
-  "read-audit",
   "deletions",
 ];
 
@@ -129,17 +139,10 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
 /**
  * The tabs of a session's workbench, the pane the Details panel opens
  * (workbench.ts declares what each shows). Details is the default, at the
- * panel's own address; every other tab is `?bench=`. All six are addresses
+ * panel's own address; every other tab is `?bench=`. All four are addresses
  * from the start, so a tab's own change adds no route.
  */
-export const WORKBENCH_TAB_IDS = [
-  "details",
-  "browser",
-  "terminal",
-  "changes",
-  "sidechat",
-  "search",
-] as const;
+export const WORKBENCH_TAB_IDS = ["details", "browser", "terminal", "changes"] as const;
 export type WorkbenchTabId = (typeof WORKBENCH_TAB_IDS)[number];
 /** The most characters of a workbench tab's own selection an address carries. */
 export const MAX_BENCH_REF = 512;
@@ -276,6 +279,8 @@ export type Route =
   | { page: "usage"; days?: 7 | 14 | 30; day?: string; display?: "chart" | "table" }
   | { page: "you"; section: YouSection; provider?: string }
   | { page: "agent-setup"; name?: string }
+  /** A new agent: its goal, then with `template` how it looks. */
+  | { page: "agent-create"; template?: string }
   /** A new conversation, optionally with an agent picked and a first message written for it. */
   | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
   /**
@@ -308,8 +313,8 @@ export type Route =
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
-  /** Scheduled work: schedules, and with `tab` the background work agents keep at for you. */
-  | { page: "automations"; tab?: "background" }
+  /** Automations: work an agent starts without being asked, each on a schedule. */
+  | { page: "automations" }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
@@ -330,8 +335,10 @@ export type Route =
    * manages. `provider` opens one in the side sheet.
    */
   | { page: "connections"; provider?: string; scope?: "apps" }
+  /** A GitHub app's repositories, or one ("owner/name") with `repo`. */
+  | { page: "repositories"; client: string; repo?: string }
   | { page: "directory"; tab: DirectoryTab }
-  | { page: "settings"; section: SettingsSection; permission?: string };
+  | { page: "settings"; section: SettingsSection };
 
 export type Page = Route["page"];
 
@@ -370,6 +377,7 @@ const PAGE_TITLES: Record<Page, string> = {
   usage: "Usage",
   you: "You",
   "agent-setup": "New Agent",
+  "agent-create": "New Agent",
   notifications: "Notifications",
   new: "New",
   conversation: "Session",
@@ -377,7 +385,7 @@ const PAGE_TITLES: Record<Page, string> = {
   project: "Project",
   channel: "Channel",
   schedules: "Schedules",
-  automations: "Schedules",
+  automations: "Automations",
   monitor: "Monitor",
   inbox: "Notifications",
   knowledge: "Knowledge",
@@ -388,6 +396,7 @@ const PAGE_TITLES: Record<Page, string> = {
   agent: "Agent",
   artifacts: "Artifacts",
   connections: "Plugins",
+  repositories: "Repositories",
   directory: "Directory",
   settings: "Settings",
 };
@@ -427,6 +436,7 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
   else if (r.page === "corpus") place = r.name;
   else if (r.page === "context" && r.source) place = r.source;
   else if (r.page === "channel") place = `#${r.channel}`;
+  else if (r.page === "repositories" && r.repo) place = r.repo;
   return `${unread > 0 ? `(${unread}) ` : ""}${place} - ${product}`;
 }
 
@@ -496,6 +506,8 @@ export function href(r: Route): string {
       return r.agent ? `/agents/${enc(r.agent)}/control` : "/agent-controls";
     case "agent-setup":
       return r.name ? `/agents/${enc(r.name)}/setup` : "/agents/new/setup";
+    case "agent-create":
+      return r.template ? `/agents/new/${enc(r.template)}` : "/agents/new";
     case "action-policy":
       return r.scope &&
         r.scope !== "workspace" &&
@@ -593,7 +605,7 @@ export function href(r: Route): string {
     case "channel":
       return href({ page: "sessions", project: r.project });
     case "automations":
-      return r.tab === "background" ? "/scheduled/background" : "/scheduled";
+      return "/automations";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -628,7 +640,7 @@ export function href(r: Route): string {
       return r.state ? `/agents?state=${enc(r.state)}` : "/agents";
     case "agent": {
       const base = r.name === null ? "/agents/new" : `/agents/${enc(r.name)}`;
-      return r.tab === "prompt" ? base : `${base}/${r.tab}`;
+      return r.tab === (r.name === null ? "prompt" : "home") ? base : `${base}/${r.tab}`;
     }
     case "artifacts":
       return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
@@ -640,6 +652,11 @@ export function href(r: Route): string {
       const base = r.scope === "apps" ? "/settings/apps" : "/settings/plugins";
       return r.provider ? `${base}/${enc(r.provider)}` : base;
     }
+    case "repositories": {
+      const base = `/settings/apps/github/${enc(r.client)}/repositories`;
+      const [owner, name] = (r.repo ?? "").split("/");
+      return owner && name ? `${base}/${enc(owner)}/${enc(name)}` : base;
+    }
     case "directory":
       return r.tab === "agents"
         ? "/agents"
@@ -648,10 +665,7 @@ export function href(r: Route): string {
           : "/settings/people";
     case "settings": {
       if (r.section === "connections") return "/settings/plugins";
-      const base = `/settings/${r.section}`;
-      return r.section === "access" && r.permission
-        ? `${base}?permission=${enc(r.permission)}`
-        : base;
+      return `/settings/${r.section}`;
     }
   }
 }
@@ -701,7 +715,7 @@ function legacy(q: URLSearchParams): Route | null {
     case "limits":
       return { page: "settings", section: v };
     case "access":
-      return { page: "settings", section: "access", permission: q.get("permission") ?? undefined };
+      return { page: "settings", section: "access" };
     case "settings":
       return { page: "settings", section: "profile" };
     default:
@@ -1004,12 +1018,11 @@ function read(pathname: string, search: string): Route {
       if (b === "fork") return { page: "project", name: a === "~" ? "" : a, fork: true };
       return { page: "project", name: a === "~" ? "" : a };
     }
-    // Scheduled was called Automations; a schedule without a name is the list.
+    // Automations was called Scheduled for a while, and had a Background tab:
+    // both old addresses open the list. A schedule without a name is the list.
     case "scheduled":
     case "automations":
-      return a === "background"
-        ? { page: "automations", tab: "background" }
-        : { page: "automations" };
+      return { page: "automations" };
     case "schedules":
       return a ? { page: "schedules", name: a } : { page: "automations" };
     case "monitor":
@@ -1057,12 +1070,15 @@ function read(pathname: string, search: string): Route {
     }
     case "agents":
       if (b === "setup") return { page: "agent-setup", name: a === "new" ? undefined : a };
+      // A new agent starts from its goal, then is given its look.
+      if (a === "new") return { page: "agent-create", template: b || undefined };
       if (b === "control") return { page: "agent-control", agent: a };
       if (!a) return { page: "agents", state: queryText(q, "state", 80) };
       return {
         page: "agent",
         name: a === "new" ? null : a,
-        tab: a === "new" ? "prompt" : pick(b === "knowledge" ? "context" : b, AGENT_TABS, "prompt"),
+        // An agent opens on its home; a new one, which has none yet, on its prompt.
+        tab: a === "new" ? "prompt" : pick(b === "knowledge" ? "context" : b, AGENT_TABS, "home"),
       };
     case "artifacts":
       return { page: "artifacts", artifact: a };
@@ -1094,9 +1110,15 @@ function read(pathname: string, search: string): Route {
       // Plugins is a section of your settings, with a path of its own. It was Connections.
       if (a === "plugins" || a === "connections") return { page: "connections", provider: b };
       // Apps are the workspace's installs, under Workspace settings.
+      if (a === "apps" && b === "github" && c && parts[4] === "repositories")
+        return {
+          page: "repositories",
+          client: c,
+          repo: parts[5] && parts[6] ? `${parts[5]}/${parts[6]}` : undefined,
+        };
       if (a === "apps") return { page: "connections", provider: b, scope: "apps" };
       if (a === "health") return { page: "monitor", tab: "health" };
-      if (a === "audit") return { page: "audit" };
+      if (a === "audit" || a === "read-audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);
       // Models are chosen per agent now; an old link lands on the agents.
       if (a === "models") return { page: "agents" };
@@ -1105,7 +1127,6 @@ function read(pathname: string, search: string): Route {
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),
-        permission: q.get("permission") ?? undefined,
       };
     default:
       return { page: "not-found", path: `/${parts.map(enc).join("/")}` };
@@ -1137,6 +1158,8 @@ export function screenOf(r: Route): string {
     case "agent":
     case "agent-setup":
       return `${r.page}:${r.name ?? ""}`;
+    case "agent-create":
+      return "agent-create";
     case "agent-control":
       return `agent-control:${r.agent ?? ""}`;
     case "action-policy":

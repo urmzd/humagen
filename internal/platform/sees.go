@@ -86,8 +86,13 @@ func placeOfRun(r runs.Run) Place {
 // its own, with no record, and it lives where its run does: with the turn it
 // serves, whose words it was sent.
 func (p *Platform) placeOfConversation(tenant, id, project string) Place {
-	if r, err := p.Runs.Get(tenant, id); err == nil && r.Origin == runs.OriginSystem && r.Thread == id {
-		return placeOfRun(r)
+	first, _ := p.Runs.Get(tenant, id)
+	return conversationPlace(id, project, first)
+}
+
+func conversationPlace(id, project string, first runs.Run) Place {
+	if first.Origin == runs.OriginSystem && first.Thread == id {
+		return placeOfRun(first)
 	}
 	return Place{Project: project, Thread: id}
 }
@@ -209,6 +214,12 @@ func (s *Seer) deciding(row string, decide func() bool) bool {
 	s.held.row = row
 	defer func() { s.held.row = was }()
 	return decide()
+}
+
+// exceptional reports whether a row's decision on a holding seer rested on a
+// read granted by exception, which is kept back until the row is disclosed.
+func (s *Seer) exceptional(row string) bool {
+	return s.held != nil && len(s.held.by[row]) > 0
 }
 
 // Disclose records the exceptional reads the decisions of rows rested on,
@@ -391,6 +402,16 @@ func (p *Platform) Seer(who auth.Principal) *Seer {
 	return &Seer{own: tree.Roles(ordinary), p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}, hosts: map[string]bool{}}
 }
 
+// Ordinary returns the same reader without projects:govern: what they read by
+// their own roles alone. A run that reads for a person asks this, so an
+// agent never makes the exceptional read an administrator may.
+func (s *Seer) Ordinary() *Seer {
+	ordinary := *s
+	ordinary.govern = false
+	ordinary.roles = s.own
+	return &ordinary
+}
+
 // Sees reports whether a reader may read what lives in a place: a role of at
 // least viewer in its project, and in a private thread to take part in it, or
 // projects:govern. What a deleted project held is read, not continued, by
@@ -429,7 +450,7 @@ func (s *Seer) sessionAncestorsVisible(id string) bool {
 			return false
 		}
 		parent := th.Session.Parent
-		if !strings.HasPrefix(parent, "s_") {
+		if !threads.SessionParent(parent) {
 			return true
 		}
 		p, err := s.record(parent)
@@ -552,7 +573,7 @@ func (s *Seer) Session(id string) bool {
 		if err != nil || th.Session == nil || !s.Place(Place{Project: th.Project, Thread: id}) || !s.Agent(th.Session.Agent) {
 			return false
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			return true
 		}
 		id = th.Session.Parent

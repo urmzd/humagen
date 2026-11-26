@@ -54,7 +54,7 @@ const toolAskPerson = "ask_person"
 // tools still require the initiating person's reviewed connection and policy.
 // Never grant the builder's own tools, the analyst's, or calls to agents.
 func grantable() []string {
-	return append(append(append(append(FileTools(), WebTools()...), BackgroundTools()...), ScheduleTools()...), toolAskPerson, "person_tools")
+	return append(append(append(append(append(FileTools(), ArtifactTools()...), WebTools()...), BackgroundTools()...), ScheduleTools()...), toolAskPerson, "person_tools")
 }
 
 func builderGrantable(name string) bool {
@@ -291,7 +291,7 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 			if err != nil || th.Session == nil || th.Visibility != threads.Shared || !open(th.Project) || tree.PendingFork(th.Project) || !agentOpen(th.Session.Agent) {
 				return false
 			}
-			if !strings.HasPrefix(th.Session.Parent, "s_") {
+			if !threads.SessionParent(th.Session.Parent) {
 				return true
 			}
 			id = th.Session.Parent

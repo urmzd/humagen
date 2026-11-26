@@ -17,7 +17,9 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/agentcolors"
+	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -35,6 +37,7 @@ import (
 	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -51,6 +54,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
@@ -214,6 +218,9 @@ func (p *Platform) openStores(cfg Config) error {
 	var err error
 	p.AgentColors, err = agentcolors.Open(perRequest)
 	keep("agent colors", err)
+	p.AgentLooks, err = agentlooks.Open(perRequest)
+	keep("agent looks", err)
+	p.Images = images.Open(perRequest)
 	p.Scratchpads = scratchpads.Open(perRequest)
 	p.Runs, err = runs.Open(perRequest)
 	keep("runs", err)
@@ -247,6 +254,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.deliveries = deliveryStore(perRequest)
 	// A conversation that came from a corpus item pulls that item.
 	p.RegisterContextResolver("corpus", p.corpusContext)
+	p.RegisterContextResolver("github", p.githubContext)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
@@ -345,6 +353,7 @@ func (p *Platform) openStores(cfg Config) error {
 	// same way.
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
+	p.Accounts = accounts.Open(perRequest)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
 	p.deliveryFailures = state.NewTable[deliveryFailure](perRequest, "delivery_failures")
 	p.memoryFailures = egressguard.NewMemoryFailures()
@@ -355,6 +364,8 @@ func (p *Platform) openStores(cfg Config) error {
 		reviews = state.NewMemory()
 	}
 	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
+	p.approvalClaims = reviews
+	p.RepoSettings = reposettings.Open(perRequest)
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth
 		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure

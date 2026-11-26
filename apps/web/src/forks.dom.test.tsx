@@ -136,6 +136,41 @@ test("People & Access changes membership with the recorded version and explains 
   assert.ok(await screen.findByText("bo"));
 });
 
+test("People searches the workspace and adds a person from a result", async () => {
+  let posted: unknown;
+  let asked: string | null = null;
+  net = stubFetch({
+    "GET /api/me": () => ({
+      principal: { subject: "ana" },
+      handle: "ana",
+      permissions: ["runs:write"],
+    }),
+    "GET /api/projects/Launch": () => ({ project: { access: { role: "owner" } } }),
+    "GET /api/people": (_body, url) => {
+      asked = url.get("q");
+      return { people: [{ subject: "u-cy", name: "Cy Park", handle: "cy", picture: null }] };
+    },
+    "PUT /api/threads/th-0123456789abcdef/participants": (body) => {
+      posted = body;
+      return {
+        ...source,
+        version: 2,
+        participants: [...source.participants, { kind: "person", name: "cy", at }],
+      };
+    },
+  });
+  render(<ConversationAccess thread={{ ...source, visibility: "shared" }} />);
+  fireEvent.change(await screen.findByLabelText(defaultCopy.conversationAccess.handle), {
+    target: { value: "@c" },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: /Cy Park/ }));
+  assert.equal(asked, "c");
+  await waitFor(() =>
+    assert.deepEqual(posted, { version: 1, add: [{ kind: "person", name: "cy" }] }),
+  );
+  assert.ok(await screen.findByText(defaultCopy.conversationAccess.inHere(2)));
+});
+
 test("project switcher uses a bounded server search and preserves navigable links", async () => {
   let query: URLSearchParams | undefined;
   net = stubFetch({

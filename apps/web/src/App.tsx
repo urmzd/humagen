@@ -3,7 +3,8 @@ import { BellIcon, BotIcon, PlugIcon, ShieldIcon, UserIcon } from "@humagen/rend
 import { Toaster } from "@humagen/render-web/ui/sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run, RunEvent } from "./adapter.ts";
-import { agentHuePath, configureAgentHues } from "./agentHues.ts";
+import { agentHuePath, configureAgentHues, setAgentLooks } from "./agentHues.ts";
+import { drawAgentLooks } from "./agentLooks.ts";
 import {
   type Alert,
   type AlertRule,
@@ -23,15 +24,17 @@ import {
   type ThreadSummary,
   type Settings as Workspace,
 } from "./api.ts";
-import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
+import { accentAttribute, agentShown, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
+import { signInAddress } from "./consentReturn.ts";
 import type { Source as About } from "./mail.ts";
 import { useNotifications } from "./notificationDelivery.ts";
 import {
   ActionPolicies,
   AgentBuilderStart,
   AgentControls,
+  AgentCreate,
   AgentDetail,
   AgentNetwork,
   AgentOperations,
@@ -46,6 +49,7 @@ import {
   CorpusPage,
   DirectoryPage,
   ForkProject,
+  GitHubRepositories,
   Health,
   Integrations,
   ItemPage,
@@ -83,12 +87,7 @@ import {
   useRoute,
 } from "./route.ts";
 import { reflects } from "./runsRead.ts";
-import {
-  AlertsPage,
-  HomeSessionGlance,
-  SessionsPage,
-  useSessionAttention,
-} from "./SessionCenter.tsx";
+import { AlertsPage, HomeStarted, SessionsPage, useSessionAttention } from "./SessionCenter.tsx";
 import { DrawerButton, Sidebar, useEdgeSwipe } from "./Sidebar.tsx";
 import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { syncThemeColor } from "./standalone.ts";
@@ -110,6 +109,9 @@ import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
 import { useBrandingStyle } from "./workspaceBranding.ts";
 
+// Every agent mark draws the look its agent chose.
+drawAgentLooks();
+
 type Session =
   | { state: "loading" }
   | { state: "signed-out" }
@@ -118,7 +120,7 @@ type Session =
 
 /** Where sign-in starts, coming back to this page after. */
 function signInUrl(): string {
-  return `/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  return signInAddress(window.location);
 }
 
 export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) {
@@ -130,9 +132,7 @@ export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) 
       // A caller with no permission at all is sent null, not an empty list.
       .then((me) => {
         const huePath = agentHuePath(me.permissions ?? []);
-        configureAgentHues(
-          huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined,
-        );
+        configureAgentHues(huePath ? (names) => api.agentHues(names, huePath) : undefined);
         // The workspace's branding is read before the console draws, so its
         // text is in place from the first frame and one brand never flashes
         // in for another.
@@ -209,7 +209,7 @@ function ShellLoading() {
       <span className="sr-only">Loading</span>
       <div
         aria-hidden
-        className={`aui-chrome humagen-glass-bar shrink-0 max-md:hidden ${sidebarStartsOpen(window.innerWidth) ? "w-64" : "w-12"}`}
+        className={`aui-chrome humagen-glass-bar shrink-0 max-md:hidden ${sidebarStartsOpen(window.innerWidth) ? "w-[min(var(--humagen-sidebar-w),33.333vw)]" : "w-12"}`}
       />
       <main aria-hidden className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col" />
     </div>
@@ -431,9 +431,15 @@ function Console({
 
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
+    // Read again after a failure, the agents are loading once more; a refresh of read ones is not.
+    setAgentRead((was) => (was === "error" ? "loading" : was));
     api
       .agentList()
       .then((r) => {
+        setAgentLooks(
+          r.looks ?? {},
+          r.agents.map((a) => a.spec.name),
+        );
         setAgentHues(r.hues ?? {});
         setAgents(r.agents);
         setAgentRead("ready");
@@ -674,7 +680,7 @@ function Console({
       ? me.principal.kind === "user"
       : can(policyScope === "project" ? "projects:write" : "agents:write");
   const openAgent = (name: string | null, tab: AgentTab = "prompt") =>
-    name ? go({ page: "agent", name, tab }) : go({ page: "agent-setup" });
+    name ? go({ page: "agent", name, tab }) : go({ page: "agent-create" });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // What a message is about, opened where it lives.
   const openSource = (source: About) =>
@@ -987,7 +993,12 @@ function Console({
                     ))}
                   {route.page === "audit" &&
                     (can("projects:govern") ? (
-                      <Audit />
+                      <Audit
+                        reads={
+                          me.principal.kind !== "machine" &&
+                          me.principal.roles?.includes("admin") === true
+                        }
+                      />
                     ) : (
                       <Page title={defaultCopy.navigation.audit}>
                         <Problem message={defaultCopy.noPermission} />
@@ -1084,13 +1095,6 @@ function Console({
                             go({ page: "you", section: "connections", provider }, { replace: true })
                           }
                           canConnect={can(CONNECT_PERMISSION)}
-                          onWhy={() =>
-                            go({
-                              page: "settings",
-                              section: "access",
-                              permission: CONNECT_PERMISSION,
-                            })
-                          }
                         />
                       ) : (
                         <PersonalPreferences
@@ -1169,6 +1173,8 @@ function Console({
                       tick={tick}
                       agents={agents}
                       agentsRead={agentRead !== "loading"}
+                      agentsFailed={agentRead === "error"}
+                      onRetryAgents={loadAgents}
                       homes={homes}
                       projects={can("projects:read") ? projects : []}
                       canRun={can("runs:write")}
@@ -1182,14 +1188,8 @@ function Console({
                       greeting={greeting(shownName)}
                       personalProject={me.personal_project}
                       findHelp={can("projects:read") ? api.findHelp : undefined}
-                      home={
-                        <HomeSessionGlance
-                          onHasSessions={setHasSessions}
-                          go={go}
-                          canArtifacts={can("artifacts:read")}
-                          tick={tick}
-                        />
-                      }
+                      // Home is the greeting and the chat bar: nothing is listed under it.
+                      home={<HomeStarted onHasSessions={setHasSessions} tick={tick} />}
                       onProjectCreated={(project) => {
                         setProjects((current) => [
                           ...(current ?? []).filter((p) => p.name !== project.name),
@@ -1248,6 +1248,8 @@ function Console({
                           tick={tick}
                           agents={agents}
                           agentsRead={agentRead !== "loading"}
+                          agentsFailed={agentRead === "error"}
+                          onRetryAgents={loadAgents}
                           homes={homes}
                           projects={can("projects:read") ? projects : []}
                           canRun={can("runs:write")}
@@ -1308,16 +1310,6 @@ function Console({
                       can={can}
                       onChanged={loadSchedules}
                       onSchedule={(name) => go({ page: "schedules", name })}
-                      tab={route.tab ?? "schedules"}
-                      onTab={(tab) =>
-                        go(
-                          tab === "background"
-                            ? { page: "automations", tab }
-                            : { page: "automations" },
-                        )
-                      }
-                      onConversation={(id) => go({ page: "conversation", id })}
-                      tick={tick}
                     />
                   )}
                   {route.page === "schedules" && (
@@ -1336,7 +1328,7 @@ function Console({
                     />
                   )}
                   {route.page === "monitor" && route.tab === "health" && (
-                    <Page title={defaultCopy.health.title} lede={defaultCopy.health.lede}>
+                    <Page title={defaultCopy.health.title}>
                       <Health />
                     </Page>
                   )}
@@ -1510,9 +1502,11 @@ function Console({
                       }
                       canWrite={can("knowledge:write")}
                       canEval={can("evals:write")}
+                      canRun={can("runs:write")}
                       onChanged={loadSources}
                       onSuitesChanged={loadSuites}
                       onOpenAgent={(name) => openAgent(name, "context")}
+                      onOpenThread={openThread}
                     />
                   )}
                   {(route.page === "agents" ||
@@ -1529,26 +1523,46 @@ function Console({
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
-                      onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
-                      onBuild={
-                        canAsk(BUILTIN_BUILDER)
-                          ? () =>
-                              go({
-                                page: "new",
-                                agent: BUILTIN_BUILDER,
-                                ask: "/agent-creator ",
-                              })
-                          : undefined
-                      }
+                      onBuild={can("agents:write") ? () => openAgent(null) : undefined}
                     />
                   )}
-                  {(route.page === "agent-setup" ||
+                  {(route.page === "agent-create" ||
                     (route.page === "agent" && route.name === null)) &&
-                    (canAsk(BUILTIN_BUILDER) ? (
-                      <AgentBuilderStart
-                        name={route.page === "agent-setup" ? route.name : undefined}
-                        onOpen={openThread}
+                    (can("agents:write") ? (
+                      <AgentCreate
+                        template={route.page === "agent-create" ? route.template : undefined}
+                        agents={agents}
+                        builder={agentShown(BUILTIN_BUILDER)}
+                        onPick={(template) => go({ page: "agent-create", template })}
+                        onBack={() => go({ page: "agents" })}
+                        onCreated={(made) => {
+                          setAgents((all) => [
+                            ...all.filter((a) => a.spec.name !== made.spec.name),
+                            made,
+                          ]);
+                          setAgentRead("ready");
+                          loadAgents();
+                          go({ page: "agent", name: made.spec.name, tab: "home" });
+                        }}
+                        onDescribe={
+                          canAsk(BUILTIN_BUILDER)
+                            ? () =>
+                                go({
+                                  page: "new",
+                                  agent: BUILTIN_BUILDER,
+                                  ask: "/agent-creator ",
+                                })
+                            : undefined
+                        }
                       />
+                    ) : (
+                      <Page title={defaultCopy.agentCreate.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "agent-setup" &&
+                    (canAsk(BUILTIN_BUILDER) ? (
+                      <AgentBuilderStart name={route.name} onOpen={openThread} />
                     ) : (
                       <Page title={defaultCopy.agentSetup.title}>
                         <Problem message={defaultCopy.noPermission} />
@@ -1607,6 +1621,7 @@ function Console({
                         workspaceDefault={workspaceDefault}
                         canWrite={can("agents:write")}
                         canGovern={can("projects:govern")}
+                        canLinkSlack={can("clients:write")}
                         builtin={route.name ? builtin.includes(route.name) : false}
                         canEval={can("evals:write")}
                         canAlert={can("alerts:write")}
@@ -1627,6 +1642,12 @@ function Console({
                         onHomed={loadAgents}
                         policies={workspace?.model_policies ?? []}
                         viewer={me.principal.subject}
+                        onOpenThread={openThread}
+                        onRetired={() => {
+                          setAgents((all) => all.filter((a) => a.spec.name !== route.name));
+                          loadAgents();
+                          go({ page: "agents" });
+                        }}
                       />
                     ))}
                   {route.page === "directory" && <DirectoryPage can={can} />}
@@ -1672,6 +1693,14 @@ function Console({
                       onNavigate={go}
                     />
                   )}
+                  {route.page === "repositories" && (
+                    <GitHubRepositories
+                      client={route.client}
+                      repo={route.repo}
+                      canWrite={can("clients:write")}
+                      onNavigate={go}
+                    />
+                  )}
                   {route.page === "settings" && (
                     <Settings
                       onNavigate={go}
@@ -1683,10 +1712,6 @@ function Console({
                       canAdmin={can("agents:write")}
                       section={route.section}
                       onSection={openSettings}
-                      explain={route.permission ?? "runs:read"}
-                      onExplain={(permission) =>
-                        go({ page: "settings", section: "access", permission }, { replace: true })
-                      }
                       onPrefs={setPrefs}
                       onWorkspace={setWorkspace}
                       projects={projectNames}

@@ -204,21 +204,35 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 			spec.Fallbacks = nil
 		}
 	}
-	if p.cfg.ConfiguredModelsOnly {
-		// A model whose provider the workspace has not enabled is passed
-		// over, so a chain runs on what is set up; with none, the run says
-		// what it needs rather than reach for a key nobody chose.
-		chain := append([]native.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
+	// Pass over disabled providers and, when configured models are required,
+	// names no one has set up. A chain with none reports what it needs. The
+	// workspace's providers are read once, so the chain is decided on one
+	// view of them.
+	stored, readErr := p.settings.get(req.Tenant)
+	providers := stored.withDefaults().ModelProviders
+	chain := append([]native.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
+	kept := slices.DeleteFunc(slices.Clone(chain), func(m native.ModelRef) bool {
+		return !p.enabledIn(providers, m.Provider)
+	})
+	if len(kept) == 0 {
+		// Settings that could not be read read as the defaults, which set up
+		// no provider: the run is retried, since the next read may find one,
+		// and its error names the read rather than a provider to enable.
+		if readErr != nil {
+			return req, fmt.Errorf("platform: @%s: the workspace's settings could not be read to choose a model: %w", spec.Name, readErr)
+		}
 		var named []string
-		kept := slices.DeleteFunc(slices.Clone(chain), func(m native.ModelRef) bool {
+		for _, m := range chain {
 			if !slices.Contains(named, m.Provider) {
 				named = append(named, m.Provider)
 			}
-			return !p.enabled(req.Tenant, m.Provider)
-		})
-		if len(kept) == 0 {
-			return req, fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", "))
 		}
+		// Read as they are stored, the settings enable none of the chain.
+		// Retrying cannot enable one, so the run fails on its first attempt
+		// rather than repeat a turn that ends the same way.
+		return req, turn.WithRepeats(fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", ")), true)
+	}
+	if p.cfg.ConfiguredModelsOnly || len(kept) != len(chain) {
 		spec.Provider, spec.Model = kept[0].Provider, kept[0].Model
 		spec.Fallbacks = kept[1:]
 		if len(spec.Fallbacks) == 0 {
@@ -242,14 +256,18 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	return req, nil
 }
 
-// enabled reports whether a provider can run in tenant's workspace: the
-// deployment declares it, or the workspace's administrators set it up.
-func (p *Platform) enabled(tenant, name string) bool {
+// enabledIn reports whether a provider can run in a workspace whose
+// providers are those given: the deployment declares it, the workspace set
+// it up and left it on, or the platform allows providers beyond those
+// configured for the workspace.
+func (p *Platform) enabledIn(providers []ModelProvider, name string) bool {
 	if p.cfg.Ext.Providers[name] != nil {
 		return true
 	}
-	_, ok := p.workspaceProvider(tenant, name)
-	return ok
+	if i := slices.IndexFunc(providers, func(m ModelProvider) bool { return m.Name == name }); i >= 0 {
+		return !providers[i].Disabled
+	}
+	return !p.cfg.ConfiguredModelsOnly
 }
 
 // ModelProviderChoice describes configuration names, never credential values.
@@ -276,7 +294,7 @@ func (p *Platform) ModelProviderChoices(tenant string) []ModelProviderChoice {
 		c := ModelProviderChoice{Name: name}
 		if p.cfg.Ext.Providers[name] != nil {
 			c.Declared, c.Source, c.Kind = true, "deployment", p.cfg.DeclaredKinds[name]
-		} else if m, ok := p.workspaceProvider(tenant, name); ok {
+		} else if m, ok := p.workspaceProvider(tenant, name); ok && !m.Disabled {
 			c.Declared, c.Source, c.Kind = true, "workspace", m.Kind
 		}
 		out = append(out, c)
@@ -340,11 +358,11 @@ func (p *Platform) readProvider(tenant, name string, has func(string) bool) stri
 	return to
 }
 
-// hasProvider reports whether a provider by name is one tenant's agents may
-// name: the deployment's, the workspace's own, or a kind an administrator
-// may enable.
+// hasProvider recognizes the deployment's providers, a workspace's setup
+// and the kinds an administrator can enable. A disabled provider keeps
+// its name when reading an agent or policy that already refers to it.
 func (p *Platform) hasProvider(tenant, name string) bool {
-	return slices.Contains(p.agentProviders(tenant), name)
+	return slices.Contains(p.providersIn(p.Settings(tenant)), name)
 }
 
 // readPolicies is a workspace's stored model policies with each provider

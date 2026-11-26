@@ -17,6 +17,17 @@ type capabilityActor struct {
 	p   *Platform
 	st  *seat
 	req runtime.Request
+	// routes is the agent the client's routing is read for: the run's own,
+	// or for a run a skill was loaded for, its caller's.
+	routes string
+}
+
+// routed is the agent the client's routing is read for.
+func (a capabilityActor) routed() string {
+	if a.routes != "" {
+		return a.routes
+	}
+	return a.req.Agent()
 }
 
 func (a capabilityActor) Name() string { return a.st.peer.Name() }
@@ -34,7 +45,7 @@ func (a capabilityActor) Actions() []connector.Action {
 		name := action.Name
 		next.Invoke = func(ctx context.Context, target address.Address, raw json.RawMessage) (connector.Result, error) {
 			current, ok := a.p.currentInstallation(a.st.client)
-			if !ok || !current.Routes(a.req.Agent()) || !current.AllowsAction(name) {
+			if !ok || !current.Routes(a.routed()) || !current.AllowsAction(name) {
 				return connector.Result{}, operations.ErrDenied
 			}
 			if current.Surface == clients.Slack {
@@ -75,7 +86,7 @@ func (a capabilityActor) Actions() []connector.Action {
 			}
 
 			if a.p.categoryOf(name) != operations.ReadContext {
-				if run, err := a.p.Runs.Get(a.req.Tenant, a.req.RunID); err == nil && (a.p.privateThread(a.req.Tenant, run.Thread) || a.p.RunRequiresReviewedSummary(ctx, run, a.p.RunPlace(a.req.Tenant, run).Project)) {
+				if run, err := a.p.Runs.Get(a.req.Tenant, a.req.RunID); err == nil && (a.p.publishesPrivately(run) || a.p.RunRequiresReviewedSummary(ctx, run, a.p.RunPlace(a.req.Tenant, run).Project)) {
 					return connector.Result{}, operations.ErrDenied
 				}
 			}

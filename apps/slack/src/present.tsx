@@ -46,6 +46,16 @@ export interface Target {
   recipientTeam: string;
 }
 
+/**
+ * Who a message is posted as: the agent answering, by the name people call
+ * it and its drawn picture. Slack shows these on a message the app posts
+ * when the app holds `chat:write.customize`; every message stays the app's.
+ */
+export interface Author {
+  username?: string;
+  icon_url?: string;
+}
+
 export interface Presented {
   /** The message that holds the final blocks, for a later `chat.update`. */
   ts: string;
@@ -108,6 +118,10 @@ export class Presenter {
   private lineCalls: Promise<void> = Promise.resolve();
   /** Slack refused a status line here, so none is sent again. */
   private lineOff = false;
+  /** The agent the turn is answered by, whose name and picture its messages carry. */
+  private agent = "";
+  /** Slack refused a message posted as an agent, so the rest are the app's. */
+  private authorOff = false;
 
   constructor(
     private readonly slack: SlackApi,
@@ -131,6 +145,10 @@ export class Presenter {
       now?: () => number;
       /** The shortest time between two status lines. */
       statusEvery?: number;
+      /** Who a message is posted as, by the agent answering. Left out, every message is the app's. */
+      authorOf?: (agent: string) => Author | undefined;
+      /** The name people see an agent by, where it has one besides its handle. */
+      nameOf?: (agent: string) => string | undefined;
     } = {},
   ) {
     this.native = opts.outcomesOnly ? false : (opts.native ?? true);
@@ -139,6 +157,51 @@ export class Presenter {
 
   private log(line: string) {
     this.opts.log?.(line);
+  }
+
+  /** The name a turn's sentences call its agent by, or nothing for its handle. */
+  private named(turn: Turn): string | undefined {
+    return this.opts.nameOf?.(turn.agent.name);
+  }
+
+  /** The name and picture this turn's messages carry, or nothing. */
+  private byline(): Author {
+    if (this.authorOff || !this.agent) return {};
+    const a = this.opts.authorOf?.(this.agent);
+    const out: Author = {};
+    if (a?.username) out.username = a.username.slice(0, 80);
+    if (a?.icon_url) out.icon_url = a.icon_url;
+    return out;
+  }
+
+  /**
+   * Call Slack as the turn's agent. An app installed before it asked for
+   * `chat:write.customize`, or a workspace that refuses it, gets the call
+   * again as the app, and every later call is the app's: the answer matters
+   * more than whose face is on it.
+   */
+  private async authored<T = unknown>(method: string, args: Record<string, unknown>): Promise<T> {
+    const by = this.byline();
+    if (!by.username && !by.icon_url) return this.slack.call<T>(method, args);
+    try {
+      return await this.slack.call<T>(method, { ...args, ...by });
+    } catch (e) {
+      if (
+        !(e instanceof SlackError) ||
+        !/^(missing_scope|invalid_arguments|not_allowed|invalid_icon_url|invalid_username)$/.test(
+          e.code,
+        )
+      )
+        throw e;
+      this.authorOff = true;
+      this.log(`posting as the app: ${e.code}`);
+      return this.slack.call<T>(method, args);
+    }
+  }
+
+  /** Remember the agent answering, which can change with a handoff. */
+  private by(turn: Turn) {
+    if (turn.agent?.name) this.agent = turn.agent.name;
   }
 
   private get copy(): Copy {
@@ -246,7 +309,7 @@ export class Presenter {
       this.said = text;
       this.saidAt = this.now();
       try {
-        await this.slack.call("assistant.threads.setStatus", {
+        await this.authored("assistant.threads.setStatus", {
           channel_id: this.target.channel,
           thread_ts: this.target.threadTs,
           status: text,
@@ -289,7 +352,7 @@ export class Presenter {
     const header = streamHeader(turn, { page: this.page });
     let started: { ts: string };
     try {
-      started = await this.slack.call("chat.startStream", {
+      started = await this.authored<{ ts: string }>("chat.startStream", {
         ...args,
         ...(header.length > 0 ? { chunks: header } : {}),
       });
@@ -298,7 +361,7 @@ export class Presenter {
       if (!rejected || header.length === 0) throw e;
       // The workspace does not take block chunks yet: the continuation opens without its header.
       this.log(`continuation header left out: ${e.message}`);
-      started = await this.slack.call("chat.startStream", args);
+      started = await this.authored<{ ts: string }>("chat.startStream", args);
     }
     this.ts = started.ts;
     this.messages.push(this.ts);
@@ -357,7 +420,7 @@ export class Presenter {
   }
 
   private async post(blocks: Block[], text: string) {
-    const posted = await this.slack.call<{ ts: string }>("chat.postMessage", {
+    const posted = await this.authored<{ ts: string }>("chat.postMessage", {
       channel: this.target.channel,
       thread_ts: this.target.threadTs,
       text: text.slice(0, LIMITS.fallbackText),
@@ -391,6 +454,7 @@ export class Presenter {
    * still ends it.
    */
   async update(turn: Turn): Promise<void> {
+    this.by(turn);
     if (this.opts.outcomesOnly) return;
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.closed || this.degraded) return;
@@ -411,7 +475,12 @@ export class Presenter {
         }
       }
       const view = renderToSlack(
-        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+        <TurnView
+          copy={this.copy}
+          capabilities={this.caps}
+          turn={turn}
+          agentName={this.named(turn)}
+        />,
       );
       const [first = []] = view.pages;
       if (first.length === 0) return;
@@ -432,6 +501,7 @@ export class Presenter {
    * already carries the card.
    */
   async pause(turn: Turn): Promise<void> {
+    this.by(turn);
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
     if (this.closed || this.degraded || this.paused) return;
@@ -441,7 +511,14 @@ export class Presenter {
     try {
       const linked = await this.link(turn);
       const final = renderToSlack(
-        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} streamed linked={linked} />,
+        <TurnView
+          copy={this.copy}
+          capabilities={this.caps}
+          turn={turn}
+          agentName={this.named(turn)}
+          streamed
+          linked={linked}
+        />,
       );
       await this.slack.call("chat.stopStream", {
         channel: this.target.channel,
@@ -463,6 +540,7 @@ export class Presenter {
 
   /** Settle a question's card where it was shown, with how it was answered. */
   async settleQuestion(turn: Turn): Promise<void> {
+    this.by(turn);
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
     const paused = this.paused;
@@ -504,6 +582,7 @@ export class Presenter {
         copy={this.copy}
         capabilities={this.caps}
         turn={shown}
+        agentName={this.named(shown)}
         streamed={this.native}
         linked={paused.linked}
       />,
@@ -528,6 +607,7 @@ export class Presenter {
    * whole turn is posted again as a new message.
    */
   async finish(turn: Turn): Promise<Presented> {
+    this.by(turn);
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return { ts: "", messages: [] };
     if (this.opts.outcomesOnly) {
       if (turn.status === "working" || turn.status === "queued") return { ts: "", messages: [] };
@@ -556,6 +636,7 @@ export class Presenter {
             copy={this.copy}
             capabilities={this.caps}
             turn={turn}
+            agentName={this.named(turn)}
             streamed
             linked={linked}
           />,
@@ -573,7 +654,12 @@ export class Presenter {
       } else {
         // Nothing was streamed, so the message carries the whole turn.
         const final = renderToSlack(
-          <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+          <TurnView
+            copy={this.copy}
+            capabilities={this.caps}
+            turn={turn}
+            agentName={this.named(turn)}
+          />,
         );
         const [first = [], ...rest] = final.pages;
         if (!this.ts) await this.post(first, final.text);
@@ -584,7 +670,12 @@ export class Presenter {
     } catch (e) {
       this.log(`ending the turn as streamed failed: ${(e as Error).message}`);
       const final = renderToSlack(
-        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+        <TurnView
+          copy={this.copy}
+          capabilities={this.caps}
+          turn={turn}
+          agentName={this.named(turn)}
+        />,
       );
       const [first = [], ...rest] = final.pages;
       // The streamed message is closed with the whole turn as its final layout, so the
@@ -622,9 +713,17 @@ export class Presenter {
    * reaction and the session settle.
    */
   async conclude(turn: Turn): Promise<void> {
+    this.by(turn);
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
-    const final = renderToSlack(<TurnView copy={this.copy} capabilities={this.caps} turn={turn} />);
+    const final = renderToSlack(
+      <TurnView
+        copy={this.copy}
+        capabilities={this.caps}
+        turn={turn}
+        agentName={this.named(turn)}
+      />,
+    );
     try {
       const [first = [], ...rest] = final.pages;
       await this.post(first, final.text);

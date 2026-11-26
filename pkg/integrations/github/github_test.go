@@ -131,9 +131,11 @@ func TestIssueCommentBecomesATagAddressedAtTheIssue(t *testing.T) {
 	if wire.AgentOf(tag) != "docs-bot" || wire.Origin(tag) != "github" {
 		t.Errorf("Tag agent/origin = %q/%q", wire.AgentOf(tag), wire.Origin(tag))
 	}
-	want := "can summarize what changed here, and check the retry path too?"
+	// A mention inside a sentence is part of what the person wrote, so the
+	// comment is kept whole; only the mentions that open one are its address.
+	want := "can @docs-bot summarize what changed here, and @docs-bot check the retry path too?"
 	if wire.TextOf(tag) != want {
-		t.Errorf("Tag.Text = %q, want %q with both mentions stripped", wire.TextOf(tag), want)
+		t.Errorf("Tag.Text = %q, want %q, the whole comment as written", wire.TextOf(tag), want)
 	}
 	if got, want := wire.SurfaceAddress(tag).String(), "github://urmzd/fiber/issues/42"; got != want {
 		t.Errorf("Tag.Source = %q, want %q", got, want)
@@ -430,8 +432,8 @@ func TestDeliveringTheSameEventsTwiceKeepsOneEditedComment(t *testing.T) {
 	events := []event.Envelope{
 		runEvent(1, event.TypeAccepted, ""),
 		textEvent(2, "The retry path posts twice "),
-		textEvent(3, "because the handle was lost."),
-		runEvent(4, event.TypeCitation, `{"source":{"document_title":"sink.go","source_uri":"https://github.com/urmzd/fiber/blob/main/sink.go"}}`),
+		textEvent(3, "because the handle was lost. See [1]."),
+		runEvent(4, event.TypeCitation, `{"label":"[1]","source":{"document_title":"sink.go","source_uri":"https://github.com/urmzd/fiber/blob/main/sink.go"}}`),
 		runEvent(5, event.TypeCompleted, ""),
 	}
 	for range 2 {
@@ -453,8 +455,8 @@ func TestDeliveringTheSameEventsTwiceKeepsOneEditedComment(t *testing.T) {
 	if got := strings.Count(comment.Body, "The retry path posts twice because the handle was lost."); got != 1 {
 		t.Errorf("body contains the answer %d times, want 1:\n%s", got, comment.Body)
 	}
-	if !strings.Contains(comment.Body, "**docs-bot** _(done)_") {
-		t.Errorf("body is not GitHub markdown:\n%s", comment.Body)
+	if !strings.HasPrefix(comment.Body, "The retry path posts twice") || strings.Contains(comment.Body, "**docs-bot**") {
+		t.Errorf("a finished answer is not the answer alone:\n%s", comment.Body)
 	}
 	if !strings.Contains(comment.Body, "[1] [sink.go](https://github.com/urmzd/fiber/blob/main/sink.go)") {
 		t.Errorf("citation is not a markdown footnote:\n%s", comment.Body)

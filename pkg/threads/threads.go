@@ -202,12 +202,63 @@ type Participant struct {
 	At      time.Time `json:"at"`
 }
 
+// Who gave a thread its title, as Thread.TitleSource says it.
+const (
+	TitlePlaceholder = "placeholder"
+	TitleGenerated   = "generated"
+	TitlePerson      = "person"
+)
+
 // SessionIdentity pins the agent and parent that own a session.
 type SessionIdentity struct {
 	Agent       string `json:"agent"`
 	Parent      string `json:"parent"`
 	Label       string `json:"label,omitempty"`
 	SourceAlert string `json:"source_alert,omitempty"`
+	// Image and Repos are what the person chose when starting it: the id
+	// of the image its tools run in (pkg/images; empty or "default" is the
+	// deployment's own) and the repositories it works on.
+	Image string   `json:"image,omitempty"`
+	Repos []string `json:"repos,omitempty"`
+}
+
+// Bounds on a session's chosen image and repositories.
+const (
+	MaxSessionRepos = 10
+	MaxSessionImage = 64
+	MaxSessionRepo  = 200
+)
+
+// IDPrefix starts the id of every thread the store names ("th-" and 16
+// hex digits).
+const IDPrefix = "th-"
+
+// SessionParent reports whether a session's parent is another session, as
+// opposed to a place (console://..., slack://...): a session key's id
+// ("s_...") or a conversation adopted as a session under its own id
+// ("th-...", Store.Adopt). A "th-" parent that is no session reads as none
+// wherever it is looked up.
+func SessionParent(parent string) bool {
+	return strings.HasPrefix(parent, "s_") || strings.HasPrefix(parent, IDPrefix)
+}
+
+// Adopted reports whether a session is a conversation from before sessions
+// that was adopted as one, under the id it already had (Store.Adopt).
+func Adopted(t Thread) bool {
+	return t.Session != nil && strings.HasPrefix(t.ID, IDPrefix)
+}
+
+// Check refuses a stored choice that is out of bounds.
+func (s SessionIdentity) Check() error {
+	if len(s.Image) > MaxSessionImage || len(s.Repos) > MaxSessionRepos {
+		return fmt.Errorf("%w: session environment or repos too long", ErrInvalid)
+	}
+	for _, r := range s.Repos {
+		if r == "" || len(r) > MaxSessionRepo {
+			return fmt.Errorf("%w: session repo", ErrInvalid)
+		}
+	}
+	return nil
 }
 
 // Thread retains storage compatibility while sessions have one immutable agent.
@@ -219,9 +270,14 @@ type Thread struct {
 	// Project is the project it is filed in. "" is the root.
 	Project string `json:"project"`
 	// Channel is the project's channel it is in.
-	Channel    string     `json:"channel"`
-	Title      string     `json:"title,omitempty"`
-	Visibility Visibility `json:"visibility"`
+	Channel string `json:"channel"`
+	Title   string `json:"title,omitempty"`
+	// TitleSource is who gave the title: TitlePlaceholder, the start of the
+	// first message, TitleGenerated, a model's name for it, or TitlePerson.
+	// "" is a record from before sources were kept, or one started with a
+	// title of its own. Only a placeholder is ever replaced by the platform.
+	TitleSource string     `json:"title_source,omitempty"`
+	Visibility  Visibility `json:"visibility"`
 	// Participants are who takes part, in the order they joined.
 	Participants []Participant `json:"participants"`
 	// Default answers an untagged message here: an agent, or OpenName. ""
@@ -237,6 +293,21 @@ type Thread struct {
 	// thread: a client, its channel there and the thread's own id. It is
 	// fixed when the thread is started, and one surface is one thread.
 	Surface *Surface `json:"surface,omitempty"`
+	// Addressed says the thread on its surface began with a message addressed
+	// to the app: a mention in a channel thread's first message. Such a
+	// thread is listened to once the app has answered there. A thread a later
+	// mention started is not addressed: each mention there is answered once.
+	Addressed bool `json:"addressed,omitempty"`
+	// Listening says an addressed thread has had an answer from the app. A
+	// refused mention, a failed run, or one still quiet or waiting on a
+	// person answered nothing, and starts no listening (Store.Listen).
+	Listening bool `json:"listening,omitempty"`
+	// Listener is whose later messages that address nobody are read there:
+	// the person whose mention the app answered most recently. The agent
+	// decides of each whether it calls for it. Anyone else mentions the app
+	// or an agent to ask, and their mention, once answered, makes them the
+	// listener. An unmentioned follow-up never moves it.
+	Listener *Listener `json:"listener,omitempty"`
 	// Announcement is the inbox id of the announcement the thread was
 	// started from: its surface is the announcement's post there, and a
 	// reply to it started the thread. It is fixed when the thread is
@@ -397,13 +468,40 @@ type Message struct {
 	Via string `json:"via"`
 	// Spoken is a message said in voice mode and transcribed.
 	Spoken bool `json:"spoken,omitempty"`
+	// Heard is a message on a surface that addressed nobody, read because
+	// the thread listens to its poster: a reply with no mention of the app.
+	// Unless it tags an agent it asked nothing, so its answer does not move
+	// whom the thread listens to (Store.Listen).
+	Heard bool `json:"heard,omitempty"`
 	// EditedAt is when its author last corrected a spoken message's words.
 	EditedAt *time.Time `json:"edited_at,omitempty"`
 	// SurfaceID is the surface's own id for it, such as a Slack ts. A second
 	// post with the same one is the first.
-	SurfaceID string    `json:"surface_id,omitempty"`
-	At        time.Time `json:"at"`
+	SurfaceID string `json:"surface_id,omitempty"`
+	// Command is set on a message that records a command its writer ran in
+	// the session's sandbox, typed as "!" and the command. It starts no run:
+	// the agent reads it with the next message posted after it (Commands).
+	Command *Command  `json:"command,omitempty"`
+	At      time.Time `json:"at"`
 }
+
+// Command is a command a person ran in a session's sandbox, and how it came
+// out. Its message's text is "!" and the command.
+type Command struct {
+	Command string `json:"command"`
+	// ExitCode is the command's exit status, or -1 when it was stopped at
+	// the time limit.
+	ExitCode int  `json:"exit_code"`
+	TimedOut bool `json:"timed_out,omitempty"`
+	// Output is the end of stdout and stderr, as one stream, at most
+	// MaxCommandOutput bytes. Truncated says earlier output was cut.
+	Output     string `json:"output"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+// MaxCommandOutput is the most output one command message keeps, in bytes.
+const MaxCommandOutput = 16 << 10
 
 func (m Message) clone() Message {
 	if m.Followup != nil {
@@ -421,6 +519,10 @@ func (m Message) clone() Message {
 		at := *m.EditedAt
 		m.EditedAt = &at
 	}
+	if m.Command != nil {
+		c := *m.Command
+		m.Command = &c
+	}
 	return m
 }
 
@@ -437,6 +539,7 @@ func (t Thread) clone() Thread {
 	t.Agents = slices.Clone(t.Agents)
 	if t.Session != nil {
 		identity := *t.Session
+		identity.Repos = slices.Clone(identity.Repos)
 		t.Session = &identity
 	}
 	t.Fork = t.Fork.clone()
@@ -526,6 +629,8 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: a thread is shared or private", ErrInvalid)
 	case utf8.RuneCountInString(t.Title) > MaxTitle || !oneLine(t.Title):
 		return fmt.Errorf("%w: a thread's title is one line of at most %d characters", ErrInvalid, MaxTitle)
+	case t.TitleSource != "" && t.TitleSource != TitlePlaceholder && t.TitleSource != TitleGenerated && t.TitleSource != TitlePerson:
+		return fmt.Errorf("%w: a title is a placeholder, generated or a person's", ErrInvalid)
 	case !validDefault(t.Default):
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case !validRouting(t.Agents, t.Mode):
@@ -615,6 +720,10 @@ func (m Message) validate() error {
 		return fmt.Errorf("%w: a message follows a message of its thread or a run", ErrInvalid)
 	case m.Followup != nil && m.Answers != nil:
 		return fmt.Errorf("%w: an answer is no follow-up", ErrInvalid)
+	case m.Command != nil && (m.Followup != nil || m.Answers != nil || m.Text != "!"+m.Command.Command):
+		return fmt.Errorf("%w: a command's message is \"!\" and the command, and nothing else", ErrInvalid)
+	case m.Command != nil && (len(m.Command.Output) > MaxCommandOutput || !plain(m.Command.Output) || m.Command.DurationMS < 0):
+		return fmt.Errorf("%w: a command's output is plain text of at most %d bytes", ErrInvalid, MaxCommandOutput)
 	}
 	if m.Followup != nil {
 		if err := m.Followup.validate(); err != nil {
@@ -627,4 +736,19 @@ func (m Message) validate() error {
 		}
 	}
 	return nil
+}
+
+// same reports whether two identities are equal.
+func (s *SessionIdentity) same(o SessionIdentity) bool {
+	return s.Agent == o.Agent && s.Parent == o.Parent && s.Label == o.Label && s.SourceAlert == o.SourceAlert &&
+		s.Image == o.Image && slices.Equal(s.Repos, o.Repos)
+}
+
+// Listener is the person an addressed thread listens to, and their mention
+// the app answered there, by its surface id (a Slack ts). Only an answer to
+// a newer mention changes it, so a late answer to an older one does not take
+// the thread back.
+type Listener struct {
+	Person  string `json:"person"`
+	Message string `json:"message,omitempty"`
 }

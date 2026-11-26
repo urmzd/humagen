@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/saige/flow/address"
@@ -54,9 +55,12 @@ type ExternalRef struct {
 	// Client is the Humagen client the origin is reached through (a Slack
 	// app, a GitHub installation). It files the root where the client's
 	// channel is bound and maps a Slack conversation's members to people.
+	// Only a surface built into the server, or the client's own machine
+	// (MessagesInput.ActAs), names it; the API ignores it.
 	Client string `json:"client,omitempty"`
 	// Slack: the team, channel and message ts, and the thread's ts for a
-	// reply. Audience is the conversation's kind and members now.
+	// reply. Audience is the conversation's kind and members now, read from
+	// the same callers as Client and ignored from any other.
 	Team    string `json:"team,omitempty"`
 	Channel string `json:"channel,omitempty"`
 	// User is who wrote the message on the surface (a Slack user id, a
@@ -285,9 +289,15 @@ type MessagesInput struct {
 	// PostOnly, with ActAs, records the message and starts nothing: what
 	// people said in the thread before the app was asked.
 	PostOnly bool `json:"post_only,omitempty"`
+	// Listen, with ActAs, posts a message that addressed nobody: a reply in
+	// a thread that does not mention the app. It starts no session; in one
+	// that is listening the agent decides whether it calls for it, and
+	// anywhere else it is refused and nothing is kept.
+	Listen bool `json:"listen,omitempty"`
 	// surface is set only by a surface built into the server, which verified
 	// the person and the place (SendSurfaceMessages): its runs answer on the
-	// surface, and its refs' User is believed. No request can set it.
+	// surface, and its refs' User, Client and Audience are believed. No
+	// request can set it.
 	surface bool
 }
 
@@ -344,6 +354,9 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	if in.PostOnly {
 		return MessageView{}, fmt.Errorf("%w: post_only is for a client's machine posting for a person (act_as)", threads.ErrInvalid)
 	}
+	if in.Listen {
+		return MessageView{}, fmt.Errorf("%w: listen is for a client's machine posting for a person (act_as)", threads.ErrInvalid)
+	}
 	if !in.surface {
 		in.dropUnverified()
 	}
@@ -358,7 +371,7 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	if place == "" {
 		return p.sendToNewConsoleRoot(ctx, who, in)
 	}
-	root, created, err := p.rootAt(ctx, who, place, origin, p.firstMentioned(ctx, who, in.Messages[len(in.Messages)-1]))
+	root, created, err := p.rootAt(ctx, who, place, origin, p.firstMentioned(ctx, who, in.Messages[len(in.Messages)-1]), in.surface)
 	if err != nil {
 		return MessageView{}, err
 	}
@@ -420,7 +433,7 @@ func (p *Platform) sendForSurfacePerson(ctx context.Context, who auth.Principal,
 		return bad(fmt.Sprintf("ref: client %q is not team %s's", c.ID, ref.Team))
 	}
 	v, started, err := p.StartSurfaceSession(ctx, who, SessionInput{
-		Text: text, ActAs: in.ActAs, PostOnly: in.PostOnly,
+		Text: text, ActAs: in.ActAs, PostOnly: in.PostOnly, Listen: in.Listen,
 		Surface: &SurfaceRef{Client: ref.Client, Channel: ref.Channel, TS: cmpOr(ref.ThreadTS, ref.TS), Message: ref.TS, AppUser: ref.AppUser, Audience: ref.Audience, Files: ref.Files},
 	})
 	if err != nil {
@@ -446,21 +459,28 @@ func (p *Platform) SendSurfaceMessages(ctx context.Context, who auth.Principal, 
 	return p.SendMessages(ctx, who, in)
 }
 
-// dropUnverified forgets what only a surface built into the server may say:
-// the surface user who wrote a message. Who speaks is the caller.
+// dropUnverified forgets what only a surface built into the server, or a
+// client's own machine, may say: the surface user who wrote a message, the
+// client the place is reached through, who the conversation's members are,
+// and the app's own user and files. Who speaks is the caller, and the place
+// is the caller's own until a surface says otherwise.
 func (in *MessagesInput) dropUnverified() {
 	if in.Ref != nil {
-		r := *in.Ref
-		r.User = ""
+		r := in.Ref.unverified()
 		in.Ref = &r
 	}
 	for i := range in.Messages {
 		if in.Messages[i].Ref != nil {
-			r := *in.Messages[i].Ref
-			r.User = ""
+			r := in.Messages[i].Ref.unverified()
 			in.Messages[i].Ref = &r
 		}
 	}
+}
+
+// unverified is r with only what any caller may say: where the place is.
+func (r ExternalRef) unverified() ExternalRef {
+	r.User, r.Client, r.Audience, r.AppUser, r.Files = "", "", nil, "", false
+	return r
 }
 
 // SendMessagesUnder posts a batch beneath a session (or one of its
@@ -522,7 +542,13 @@ func (p *Platform) sendToNewConsoleRoot(ctx context.Context, who auth.Principal,
 // filed where the origin's client files it: a Slack channel where it is
 // bound, else the client's home; with no client, who's own project. Its
 // audience follows the origin.
-func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string, origin ExternalRef, mentioned string) (threads.Thread, bool, error) {
+//
+// A root that is already there is who's to post to only when who reads it;
+// otherwise it is not found and nothing is kept. Its people and its audience
+// follow the origin only when verified says a surface built into the server
+// reported them. Unverified, a Slack or GitHub place's root is not started:
+// only its surface starts it.
+func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string, origin ExternalRef, mentioned string, verified bool) (threads.Thread, bool, error) {
 	var c *clients.Client
 	if origin.Client != "" {
 		got, err := p.Clients.Get(who.Tenant, origin.Client)
@@ -582,12 +608,38 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if owner == "" {
 		return threads.Thread{}, false, fmt.Errorf("%w: nobody answers here: the server has no entry agent and the origin's client names no default agent", ErrNoDefault)
 	}
+	if !verified && (origin.Type == RefSlack || origin.Type == RefGitHub) {
+		// A Slack thread's or a GitHub pull request's root is started only by
+		// its surface. Through the API it is posted to when it is there and
+		// who reads it; otherwise it is not found and nothing is kept.
+		th, err := p.Threads.Get(who.Tenant, session.Key{Tenant: who.Tenant, Parent: place, Agent: owner}.ID())
+		if err != nil || th.Session == nil || !p.SeesSession(who, th.ID) {
+			return threads.Thread{}, false, threads.ErrNotFound
+		}
+		return th, false, nil
+	}
 	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: place, Agent: owner, Channel: wire.Channel(who.Tenant)})
 	if err != nil {
 		return threads.Thread{}, false, err
 	}
 	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Visibility: vis, Participants: people, Title: place, Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(who), Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	if c != nil && origin.Type == RefSlack {
+		// A Slack thread's root records its client's surface, as
+		// StartSurfaceSession does, so it is kept by that client.
+		if sf := (threads.Surface{Client: c.ID, Channel: origin.Channel, TS: cmpOr(origin.ThreadTS, origin.TS)}); sf.Validate() == nil {
+			th.Surface = &sf
+		}
+	}
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
+	if th.Surface != nil && errors.Is(err, threads.ErrExists) {
+		if _, got := p.Threads.Get(who.Tenant, rec.ID); errors.Is(got, threads.ErrNotFound) {
+			// The surface's thread is another root of the place (one
+			// StartSurfaceSession opened under its own label): this one is
+			// started without it.
+			th.Surface = nil
+			_, err = p.Threads.Create(who.Tenant, th, p.now())
+		}
+	}
 	created := err == nil
 	if err != nil && !errors.Is(err, threads.ErrExists) {
 		return threads.Thread{}, false, err
@@ -595,12 +647,42 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
 		return threads.Thread{}, false, err
 	}
-	if !created && vis == threads.Private && origin.Audience != nil && len(origin.Audience.Members) > 0 {
+	// A place whose key opens a conversation's own id is one adopted as a
+	// session, or one an adoption has yet to finish: it stays as it was
+	// filed, so the place's members now are not made its people and no
+	// audience is kept for it (StartSurfaceSession).
+	adopted := threads.Adopted(th) || strings.HasPrefix(rec.ID, threads.IDPrefix)
+	// Who reads the root, and may post there, is checked before its people
+	// or audience change, so a message that is not taken keeps nothing. A
+	// member the surface reports is one of its people once they are kept.
+	member := !adopted && c != nil && vis == threads.Private && reportsMember(*c, origin.Audience, who)
+	if !created && !p.SeesSession(who, th.ID) && !member {
+		return threads.Thread{}, false, threads.ErrNotFound
+	}
+	if !created && !verified {
+		// The root is as it was started.
+		return th, false, nil
+	}
+	if !created && th.Surface != nil && (c == nil || th.Surface.Client != c.ID) {
+		// A root a client's surface started is kept by that client: another
+		// client of the team, or an origin with none, changes nothing of it.
+		return threads.Thread{}, false, errNotThatSurfaces
+	}
+	if !created && th.Surface == nil && c != nil && origin.Type == RefSlack && !p.deliversThrough(who.Tenant, th.ID, c.ID) {
+		// A root kept from before roots recorded their surface answers
+		// through the client that started it: another client of the team
+		// changes nothing of it.
+		return threads.Thread{}, false, errNotThatSurfaces
+	}
+	if !created && p.mayKeepFor(who, nil, th, projects.Member, member) != nil {
+		return threads.Thread{}, false, threads.ErrNotFound
+	}
+	if !adopted && !created && vis == threads.Private && origin.Audience != nil && len(origin.Audience.Members) > 0 {
 		if err := p.keepAudience(who.Tenant, th, people); err != nil {
 			return threads.Thread{}, false, err
 		}
 	}
-	if aud.Kind != "" {
+	if !adopted && aud.Kind != "" {
 		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
 			return threads.Thread{}, false, err
 		}
@@ -707,6 +789,19 @@ func (p *Platform) keepDelivery(tenant, root string, d delivery) {
 	}
 }
 
+// deliversThrough reports whether root answers through client, or has no
+// client it answers through yet. A record that cannot be read says no.
+func (p *Platform) deliversThrough(tenant, root, client string) bool {
+	it, err := p.deliveries.Lookup(tenant, root)
+	if errors.Is(err, state.ErrNotFound) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	return it.Value.Client == "" || it.Value.Client == client
+}
+
 // keptDelivery is where th's root answers, if a surface built into the
 // server started it. The user who wrote is the message's own, so it is left
 // out: the run acts for the person who posted.
@@ -728,7 +823,7 @@ func (p *Platform) sessionRoot(tenant string, th threads.Thread) (root, place st
 		if th.Session == nil {
 			return "", "", threads.ErrNotFound
 		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
+		if !threads.SessionParent(th.Session.Parent) {
 			return th.ID, th.Session.Parent, nil
 		}
 		if th, err = p.Threads.Get(tenant, th.Session.Parent); err != nil {

@@ -79,7 +79,7 @@ func storePackage(t *testing.T, p *platform.Platform, name string) platform.Stor
 
 var (
 	coreAgents   = []string{platform.BuiltinWriter, platform.BuiltinAnalyst}
-	reviewAgents = []string{platform.BuiltinCodeReviewer, platform.BuiltinSecurityReviewer, platform.BuiltinArchitectReviewer, platform.BuiltinQAReviewer}
+	reviewAgents = []string{platform.BuiltinCodeReviewer, platform.BuiltinSecurityReviewer, platform.BuiltinArchitectReviewer, platform.BuiltinQAReviewer, platform.BuiltinSkillRunner}
 )
 
 // A new workspace has the entry agent and the approval agent, and the rest
@@ -155,15 +155,19 @@ func TestInstallingCoreThenReviewAddsExactlyTheirAgents(t *testing.T) {
 	}
 	// The code reviewer brings in its specialists, as it always did.
 	cr, _ := p.Agents.Get(t.Context(), tenant, platform.BuiltinCodeReviewer, 0)
-	if got := slices.Sorted(slices.Values(cr.Spec.Access.Spawn)); !slices.Equal(got, slices.Sorted(slices.Values(reviewAgents[1:]))) {
+	if got := slices.Sorted(slices.Values(cr.Spec.Access.Spawn)); !slices.Equal(got, slices.Sorted(slices.Values(reviewAgents[1:4]))) {
 		t.Fatalf("code-reviewer spawn = %v", got)
 	}
-	// The entry agent may call what was installed.
+	// The entry agent may call what was installed, but skill-runner, which
+	// runs only a skill another agent loads.
 	entry, _ := p.Agents.Get(t.Context(), tenant, platform.BuiltinEntry, 0)
-	for _, name := range append(slices.Clone(coreAgents), reviewAgents...) {
+	for _, name := range append(slices.Clone(coreAgents), reviewAgents[:4]...) {
 		if !slices.Contains(entry.Spec.Access.Spawn, name) {
 			t.Fatalf("the entry agent may not call %s: %v", name, entry.Spec.Access.Spawn)
 		}
+	}
+	if slices.Contains(entry.Spec.Access.Spawn, platform.BuiltinSkillRunner) {
+		t.Fatalf("the entry agent may call skill-runner: %v", entry.Spec.Access.Spawn)
 	}
 	again, err := p.InstallPackage(t.Context(), installer, "humagen/core")
 	if err != nil || len(again.Added) != 0 || !again.Package.Installed {
@@ -304,7 +308,7 @@ func TestAWorkspaceWithEveryAgentKeepsThem(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := directory(t, p); len(got) != 8 {
+	if got := directory(t, p); len(got) != 9 {
 		t.Fatalf("directory = %v", got)
 	}
 	upgraded, _ := p.Agents.Get(t.Context(), tenant, platform.BuiltinWriter, 0)
@@ -490,8 +494,14 @@ func TestTheStoreSaysWhatEachAgentIsGrantedBeforeInstall(t *testing.T) {
 		if a.Installed || a.Provider != "offline" || a.Model != "offline" || a.Fallbacks == nil || len(a.Fallbacks) != 0 {
 			t.Errorf("%s runs on %s/%s with %v", a.Name, a.Provider, a.Model, a.Fallbacks)
 		}
-		if want := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}; !slices.Equal(a.Tools, want) {
-			t.Errorf("%s tools = %v, want %v", a.Name, a.Tools, want)
+		granted := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}
+		if a.Name == platform.BuiltinCodeReviewer {
+			// The lead reviewer may turn a reply into a review, and load
+			// a skill.
+			granted = append(granted, platform.ToolStartReview, platform.ToolUseSkill)
+		}
+		if !slices.Equal(a.Tools, granted) {
+			t.Errorf("%s tools = %v, want %v", a.Name, a.Tools, granted)
 		}
 		if !slices.Equal(a.Connectors, []string{"github"}) || a.ToolServers == nil || len(a.ToolServers) != 0 {
 			t.Errorf("%s needs %v and %v", a.Name, a.Connectors, a.ToolServers)

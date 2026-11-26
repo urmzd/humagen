@@ -18,7 +18,7 @@ import {
   type Thread,
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
-import { ForkContext } from "./ForkConversation.tsx";
+import { ForkContext, ImportContext } from "./ForkConversation.tsx";
 import { SessionReferences } from "./MessageRefs.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
@@ -99,9 +99,20 @@ export function ConversationPage({
   onArtifact,
   children,
   actions,
+  views,
+  titleControl,
 }: {
   actions?: ReactNode;
+  /** The session's view controls (SessionViews), in place of the Details button alone. */
+  views?: ReactNode;
+  /** The title as a control, such as a menu of what can be done to the session. */
+  titleControl?: ReactNode;
   title: string;
+  /**
+   * The project the session is filed in, named under the title. Empty for a
+   * person's own Personal project: every session is in it unless it was filed
+   * elsewhere, so naming it says nothing.
+   */
   project: string;
   private: boolean;
   agents: string[];
@@ -126,34 +137,38 @@ export function ConversationPage({
     >
       <Page
         layout="conversation"
-        title={title}
+        title={titleControl ?? title}
         meta={
-          <span className="inline-flex flex-wrap items-center gap-x-3">
-            <span>{project}</span>
-            {location}
-          </span>
+          project || location ? (
+            <span className="inline-flex flex-wrap items-center gap-x-3">
+              {project && <span>{project}</span>}
+              {location}
+            </span>
+          ) : undefined
         }
         actions={
           <>
             {/* Icons only, in a fixed order: where it started, Details, People, then the ⋯ menu. */}
             {origin}
-            <button
-              type="button"
-              data-session-details
-              data-working={progress?.working ? "" : undefined}
-              className={`${headerIcon} gap-0.5 ${progress?.working ? "text-aui-accent" : ""}`}
-              aria-label={defaultCopy.details.open(progress?.open ?? 0)}
-              title={defaultCopy.details.open(progress?.open ?? 0)}
-              aria-expanded={!!activePanel && activePanel !== "people"}
-              onClick={() =>
-                activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("details")
-              }
-            >
-              <ListChecksIcon size={18} />
-              {!!progress?.open && (
-                <span className="text-aui-xs tabular-nums">{progress.open}</span>
-              )}
-            </button>
+            {views ?? (
+              <button
+                type="button"
+                data-session-details
+                data-working={progress?.working ? "" : undefined}
+                className={`${headerIcon} gap-0.5 ${progress?.working ? "text-aui-accent" : ""}`}
+                aria-label={defaultCopy.details.open(progress?.open ?? 0)}
+                title={defaultCopy.details.open(progress?.open ?? 0)}
+                aria-expanded={!!activePanel && activePanel !== "people"}
+                onClick={() =>
+                  activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("details")
+                }
+              >
+                <ListChecksIcon size={18} />
+                {!!progress?.open && (
+                  <span className="text-aui-xs tabular-nums">{progress.open}</span>
+                )}
+              </button>
+            )}
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
               <button
@@ -387,6 +402,7 @@ export function ConversationInfo({
       ) : panel === "context" ? (
         <div className="flex flex-col gap-6">
           <ForkContext thread={thread} />
+          <ImportContext thread={thread} />
           <Tabs
             label={words.contextSections}
             value={selected}

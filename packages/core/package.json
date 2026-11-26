@@ -1,6 +1,6 @@
 {
   "name": "@humagen/core",
-  "version": "0.161.0",
+  "version": "0.205.1",
   "private": true,
   "type": "module",
   "description": "Surface-agnostic agent UI model: turns, tool calls, approvals, notices, stream events.",
@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures.ts",
     "./fixtures/responses": "./src/fixtures/responses/index.ts",
-    "./review": "./src/review.ts"
+    "./review": "./src/review.ts",
+    "./spelling": "./src/spelling.ts"
   },
   "scripts": {
     "test": "vitest run",

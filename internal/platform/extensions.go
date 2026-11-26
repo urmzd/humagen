@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"time"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -181,44 +182,128 @@ func (p *Platform) toolGroups(ctx context.Context) (runtime.ToolGroupSource, fun
 	// A person-scoped provider is reached with the credential of the person
 	// the run acts for, and the person sessions are bounded by fiber.
 	grants := mcptools.NewGrants(store, dial, mcptools.WithPersonResolver(mcptools.PersonResolverFunc(p.personCredential)))
-	if err := seedToolProviders(ctx, store, e.ToolProviders, dial, p.log); err != nil {
+	pending, err := seedToolProviders(ctx, store, e.ToolProviders, dial, p.log)
+	if err != nil {
 		_ = grants.Close()
 		return nil, nil, err
 	}
 	p.toolGrants = grants
-	return grants, grants.Close, nil
+	// A server not up yet, such as a browser pod still pulling its image
+	// while this process starts, is asked again until it answers.
+	stop := retryToolSeeds(store, pending, dial, p.log)
+	return grants, func() error {
+		stop()
+		return grants.Close()
+	}, nil
 }
 
 // seedToolProviders records each declared provider and accepts the tools it
 // pins. A record that already matches is left alone, so a restart mints no
-// version. A server that cannot be reached is logged and skipped: its grants
-// are then unavailable to runs, as an unreachable server is at run time.
-func seedToolProviders(ctx context.Context, store toolprovider.Store, seeds []ToolProviderSeed, dial mcptools.Dial, log *slog.Logger) error {
+// version. A server that cannot be reached is logged and returned as
+// pending: its grants are unavailable to runs, as an unreachable server is
+// at run time, until retryToolSeeds reaches it.
+func seedToolProviders(ctx context.Context, store toolprovider.Store, seeds []ToolProviderSeed, dial mcptools.Dial, log *slog.Logger) (pending []pendingSeed, err error) {
 	for _, s := range seeds {
 		rec, err := putProvider(ctx, store, s.Provider)
 		if err != nil {
-			return fmt.Errorf("platform: tool provider %q: %w", s.Provider.Name, err)
+			return nil, fmt.Errorf("platform: tool provider %q: %w", s.Provider.Name, err)
 		}
 		if len(s.Accept) == 0 {
 			continue
 		}
-		var held []heldBack
-		if rec.Scope() == toolprovider.ScopePerson {
-			// It has no credential of its own to be dialled with, so the
-			// declaration carries every tool's whole form.
-			held, err = acceptDeclaredInFull(ctx, store, rec, s.Accept)
-		} else {
-			held, err = acceptDeclared(ctx, store, rec, s.Accept, dial)
-		}
-		if err != nil {
-			log.Warn("tool provider not reachable at startup; its tools stay pending", "provider", rec.Name, "error", err)
-			continue
-		}
-		for _, h := range held {
-			log.Info("tool held back", "provider", rec.Name, "tool", h.tool.Name, "schema_hash", h.tool.SchemaHash, "reason", h.reason)
+		seed := pendingSeed{provider: rec, accept: s.Accept}
+		if err := seed.reach(ctx, store, dial, log); err != nil {
+			log.Warn("tool provider did not answer at startup; its tools stay pending until it does", "provider", rec.Name, "error", err)
+			pending = append(pending, seed)
 		}
 	}
+	return pending, nil
+}
+
+// pendingSeed is a declared provider and the tools it pins.
+type pendingSeed struct {
+	provider toolprovider.Provider
+	accept   []toolprovider.Tool
+}
+
+// reach reaches the provider and accepts the tools it pins.
+func (s pendingSeed) reach(ctx context.Context, store toolprovider.Store, dial mcptools.Dial, log *slog.Logger) error {
+	var held []heldBack
+	var err error
+	if s.provider.Scope() == toolprovider.ScopePerson {
+		// It has no credential of its own to be dialled with, so the
+		// declaration carries every tool's whole form.
+		held, err = acceptDeclaredInFull(ctx, store, s.provider, s.accept)
+	} else {
+		held, err = acceptDeclared(ctx, store, s.provider, s.accept, dial)
+	}
+	if err != nil {
+		return err
+	}
+	for _, h := range held {
+		log.Info("tool held back", "provider", s.provider.Name, "tool", h.tool.Name, "schema_hash", h.tool.SchemaHash, "reason", h.reason)
+	}
 	return nil
+}
+
+// How long a provider that was unreachable at start waits before it is
+// asked again: toolSeedRetry at first, twice as long after each failure,
+// never more than toolSeedRetryMax. One attempt is bounded by
+// toolSeedAttempt, so a server that accepts and then hangs holds up no
+// other.
+var (
+	toolSeedRetry    = 2 * time.Second
+	toolSeedRetryMax = time.Minute
+	toolSeedAttempt  = 30 * time.Second
+)
+
+// retryToolSeeds asks each provider that was unreachable at start again
+// until it answers, and then accepts the tools its declaration pins, so a
+// server that starts after this process, or beside it, needs no restart of
+// this one. It returns what stops the asking, which waits for it to end.
+func retryToolSeeds(store toolprovider.Store, pending []pendingSeed, dial mcptools.Dial, log *slog.Logger) (stop func()) {
+	if len(pending) == 0 {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	// Read here, by the caller, and not again.
+	wait, most, each := toolSeedRetry, toolSeedRetryMax, toolSeedAttempt
+	go func() {
+		defer close(done)
+		for len(pending) > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			var still []pendingSeed
+			for _, s := range pending {
+				attempt, end := context.WithTimeout(ctx, each)
+				err := s.reach(attempt, store, dial, log)
+				end()
+				if ctx.Err() != nil {
+					return
+				}
+				if err != nil {
+					still = append(still, s)
+					// Once the wait is at its longest: a line a minute, with
+					// why, for a server that refuses or stays away.
+					if wait >= most {
+						log.Warn("tool provider still does not answer; its tools stay pending", "provider", s.provider.Name, "error", err)
+					}
+					continue
+				}
+				log.Info("tool provider reached; its declared tools are accepted", "provider", s.provider.Name)
+			}
+			pending = still
+			wait = min(wait*2, most)
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func putProvider(ctx context.Context, store toolprovider.Store, p toolprovider.Provider) (toolprovider.Provider, error) {

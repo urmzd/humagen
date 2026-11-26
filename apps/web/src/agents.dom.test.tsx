@@ -125,8 +125,13 @@ function open(
   );
 }
 
+// An agent's settings are sections in a grouped list (DES-081); Access is Sharing and Calls.
 const tab = (name: string) =>
-  fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${name}`) }));
+  fireEvent.click(
+    screen.getByRole("link", {
+      name: new RegExp(`^${name === "Access" ? "Sharing and Calls" : name}`),
+    }),
+  );
 
 test("a built-in agent: the spec cannot be changed or saved, nor its access; its memory can", async () => {
   open(true);
@@ -257,7 +262,10 @@ test("choosing Private sends the Personal project, Workspace sends ~, and no mov
   open(false, () => homed++, writer, true, "Field");
   tab("Access");
   fireEvent.click(screen.getByRole("button", { name: "Access: Members of Field" }));
-  const offered = (await screen.findAllByRole("option")).map((o) => o.textContent ?? "");
+  // The settings' Section picker is a select of its own; only the access menu's options count.
+  const offered = (await screen.findAllByRole("option"))
+    .filter((o) => !o.closest("select"))
+    .map((o) => o.textContent ?? "");
   assert.equal(offered.length, 3);
   assert.match(offered[0]!, /^Private/);
   assert.match(offered[1]!, /^Workspace/);

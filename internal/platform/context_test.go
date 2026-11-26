@@ -42,7 +42,7 @@ func echoSlack(t *testing.T, p *platform.Platform, sources int) (asked func() []
 func TestContextIsPulledFromThePlaceTheSessionCameFrom(t *testing.T) {
 	p, ana := slackWorkspace(t)
 	got := echoSlack(t, p, 25)
-	out, err := p.SendMessages(t.Context(), ana, sayIn("what were they discussing?", slackRef("D0ANA", "1700000000.000100", "")))
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("what were they discussing?", slackRef("D0ANA", "1700000000.000100", "")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,13 +78,13 @@ func TestContextSaysWhyNothingCanBePulled(t *testing.T) {
 	if err != nil || res.Text != "" || !strings.Contains(res.Note, "did not come from another place") {
 		t.Fatalf("a console conversation's context = %+v, %v", res, err)
 	}
-	pr, err := p.SendMessages(t.Context(), ana, sayIn("review it", &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/web", Kind: "pull", Number: 9}))
+	pr, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("review it", &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/web", Kind: "pull", Number: 9}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	res, err = p.GetContext(t.Context(), ana, pr.ID, "the failing checks")
-	if err != nil || !strings.Contains(res.Note, "github places here yet") || res.Origin != "github://acme/web/pull/9" {
-		t.Fatalf("a place with no resolver = %+v, %v", res, err)
+	if err != nil || !strings.Contains(res.Note, "may not be read here") || res.Origin != "github://acme/web/pull/9" {
+		t.Fatalf("a GitHub place no client is granted = %+v, %v", res, err)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestAnAgentPullsContextFromWhereItWasAsked(t *testing.T) {
 	in.Agents = []string{"*"}
 	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0ANA": "ana"}
 	create(t, p, tenant, in)
-	if _, err := p.SendMessages(t.Context(), admin, sayIn("what were they discussing?", slackRef("C01ANY", "1700000000.000100", ""))); err != nil {
+	if _, err := p.SendSurfaceMessages(t.Context(), admin, sayIn("what were they discussing?", slackRef("C01ANY", "1700000000.000100", ""))); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(30 * time.Second)
@@ -135,7 +135,7 @@ func TestContextHasACorpusResolver(t *testing.T) {
 func TestTheSystemToolGetContextPullsForTheMessageAnswered(t *testing.T) {
 	p, ana := slackWorkspace(t)
 	got := echoSlack(t, p, 1)
-	out, err := p.SendMessages(t.Context(), ana, sayIn("what were they discussing?", slackRef("D0ANA", "1700000000.000100", "")))
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("what were they discussing?", slackRef("D0ANA", "1700000000.000100", "")))
 	if err != nil {
 		t.Fatal(err)
 	}

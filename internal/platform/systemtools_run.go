@@ -119,8 +119,17 @@ func (p *Platform) registerRunTools() error {
 		reads(SystemTool{Name: ToolFileList, Category: read, Run: file(ToolFileList)}),
 		{Name: ToolFileWrite, Category: write, Idempotent: true, Run: file(ToolFileWrite)},
 		{Name: ToolPublish, Category: publish, Run: file(ToolPublish)},
+		// The published files beyond the working directory (artifact_tools.go).
+		reads(SystemTool{Name: ToolArtifactRead, Category: read, Run: of(p.artifactReadTool)}),
+		reads(SystemTool{Name: ToolArtifactList, Category: read, Run: of(p.artifactListTool)}),
 		{Name: ToolOutcome, Category: other, Run: file(ToolOutcome)},
+		// A GitHub run that started as a reply becomes a review
+		// (start_review.go).
+		{Name: ToolStartReview, Category: other, Run: acting(p.startReviewTool)},
 		{Name: ToolShell, Category: write, Destructive: true, Run: acting(p.shellTool)},
+		// A library skill run as a subagent (use_skill.go): an agent call
+		// the host makes, to skill-runner.
+		{Name: ToolUseSkill, Category: operations.CallAgents, Parallel: true, Run: acting(p.useSkillTool)},
 
 		// The public web, read from the server (pkg/webtools).
 		reads(SystemTool{Name: ToolWebSearch, Category: read, Run: of(p.webSearchTool)}),

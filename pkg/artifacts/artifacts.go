@@ -35,6 +35,9 @@ var (
 	ErrNotFound = errors.New("artifacts: not found")
 	ErrInvalid  = errors.New("artifacts: invalid")
 	ErrCursor   = errors.New("artifacts: invalid cursor")
+	// ErrStale refuses a publish that names the version it follows when that
+	// version is no longer its file's latest.
+	ErrStale = errors.New("artifacts: not the latest version")
 )
 
 // Kind says what sort of file an artifact is, for how it is shown.
@@ -473,7 +476,19 @@ func (x *Index) NextID(string) string {
 // Publish records an artifact under an id from NextID. A file with a title
 // already published in the same conversation is the next version of it.
 func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
-	return x.publish(tenantName, a, "")
+	return x.publish(tenantName, a, "", "")
+}
+
+// PublishAfter publishes a as the next version of its file only while after
+// is that file's latest live version, checked in the same write. Anything
+// else is ErrStale: a newer version was published, or after names another
+// file. Nothing is stored then, so a publisher never replaces a version it
+// has not read.
+func (x *Index) PublishAfter(tenantName string, a Artifact, after string) (Artifact, error) {
+	if after == "" {
+		return Artifact{}, fmt.Errorf("%w: a version to follow is needed", ErrInvalid)
+	}
+	return x.publish(tenantName, a, "", after)
 }
 
 // Saved returns the live artifact previously published for a source identity.
@@ -503,10 +518,10 @@ func (x *Index) PublishOnce(tenantName string, a Artifact, identity string) (Art
 	if identity == "" {
 		return Artifact{}, fmt.Errorf("%w: a saved artifact needs a source identity", ErrInvalid)
 	}
-	return x.publish(tenantName, a, identity)
+	return x.publish(tenantName, a, identity, "")
 }
 
-func (x *Index) publish(tenantName string, a Artifact, identity string) (Artifact, error) {
+func (x *Index) publish(tenantName string, a Artifact, identity, after string) (Artifact, error) {
 	if a.ID == "" || a.Key == "" || a.Thread == "" || a.Title == "" {
 		return Artifact{}, fmt.Errorf("%w: an artifact needs an id, a key, a conversation and a title", ErrInvalid)
 	}
@@ -554,6 +569,16 @@ func (x *Index) publish(tenantName string, a Artifact, identity string) (Artifac
 		fv, err := x.read(ctx, tenantName, fk, &file)
 		if err != nil {
 			return err
+		}
+		if after != "" {
+			var followed idEntry
+			av, err := x.read(ctx, tenantName, idKey(after), &followed)
+			if err != nil {
+				return err
+			}
+			if av == state.Missing || len(file.Versions) == 0 || file.Versions[len(file.Versions)-1].Order != followed.Order {
+				return fmt.Errorf("%w: %s", ErrStale, after)
+			}
 		}
 		if len(file.Versions) >= MaxVersions {
 			return fmt.Errorf("%w: a file keeps at most %d versions", ErrInvalid, MaxVersions)
@@ -610,7 +635,7 @@ func (x *Index) publish(tenantName string, a Artifact, identity string) (Artifac
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrInvalid) {
+		if errors.Is(err, ErrInvalid) || errors.Is(err, ErrStale) {
 			return Artifact{}, err
 		}
 		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)

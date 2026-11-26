@@ -1042,6 +1042,22 @@ often it is sent. The one agent a message mentions answers it in the root; a
 message naming nobody is the entry agent's.
 The request may not say where to file the session or who owns it. A Slack
 thread that started as a conversation before root sessions stays one (409).
+A root session's runs may be posted back to the Slack thread that started
+it, whatever its audience: a private session started there answers there, in
+a channel, a group direct message or a direct message (`bridgeMayDeliver`,
+`startedIn`). The same holds for every child in its tree. A private session in
+any other Slack thread, or one started anywhere but the client's own surface,
+is refused. No session in such a tree is a person's own private conversation
+(`ownPrivateConversation`, `treeSurface`), so a person's own credentials,
+connection status and consent links stay out of all of them.
+
+A GitHub pull request or issue has one root session too, keyed by its address
+(`github://<owner>/<repo>/pull/<n>` or `.../issues/<n>`, with the head
+commit left out) and the agent that answered first, which is the key the
+runtime keeps that agent's conversation there under. The platform files the
+run when it admits it (`internal/platform/github_sessions.go`), in the
+project and channel the run is filed in, private to each person the client
+maps an asker's login to ([GitHub sessions](../reference/github.md#sessions)).
 
 ### The dynamic router
 
@@ -2024,7 +2040,7 @@ and its total, What's new and Your projects to the same on both renderers.
   console. Someone the client maps to nobody keeps the mailbox.
 - **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
-  only when it mentions the app's own login (`github.login`): `@humagen what
+  only when it mentions the app's own login (`github.login`): `@Humagen what
   changed?`. One that mentions neither starts nothing, so a busy repository
   wakes no agent. Threads are filed in the client's home.
 

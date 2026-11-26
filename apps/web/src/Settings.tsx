@@ -4,13 +4,13 @@ import {
   BotIcon,
   BrainIcon,
   GaugeIcon,
+  LayersIcon,
   MicIcon,
   MonitorIcon,
   MoonIcon,
   NetworkIcon,
   PaletteIcon,
   PlugIcon,
-  ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
   SunIcon,
@@ -21,7 +21,6 @@ import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
 import { type FormEvent, Fragment, type MouseEvent, type ReactNode, useRef, useState } from "react";
-import { AccessExplain } from "./AccessExplain.tsx";
 import { doing } from "./access.ts";
 import {
   ApiError,
@@ -34,10 +33,10 @@ import {
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
+import { ImageSettings } from "./ImageSettings.tsx";
 import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
-import { ReadAudit } from "./ReadAudit.tsx";
 import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
 import { Avatar, linked, workspaceSettingsRoute } from "./settingsLinks.tsx";
@@ -79,8 +78,6 @@ export function Settings({
   canAdmin,
   section,
   onSection,
-  explain,
-  onExplain,
   onPrefs,
   onWorkspace,
   onOpenProjects,
@@ -99,9 +96,6 @@ export function Settings({
   /** The section on screen. The sidebar links to some of them, so the caller holds it. */
   section: Section;
   onSection: (next: Section) => void;
-  /** The permission the Access section explains. */
-  explain: string;
-  onExplain: (permission: string) => void;
   onPrefs: (next: Preferences) => void;
   onWorkspace: (next: Workspace) => void;
   onOpenProjects: () => void;
@@ -155,8 +149,6 @@ export function Settings({
       .catch(fail("The workspace settings could not be saved."));
   };
 
-  const canReadAudit =
-    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
 
   return (
@@ -176,21 +168,10 @@ export function Settings({
           {section === "notifications" && (
             <PersonalPreferences section="notifications" onSaved={onPrefs} />
           )}
-          {section === "read-audit" &&
-            (canReadAudit ? (
-              <ReadAudit />
-            ) : (
-              <>
-                <h1 className={pageTitle}>{defaultCopy.readAudit.title}</h1>
-                <Problem message={defaultCopy.readAudit.denied} />
-              </>
-            ))}
-
           {section === "voice" && (
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>{defaultCopy.voiceSettings.title}</h1>
-                <p className={pageLede}>{defaultCopy.voiceSettings.lede}</p>
               </header>
               <VoiceSettings canEdit={me.permissions.includes("clients:write")} />
             </>
@@ -207,24 +188,13 @@ export function Settings({
             ))}
 
           {section === "providers" && (
-            <>
-              <header className="pb-2">
-                <h1 className={pageTitle}>Model providers</h1>
-                <p className={pageLede}>
-                  What agents run on. An agent runs once a provider its models name is enabled.
-                </p>
-              </header>
-              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
-            </>
+            <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
           )}
 
           {section === "profile" && (
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Profile</h1>
-                <p className={pageLede}>
-                  How you appear to yourself in this console. Only you see these.
-                </p>
               </header>
               <section className={`${card} flex flex-wrap items-center gap-4`}>
                 <Avatar name={shown} prefs={prefs} size={72} />
@@ -336,10 +306,8 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Workspace</h1>
-                <p className={pageLede}>
-                  Shared by everyone in {who.tenant}.{" "}
-                  {canAdmin ? "" : "Only an admin can change these."}
-                </p>
+                {/* Not a description of the page: why every control on it is off. */}
+                {!canAdmin && <p className={pageLede}>Only an admin can change these.</p>}
               </header>
               <section className="flex items-start gap-3 rounded-aui-lg border border-aui-border bg-aui-surface p-4">
                 <ServerIcon size={20} className="mt-0.5 shrink-0 text-aui-muted" />
@@ -485,6 +453,15 @@ export function Settings({
             </>
           )}
 
+          {section === "images" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>{defaultCopy.images.title}</h1>
+              </header>
+              <ImageSettings canEdit={me.permissions.includes("clients:write")} />
+            </>
+          )}
+
           {section === "limits" && (
             <BillingSettings
               projects={projects}
@@ -501,10 +478,6 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Access</h1>
-                <p className={pageLede}>
-                  What you are signed in as and what you may do. Your identity provider decides
-                  this.
-                </p>
               </header>
               <section className={`${card} flex flex-col gap-2`}>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-aui-sm">
@@ -538,12 +511,7 @@ export function Settings({
                     </li>
                   ))}
                 </ul>
-                <details className="text-aui-xs text-aui-muted">
-                  <summary className="cursor-pointer">Technical permission names</summary>
-                  <p className="mt-2 break-words font-aui-mono">{me.permissions.join(", ")}</p>
-                </details>
               </section>
-              <AccessExplain name={shown} permission={explain} onPermission={onExplain} />
             </>
           )}
         </div>
@@ -580,8 +548,6 @@ export function SettingsNav({
   onSection: (next: Section) => void;
   onNavigate?: (route: Route) => void;
 }) {
-  const canReadAudit =
-    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
   const admin =
     me.principal.roles?.includes("admin") ||
@@ -597,19 +563,11 @@ export function SettingsNav({
   const workspaceEntries: Entry[] = admin
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-        { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
+        { id: "providers", label: defaultCopy.modelProviders.title, icon: <BrainIcon size={16} /> },
+        { id: "images", label: defaultCopy.images.title, icon: <LayersIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
-        ...(canReadAudit
-          ? [
-              {
-                id: "read-audit" as const,
-                label: defaultCopy.readAudit.label,
-                icon: <ScrollTextIcon size={16} />,
-              },
-            ]
-          : []),
         ...(canGovern
           ? [
               {

@@ -160,12 +160,14 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 			e.release(req)
 		}
 	}()
+	asked := req.Text
 	if e.resolve != nil {
 		var err error
 		if req, err = e.resolve(req); err != nil {
 			return turn.Result{}, err
 		}
 	}
+	resolved := req.Text
 	if e.bind != nil {
 		done := e.bind(ctx, req)
 		defer done()
@@ -202,6 +204,12 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 				req.History = append(req.History, native.Message{Role: native.Role(m.Role), Text: m.Text})
 			}
 			req.Text = prepared.Messages[len(prepared.Messages)-1].Text
+			// The skills the host pinned on a call (a loaded skill,
+			// use_skill.go) lead its text, as withSkills put them ahead
+			// of any run's.
+			if _, pinned := wire.Meta(in.Trigger)[runs.MetaSkills]; pinned && resolved != asked && strings.HasSuffix(resolved, asked) {
+				req.Text = resolved[:len(resolved)-len(asked)] + req.Text
+			}
 			// Provenance belongs in the journal, not in the model's prompt.
 			req.Meta = nil
 			in.Trigger = wire.Clone(in.Trigger)

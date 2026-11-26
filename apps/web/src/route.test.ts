@@ -73,8 +73,6 @@ test("canonical session selections survive copied links", () => {
     { page: "conversation", id: "t-1", panel: "details", bench: "browser" },
     { page: "conversation", id: "t-1", panel: "details", bench: "terminal", expanded: true },
     { page: "conversation", id: "t-1", panel: "details", bench: "changes", benchRef: "src/a b.ts" },
-    { page: "conversation", id: "t-1", panel: "details", bench: "sidechat" },
-    { page: "conversation", id: "t-1", panel: "details", bench: "search", benchRef: "pull #42" },
     {
       page: "conversation",
       id: "t-1",
@@ -129,15 +127,37 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
   assert.deepEqual(at("/nowhere"), { page: "not-found", path: "/nowhere" });
   assert.equal(href(at("/nowhere")), "/nowhere");
   assert.equal(documentTitle(at("/nowhere")), "Page not found - Humagen");
-  assert.deepEqual(at("/agents/lead/bogus"), { page: "agent", name: "lead", tab: "prompt" });
+  assert.deepEqual(at("/agents/lead/bogus"), { page: "agent", name: "lead", tab: "home" });
+  assert.deepEqual(at("/agents/lead/look"), { page: "agent", name: "lead", tab: "look" });
+  // An agent opens on its home, and its prompt has an address of its own.
+  assert.deepEqual(at("/agents/lead"), { page: "agent", name: "lead", tab: "home" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "home" }), "/agents/lead");
+  assert.equal(href({ page: "agent", name: "lead", tab: "prompt" }), "/agents/lead/prompt");
+  assert.equal(href({ page: "agent", name: null, tab: "prompt" }), "/agents/new");
+  // A new agent starts from its goal, then is given its look; each step has an address.
+  assert.deepEqual(at("/agents/new"), { page: "agent-create" });
+  assert.deepEqual(at("/agents/new/writer"), { page: "agent-create", template: "writer" });
+  assert.equal(href({ page: "agent-create" }), "/agents/new");
+  assert.equal(href({ page: "agent-create", template: "writer" }), "/agents/new/writer");
+  assert.deepEqual(at("/agents/new/setup"), { page: "agent-setup" });
+  // Settings sections keep addresses of their own.
+  assert.deepEqual(at("/agents/lead/general"), { page: "agent", name: "lead", tab: "general" });
+  assert.deepEqual(at("/agents/lead/slack"), { page: "agent", name: "lead", tab: "slack" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "slack" }), "/agents/lead/slack");
+  assert.equal(href({ page: "agent", name: "lead", tab: "look" }), "/agents/lead/look");
+  assert.deepEqual(at("/agents/lead/review"), { page: "agent", name: "lead", tab: "review" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "review" }), "/agents/lead/review");
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });
 
-test("the read audit has a Settings address", () => {
+test("the legacy read audit address opens the shared Audit page", () => {
   assert.equal(href({ page: "settings", section: "voice" }), "/settings/voice");
   assert.deepEqual(at("/settings/voice"), { page: "settings", section: "voice" });
-  assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
-  assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
+  // The workspace's own sandbox images are a section of the workspace's settings.
+  assert.equal(href({ page: "settings", section: "images" }), "/settings/images");
+  assert.deepEqual(at("/settings/images"), { page: "settings", section: "images" });
+  assert.deepEqual(at("/settings/read-audit"), { page: "audit" });
+  assert.deepEqual(at("/settings/deletions"), { page: "settings", section: "deletions" });
   assert.equal(href({ page: "settings", section: "providers" }), "/settings/providers");
   assert.deepEqual(at("/settings/providers"), { page: "settings", section: "providers" });
   assert.deepEqual(at("/settings/routing"), { page: "settings", section: "providers" });
@@ -417,6 +437,27 @@ test("models are chosen per agent: old shared-chain addresses land on the agents
   assert.deepEqual(parse("/settings/models"), { page: "agents" });
 });
 
+test("a GitHub app's repositories, and one repository's settings, have addresses under Apps", () => {
+  const list: Route = { page: "repositories", client: "gh" };
+  const one: Route = { page: "repositories", client: "gh", repo: "acme/site" };
+  assert.equal(href(list), "/settings/apps/github/gh/repositories");
+  assert.equal(href(one), "/settings/apps/github/gh/repositories/acme/site");
+  assert.deepEqual(parse(href(list)), list);
+  assert.deepEqual(parse(href(one)), one);
+  assert.equal(
+    href({ page: "repositories", client: "a b", repo: "acme/my.site" }),
+    "/settings/apps/github/a%20b/repositories/acme/my.site",
+  );
+  // A half repository name opens the list, and the app's sheet keeps its address.
+  assert.deepEqual(parse("/settings/apps/github/gh/repositories/acme"), list);
+  assert.deepEqual(parse("/settings/apps/github/gh"), {
+    page: "connections",
+    provider: "github",
+    scope: "apps",
+  });
+  assert.match(documentTitle(list), /^Repositories - /);
+});
+
 test("Plugins is a section of your settings and Apps one of the workspace's; old Connections links still open", () => {
   assert.equal(href({ page: "connections" }), "/settings/plugins");
   assert.equal(href({ page: "connections", provider: "notion" }), "/settings/plugins/notion");
@@ -565,11 +606,17 @@ test("a workbench tab is an address of Details, and Details is its default", () 
     id: "t-1",
     panel: "details",
   });
-  assert.deepEqual(at(`/messages/t-1?panel=details&bench=search&benchRef=${"q".repeat(513)}`), {
+  assert.deepEqual(at(`/messages/t-1?panel=details&bench=changes&benchRef=${"q".repeat(513)}`), {
     page: "conversation",
     id: "t-1",
     panel: "details",
-    bench: "search",
+    bench: "changes",
+  });
+  // The Search tab was removed: its old address opens Details.
+  assert.deepEqual(at("/messages/t-1?panel=details&bench=search&benchRef=pull"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
   });
   // The path form of the panel reads the same tab.
   assert.deepEqual(at("/conversations/t-1/details?bench=browser&full=1"), {
@@ -581,9 +628,10 @@ test("a workbench tab is an address of Details, and Details is its default", () 
   });
 });
 
-test("background work is a tab of Scheduled with an address of its own", () => {
-  assert.equal(href({ page: "automations", tab: "background" }), "/scheduled/background");
-  assert.deepEqual(at("/scheduled/background"), { page: "automations", tab: "background" });
+test("Automations has one address, and its old ones (Scheduled, its Background tab) open it", () => {
+  assert.equal(href({ page: "automations" }), "/automations");
+  assert.deepEqual(at("/automations"), { page: "automations" });
   assert.deepEqual(at("/scheduled"), { page: "automations" });
+  assert.deepEqual(at("/scheduled/background"), { page: "automations" });
   assert.deepEqual(at("/scheduled/other"), { page: "automations" });
 });

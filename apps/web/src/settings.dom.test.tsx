@@ -3,10 +3,10 @@ import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Me, Preferences } from "./api.ts";
 import { ClientSettings } from "./Clients.tsx";
-import { stubFetch } from "./dom.ts";
+import { stubFetch, underTitle } from "./dom.ts";
 import type { PrefsRead } from "./preferences.ts";
 import type { SettingsSection } from "./route.ts";
-import { Settings } from "./Settings.tsx";
+import { Settings, SettingsNav } from "./Settings.tsx";
 
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.
@@ -39,21 +39,20 @@ function page(
   prefsRead: PrefsRead,
   section: SettingsSection = "profile",
   onPrefs: (p: Preferences) => void = () => {},
+  reader: { me: Me; canAdmin: boolean } = { me, canAdmin: false },
 ) {
   const noop = () => {};
   return (
     <Settings
-      me={me}
+      me={reader.me}
       prefs={prefs}
       prefsRead={prefsRead}
       workspace={null}
       agents={[]}
       projects={[]}
-      canAdmin={false}
+      canAdmin={reader.canAdmin}
       section={section}
       onSection={noop}
-      explain="runs:read"
-      onExplain={noop}
       onPrefs={onPrefs}
       onWorkspace={noop}
       onOpenProjects={noop}
@@ -119,11 +118,60 @@ test("appearance is the theme alone: no accent presets, no font specimen, nothin
   assert.equal(screen.queryByText("These follow you to any browser you sign in from."), null);
 });
 
-test("the audit address refuses a reader without governance", async () => {
+test("workspace settings have one audit destination alongside the deletion queue", () => {
   net = stubFetch({});
-  render(page(saved, "read", "read-audit"));
-  await screen.findByText("Only workspace administrators may read this audit.");
-  assert.ok(!net.seen.some((r) => r.path === "/api/read-audit"));
+  render(
+    <SettingsNav
+      me={{ ...me, permissions: ["projects:govern", "agents:write"] }}
+      active="Audit"
+      onSection={() => {}}
+      onNavigate={() => {}}
+    />,
+  );
+  assert.equal(screen.getAllByText("Audit", { exact: true }).length, 1);
+  assert.equal(screen.queryByText("Read Audit", { exact: true }), null);
+  assert.ok(screen.getByText("Deletion queue", { exact: true }));
+});
+
+const everySection: SettingsSection[] = [
+  "profile",
+  "notifications",
+  "appearance",
+  "workspace",
+  "providers",
+  "images",
+  "limits",
+  "voice",
+  "connections",
+  "access",
+  "deletions",
+];
+
+test("a settings page is headed by its title alone, with no line of explanation under it", () => {
+  const admin: Me = {
+    ...me,
+    permissions: ["agents:write", "billing:write", "clients:write", "projects:govern"],
+  };
+  for (const section of everySection) {
+    net = stubFetch({});
+    render(page(saved, "read", section, undefined, { me: admin, canAdmin: true }));
+    assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1, section);
+    assert.deepEqual(underTitle(), [], section);
+    cleanup();
+    net.restore();
+  }
+  net = undefined;
+});
+
+test("someone who cannot change the workspace's settings or limits is told only that an admin can", () => {
+  for (const section of ["workspace", "limits"] as const) {
+    net = stubFetch({});
+    render(page(saved, "read", section));
+    assert.deepEqual(underTitle(), ["Only an admin can change these."], section);
+    cleanup();
+    net.restore();
+  }
+  net = undefined;
 });
 
 const clientsCaps = { max: 10, max_per_surface: 5 };

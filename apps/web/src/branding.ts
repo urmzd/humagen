@@ -1,3 +1,5 @@
+import { spelled } from "@humagen/core/spelling";
+import { agentLook } from "./agentHues.ts";
 import type { Branding } from "./api.ts";
 
 export type { Branding };
@@ -13,7 +15,7 @@ function servedName(): string {
 export function servedBranding(name = servedName()): Branding {
   return {
     name,
-    wordmark: name === "Humagen" ? "humagen" : name,
+    wordmark: name,
     title: name,
     logo: null,
     logo_dark: null,
@@ -22,7 +24,36 @@ export function servedBranding(name = servedName()): Branding {
     starters: null,
     copy: {},
     entry_agent: "humagen",
+    terms_url: null,
   };
+}
+
+/** The product's name and the workspace's page of terms, once branding is applied. */
+let brand: { name: string; terms: string | null } = { name: "", terms: null };
+
+/** The product's name from the branding, "" before it is applied. Not the copy key `product`. */
+export function productName(): string {
+  return brand.name;
+}
+
+/** The page of terms the composer's notice links to, or null. Only https with a host is a link. */
+export function termsUrl(): string | null {
+  return brand.terms;
+}
+
+/** Remember the product's name and its page of terms. Anything but an https address is no page. */
+export function setBrand(name: string, terms?: string | null): void {
+  brand = { name, terms: httpsAddress(terms) };
+}
+
+function httpsAddress(address: string | null | undefined): string | null {
+  if (!address?.startsWith("https://")) return null;
+  try {
+    const url = new URL(address);
+    return url.protocol === "https:" && url.hostname ? address : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The entry agent's own name, and the name people see it by, once branding is applied. */
@@ -33,12 +64,35 @@ export function setEntryAgent(agent: string, name: string): void {
   entry = { agent, name };
 }
 
+/** The name the workspace typed for its entry agent, when `name` is that agent. */
+function entryName(name: string): string {
+  return entry.agent !== "" && name === entry.agent ? entry.name : "";
+}
+
 /**
- * The name people see for an agent: the workspace's name for its entry
- * agent, which nobody sees by its own, and every other agent's own name.
+ * The name people see for an agent: its look's display name, else the
+ * workspace's name for its entry agent, else its handle in title case. A
+ * name a person typed is shown as typed; only a handle is written as a name.
  */
 export function agentShown(name: string): string {
-  return entry.agent !== "" && name === entry.agent && entry.name ? entry.name : name;
+  return agentLook(name)?.display_name || entryName(name) || titled(name);
+}
+
+/** A handle as words in title case, with known words spelled their own way. */
+export function titled(handle: string): string {
+  return handle
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => spelled(word) ?? word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * The name an agent is known by before any look: what its default bot is
+ * drawn from, so naming an agent never changes its face.
+ */
+export function brandShown(name: string): string {
+  return entryName(name) || name;
 }
 
 /**
@@ -82,5 +136,6 @@ export function accentAttribute(accent?: string): string {
 export function brandCopy(target: { product?: unknown }, branding: Branding): void {
   if (typeof target.product === "string") target.product = branding.name;
   setEntryAgent(branding.entry_agent || "", branding.name);
+  setBrand(branding.name, branding.terms_url);
   applyCopy(target, branding.copy ?? {});
 }

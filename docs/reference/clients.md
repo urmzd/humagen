@@ -15,9 +15,9 @@ one per agent are all the same record with different values.
 | `credentials` | `token` and `signing_secret`. Written, never read back. See [Secrets](#secrets). |
 | `default_agent` | Answers a request that named no agent. `"*"` searches the agents the client routes to and asks the best few whether to join (see [the dynamic router](../architecture/projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
 | `agents` | The agents the client may route to, besides its default. |
-| `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.automations`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
+| `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. A Slack bot is read through every enabled Slack client in the team, so a mention of an agent's own app's bot names the agent in any of them (see [An agent's own Slack app](#an-agents-own-slack-app)). These three, and `github.automations`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
-| `github` | `auto_review` (see [Automatic review](github.md#automatic-review)), `automations`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
+| `github` | `auto_review` (off when left out; see [Automatic review](github.md#automatic-review)), `automations`, `checks`, `guides`, `mutations`, `read_repositories` (optional extra repositories a run from another surface may read; empty means the repositories the app is installed on, see [Repositories the app is installed on](github.md#repositories-the-app-is-installed-on)), and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). These are the defaults for every repository the client covers; each repository can override automatic review and the default agent, and add instructions, context reads and a cross-surface read switch, in its own settings, kept apart from the record (see [Repository settings](github.md#repository-settings)). |
 | `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). A home in a project the reader may not read is not shown to them, and their change that names no home keeps it. |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 
@@ -446,6 +446,15 @@ withheld. Explicit action-policy Ask still requires the native approval path;
 automatic delivery cannot grant it. Direction edits preserve binding identity and
 require the channel's current version and existing project/client permissions.
 
+People link their own GitHub and Slack accounts in the console
+([accounts a person links](connections.md#accounts-a-person-links)). A link is
+the workspace's, keyed by the surface's own user id, and holds no credential.
+`GET /api/clients/{id}/accounts` (`clients:read`) lists who linked an account
+on a client's surface, and a Slack client lists its own team's.
+`DELETE /api/clients/{id}/accounts/{account}` (`clients:write`, audited)
+removes one, by the surface's user id. A link does not change whom a client
+acts for: its people map does.
+
 GitHub installations may set `github.people`, a bounded exact GitHub-login to
 workspace-subject map. Only that verified installation's map applies. Bot,
 unmapped and disabled-installation actors act for nobody. A mapping does not
@@ -454,3 +463,30 @@ Like a Slack client's `slack.people`, each subject a GitHub client maps is
 recorded in the workspace's people (source `github`) when the client is saved,
 so the Directory lists them before they sign in. The console's connection form
 takes either map as `login=subject` lines.
+
+## An agent's own Slack app
+
+An agent may have a Slack app of its own (RFC 0012): a Slack client whose
+default is the agent, whose `agents` list names it alone, and whose one bot
+stands for it. The console makes one from the agent's Look tab:
+
+1. `GET /api/agents/{name}/slack-app` builds its manifest from the agent's
+   look (display name, greeting, starters, color) on the shared app's
+   scopes and events, with the link that creates it in Slack.
+2. A Slack admin installs it, and the agent's picture is uploaded as its icon.
+3. `POST /api/agents/{name}/slack-app` with its bot token and signing secret
+   asks Slack who the bot is (`auth.test`, then `bots.info`), and makes the
+   client: its identity from Slack, its home, `slack.machine` and
+   `slack.people` copied from the team's other Slack client. It takes
+   `clients:write` and the ownership changing the agent takes.
+
+Its bot names the agent through any of the team's Slack clients. A message
+that mentions it there is that app's to answer: the client it reached posts
+it only, with the agent's name as a plain word, so one message never gets two
+answers. This holds where the platform reads the message, that is for a
+person the reaching client maps; the Slack app answering someone it maps to
+nobody picks its own agent and does not see another client's bots.
+
+An `apps/slack` process serves one client (`HUMAGEN_CLIENT`): run one more
+for each agent's own app, or use the webhook connector, which serves every
+client.

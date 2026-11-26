@@ -1,4 +1,4 @@
-import type { Task } from "@humagen/core";
+import { recoveredCalls, type Task } from "@humagen/core";
 import { describe, expect, it } from "vitest";
 import { callLine, clipTarget, toolsLine } from "./timeline";
 
@@ -100,6 +100,37 @@ describe("toolsLine", () => {
     expect(line.failed).toBe(1);
   });
 
+  it("says a failure a later call recovered as retried, not failed", () => {
+    // The production case: a bare owner/repo was refused, then the full address read.
+    const refused = { status: "error" as const, output: "connector: undeliverable" };
+    const line = toolsLine([
+      call("1", "github_read_context", { address: "urmzd/humagen" }, refused),
+      call("2", "github_read_context", { address: "github://urmzd/humagen/pull/541" }),
+    ]);
+    expect(line).toMatchObject({ text: "Checked 2 sources", failed: 0, retried: 1 });
+  });
+
+  it("keeps a failure no later call recovered as failed", () => {
+    const refused = { status: "error" as const, output: "connector: undeliverable" };
+    const line = toolsLine([
+      call("1", "github_read_context", { address: "github://urmzd/humagen/pull/541" }),
+      call("2", "github_read_context", { address: "urmzd/humagen" }, refused),
+    ]);
+    expect(line).toMatchObject({ failed: 1, retried: 0 });
+  });
+
+  it("counts a retry in a later run of the turn when given the turn's recovered calls", () => {
+    const refused = { status: "error" as const, output: "connector: undeliverable" };
+    const first = call("1", "github_read_context", { address: "urmzd/humagen" }, refused);
+    const later = call("2", "github_read_context", { address: "github://urmzd/humagen/pull/541" });
+    expect(toolsLine([first])).toMatchObject({ failed: 1, retried: 0 });
+    expect(toolsLine([first], undefined, undefined, recoveredCalls([first, later]))).toMatchObject({
+      text: "Checked urmzd/humagen",
+      failed: 0,
+      retried: 1,
+    });
+  });
+
   it("says which call is running", () => {
     const line = toolsLine([
       call("1", "file_read", { path: "a" }),
@@ -108,8 +139,13 @@ describe("toolsLine", () => {
     expect(line).toMatchObject({ text: "Running bash", running: true });
   });
 
-  it("says a call waits on a person", () => {
-    expect(toolsLine([call("1", "deploy", {}, { status: "waiting" })]).waiting).toBe(true);
+  it("says a call waits on a person, and names the waiting call once", () => {
+    const line = toolsLine([
+      call("1", "file_read", { path: "a" }),
+      call("2", "deploy", {}, { status: "waiting" }),
+    ]);
+    expect(line.waiting).toBe(true);
+    expect(line.text).toBe("Deploy");
   });
 });
 

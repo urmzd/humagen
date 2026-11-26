@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { choose, mayRoute } from "./agents.ts";
+import { choose, mayRoute, tagLeading } from "./agents.ts";
 import { NEEDED, readConfig, USEFUL } from "./config.ts";
 import {
   type ClientRecord,
@@ -9,6 +9,7 @@ import {
   type HumagenError,
   httpHumagen,
   staticToken,
+  THREAD_BEFORE_SESSIONS,
 } from "./humagen.ts";
 import { eventKey, runId, sessionOf, tagId, threadKey } from "./keys.ts";
 
@@ -73,6 +74,11 @@ test("choose: a named agent, then the default, then the platform's default", () 
     text: "ask , please",
     how: "named",
   });
+  assert.deepEqual(choose("could @docs-bot look?", agents, {}), {
+    agent: "docs-bot",
+    text: "could look?",
+    how: "named",
+  });
   assert.deepEqual(choose("hello", agents, { defaultAgent: "lead" }), {
     agent: "lead",
     text: "hello",
@@ -84,6 +90,55 @@ test("choose: a named agent, then the default, then the platform's default", () 
   assert.equal(choose("@someone hello", agents, {}).text, "@someone hello");
   // Naming an agent and saying nothing else still sends the words.
   assert.equal(choose("@helper", agents, {}).text, "@helper");
+});
+
+test("choose: the agent named first after the app's opening mention", () => {
+  const addressed = { addressed: true };
+  assert.deepEqual(
+    choose("docs-bot: summarize this", agents, { defaultAgent: "lead" }, addressed),
+    {
+      agent: "docs-bot",
+      text: "summarize this",
+      how: "named",
+    },
+  );
+  assert.deepEqual(choose("ask Helper why did CI fail?", agents, {}, addressed), {
+    agent: "helper",
+    text: "why did CI fail?",
+    how: "named",
+  });
+  // A bare first word is part of the question, even when an agent has that name.
+  assert.equal(
+    choose("helper broke it", agents, { defaultAgent: "lead" }, addressed).agent,
+    "lead",
+  );
+  // "ask" alone, or a first word that is no agent, names nobody.
+  assert.equal(
+    choose("ask what changed", agents, { defaultAgent: "lead" }, addressed).agent,
+    "lead",
+  );
+  assert.equal(
+    choose("helpers: welcome", agents, { defaultAgent: "lead" }, addressed).agent,
+    "lead",
+  );
+  // An agent this surface may not route to is no name.
+  const narrow = { client: client({ default_agent: "lead", agents: ["lead"] }) };
+  assert.equal(choose("helper: look", agents, narrow, addressed).agent, "lead");
+});
+
+test("choose: a thread reply or a direct message reads its first word as words", () => {
+  // Not addressed: no opening mention of the app.
+  assert.equal(choose("helper: broke it", agents, { defaultAgent: "lead" }).agent, "lead");
+  assert.equal(choose("ask helper why", agents, { defaultAgent: "lead" }).agent, "lead");
+  // An @name anywhere still tags, as before.
+  assert.equal(choose("@helper look", agents, { defaultAgent: "lead" }).agent, "helper");
+});
+
+test("tagLeading writes the agent named first as the tag the platform reads", () => {
+  assert.equal(tagLeading("ask docs-bot summarize", agents), "@docs-bot summarize");
+  assert.equal(tagLeading("docs-bot: summarize", agents), "@docs-bot summarize");
+  assert.equal(tagLeading("docs-bot summarize", agents), "docs-bot summarize");
+  assert.equal(tagLeading("what changed?", agents), "what changed?");
 });
 
 test("choose: @auto names nobody, and * as the default lets agents decide where the surface may route to any agent", () => {
@@ -317,6 +372,27 @@ test("a person's projects are read for them through the client, every page", asy
   );
 });
 
+test("a failure humagen gives a code for carries it, and one without has none", async () => {
+  const { fn } = fakeFetch([
+    json({ error: "this thread started before sessions", code: "thread_before_sessions" }, 409),
+    json({ error: "nobody is listening in this thread" }, 409),
+  ]);
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token: staticToken(), fetch: fn });
+  const body = {
+    text: "and the invoice?",
+    act_as: { client: "app", user: "U0ANA" },
+    surface: { client: "app", channel: "C01", ts: "1.1", message: "1.2", app_user: "U0APP" },
+  };
+  await assert.rejects(
+    c.postSession(body),
+    (e: HumagenError) => e.status === 409 && e.code === THREAD_BEFORE_SESSIONS,
+  );
+  await assert.rejects(
+    c.postSession(body),
+    (e: HumagenError) => e.status === 409 && e.code === undefined,
+  );
+});
+
 test("a refusal carries the limit, a missing object is null, and an error keeps its status", async () => {
   const { fn } = fakeFetch([
     json(
@@ -504,7 +580,8 @@ test("the README's least privilege and the app's own lists cover every route it 
     const m = /^ {4}(get|post|put|patch|delete):$/.exec(line);
     if (m) method = (m[1] ?? "").toUpperCase();
     const x = /^ {6}x-permission: (\S+)$/.exec(line);
-    if (x && path && method) need.set(`${method} ${path}`, x[1] ?? "");
+    // The spec writes a permission bare or quoted: both name the same one.
+    if (x && path && method) need.set(`${method} ${path}`, (x[1] ?? "").replace(/^"|"$/g, ""));
   }
   // The routes the app calls, as httpHumagen's table says.
   const routes = [

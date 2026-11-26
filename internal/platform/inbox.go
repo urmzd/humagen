@@ -193,8 +193,12 @@ func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Pa
 	if !who.Can(perm) {
 		return fmt.Errorf("%w: %s needs %s", ErrForbidden, action, perm)
 	}
-	if part.Question != nil && part.Question.Kind == budgetTopic && !who.Can(auth.BillingWrite) {
-		return fmt.Errorf("%w: granting a run more than its limit needs %s", ErrForbidden, auth.BillingWrite)
+	if part.Question != nil {
+		// What answering it takes of anyone, as answering checks it. Whom it
+		// is addressed to is decided by whom the inbox shows it to.
+		if _, err := heldToAnswer(who, *part.Question); err != nil {
+			return err
+		}
 	}
 	if part.Type == inbox.PartMemory && part.Memory != nil {
 		return p.ownsHome(tree, who, part.Memory.Owner)
@@ -910,8 +914,10 @@ func (p *Platform) inboxMemoryCompletion(run runs.Run, owner string, notes []mem
 
 // inboxArtifact says in the inbox that a file was published. A new version
 // replaces the message about the one before it, so a file revised ten times
-// is one message about its latest version, not ten.
-func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
+// is one message about its latest version, not ten. to, when set, is the one
+// person the message is addressed to (a publish aimed at person:<name>);
+// everyone who may read the file is told otherwise.
+func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact, to string) {
 	part := inbox.ArtifactPart{
 		ID: a.ID, Title: a.Title, Kind: string(a.Kind), Mime: a.Mime, Size: a.Size, Version: a.Version, Description: a.Description,
 	}
@@ -944,7 +950,7 @@ func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
 		}
 	}
 	p.raiseInbox(tenant, artifactKey(a.ID), inbox.Message{
-		Kind: inbox.KindArtifact, Subject: subject, From: from, Severity: inbox.Info,
+		Kind: inbox.KindArtifact, Subject: subject, From: from, Severity: inbox.Info, To: to,
 		Source: inbox.Source{Run: a.Run, Thread: a.Thread, Agent: a.Agent, Project: a.Project},
 		Parts:  []inbox.Part{{Type: inbox.PartArtifact, State: inbox.PartInfo, Artifact: &part}},
 	}, a.CreatedAt)
@@ -1012,6 +1018,10 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 		return runs.Run{}, fmt.Errorf("%w: only a turn a person asked can be started again", ErrAction)
 	}
 	if err := p.mayRetry(who, run.ID); err != nil {
+		return runs.Run{}, err
+	}
+	// A Slack app asks a turn again itself, as a person's (apps/slack), never through here.
+	if err := p.MayAskForNobody(who); err != nil {
 		return runs.Run{}, err
 	}
 	// Whoever pressed it asked for it, so they do not approve its calls.

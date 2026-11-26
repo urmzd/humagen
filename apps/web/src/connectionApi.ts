@@ -4,9 +4,10 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  LinkedAccount,
 } from "../../../packages/client/src/generated/types.ts";
 import { call } from "./api.ts";
-export type { ConnectionPreset, ConnectionHealth, ConnectionDetail };
+export type { ConnectionPreset, ConnectionHealth, ConnectionDetail, LinkedAccount };
 const path = (provider: string) => `/api/connections/${encodeURIComponent(provider)}`;
 export const connectionApi = {
   detail: (provider: string) => call<ConnectionDetail>("GET", path(provider)),
@@ -19,10 +20,24 @@ export const connectionApi = {
       code,
       ...(installation_id ? { installation_id } : {}),
     }),
+  /** Ends the account link consent a state names; no code goes with it. */
+  endConsent: (state: string) => call<void>("POST", "/api/connections/consents/end", { state }),
   disconnect: (provider: string) => call<void>("DELETE", path(provider)),
   check: (provider: string) => call<ConnectionHealth>("POST", `${path(provider)}/check`),
   checkClient: (id: string) =>
     call<ConnectionHealth>("POST", `/api/clients/${encodeURIComponent(id)}/check`),
+  /** Who linked a GitHub or Slack account on a client's surface. */
+  linkedAccounts: (client: string) =>
+    call<{ accounts: LinkedAccount[] }>(
+      "GET",
+      `/api/clients/${encodeURIComponent(client)}/accounts`,
+    ).then((r) => r.accounts),
+  /** An administrator unlinks the account a surface user linked. */
+  unlinkAccount: (client: string, account: string) =>
+    call<void>(
+      "DELETE",
+      `/api/clients/${encodeURIComponent(client)}/accounts/${encodeURIComponent(account)}`,
+    ),
   useSource: (name: string, oauth: "drive" | "onedrive") =>
     call("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { oauth }),
 };

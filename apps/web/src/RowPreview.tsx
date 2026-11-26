@@ -1,19 +1,22 @@
 import { defaultCopy } from "@humagen/components";
-import { AgentInitials } from "@humagen/web";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ThreadSummary } from "./api.ts";
-import { PersonMark } from "./PersonMark.tsx";
-import { placePeek, updatedWhen } from "./peek.ts";
+import { age } from "./conversationList.ts";
+import { PEEK_WIDTH, placePeek } from "./peek.ts";
 
 /** How long a pointer rests on a row before its preview opens, and a finger holds for one. */
 export const PEEK_MS = 450;
 export const HOLD_MS = 500;
 
+/** Closes the preview that is showing: one shows at a time, by pointer or by keyboard. */
+let closeShown: (() => void) | undefined;
+
 /**
- * Opens a preview of something on hover, after the pointer rests, or on a
- * long press with a finger. A long press does not also click: the click that
- * follows it is swallowed. Leaving, scrolling or Escape closes it.
+ * Opens a preview of something on hover, after the pointer rests, on a long
+ * press with a finger, or when keyboard focus rests on it. A long press does
+ * not also click: the click that follows it is swallowed. Leaving, scrolling
+ * or Escape closes it.
  */
 export function usePeek() {
   const [at, setAt] = useState<DOMRect | null>(null);
@@ -23,7 +26,16 @@ export function usePeek() {
   const close = useCallback(() => {
     stop();
     setAt(null);
+    if (closeShown === close) closeShown = undefined;
   }, [stop]);
+  const show = useCallback(
+    (el: HTMLElement) => {
+      if (closeShown !== close) closeShown?.();
+      closeShown = close;
+      setAt(el.getBoundingClientRect());
+    },
+    [close],
+  );
   useEffect(() => {
     if (!at) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
@@ -36,24 +48,39 @@ export function usePeek() {
       document.removeEventListener("pointerdown", close, true);
     };
   }, [at, close]);
-  useEffect(() => stop, [stop]);
+  useEffect(
+    () => () => {
+      stop();
+      if (closeShown === close) closeShown = undefined;
+    },
+    [stop, close],
+  );
   const bind = {
     onPointerEnter: (e: React.PointerEvent<HTMLElement>) => {
       if (e.pointerType !== "mouse") return;
       const el = e.currentTarget;
       stop();
-      timer.current = window.setTimeout(() => setAt(el.getBoundingClientRect()), PEEK_MS);
+      timer.current = window.setTimeout(() => show(el), PEEK_MS);
     },
     onPointerLeave: (e: React.PointerEvent<HTMLElement>) => {
       if (e.pointerType === "mouse") close();
     },
+    onFocus: (e: React.FocusEvent<HTMLElement>) => {
+      // Keyboard focus only: a click or a tap focuses it too, and opens it.
+      const el = e.currentTarget;
+      if (!el.matches(":focus-visible")) return;
+      stop();
+      // After the rest, so the scroll that brings it into view does not close it.
+      timer.current = window.setTimeout(() => show(el), PEEK_MS);
+    },
+    onBlur: close,
     onTouchStart: (e: React.TouchEvent<HTMLElement>) => {
       const el = e.currentTarget;
       held.current = false;
       stop();
       timer.current = window.setTimeout(() => {
         held.current = true;
-        setAt(el.getBoundingClientRect());
+        show(el);
       }, HOLD_MS);
     },
     onTouchMove: stop,
@@ -63,7 +90,11 @@ export function usePeek() {
       if (held.current) e.preventDefault();
     },
     onClickCapture: (e: React.MouseEvent) => {
-      if (!held.current) return;
+      // Opening it, by a click or by Enter, puts the preview away.
+      if (!held.current) {
+        close();
+        return;
+      }
       held.current = false;
       e.preventDefault();
       e.stopPropagation();
@@ -72,7 +103,11 @@ export function usePeek() {
   return { at, bind, close };
 }
 
-/** A card over the page, beside what it previews; drawn into the body so no list clips it. */
+/**
+ * A card over the page, beside what it previews and centred on it; drawn into
+ * the body so no list clips it. It is measured before it paints, so a title
+ * that wraps stays centred.
+ */
 export function PeekCard({
   at,
   id,
@@ -84,14 +119,25 @@ export function PeekCard({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const place = placePeek(at, { width: window.innerWidth, height: window.innerHeight });
+  const card = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number>();
+  // Every render: React skips the update when the height has not changed.
+  useLayoutEffect(() => {
+    setHeight(card.current?.offsetHeight);
+  });
+  const place = placePeek(
+    at,
+    { width: window.innerWidth, height: window.innerHeight },
+    { width: PEEK_WIDTH, height: height ?? 64 },
+  );
   return createPortal(
     <div
+      ref={card}
       id={id}
       role="tooltip"
       data-peek
       onPointerDown={onClose}
-      className="humagen-pop fixed z-[60] flex flex-col gap-1 rounded-aui border border-[var(--humagen-rule)] bg-aui-bg px-3 py-2.5 text-aui-xs shadow-lg"
+      className="humagen-glass-pop humagen-pop fixed z-[60] flex flex-col gap-1 rounded-aui-lg px-3.5 py-3"
       style={{ top: place.top, left: place.left, width: place.width }}
     >
       {children}
@@ -100,35 +146,26 @@ export function PeekCard({
   );
 }
 
-/** What a sidebar row's preview says: title, project, when it moved, and its last line by whom. */
-export function ConversationPeek({
-  task,
-  project,
-}: {
-  task: ThreadSummary;
-  /** The project's title, or none when it is in no project. */
-  project?: string;
-}) {
+/**
+ * What a sidebar row's preview says: its whole title, its status in words when
+ * it has one, and how long ago it moved. The row's badge is a glyph alone, so
+ * this is where a finger or a keyboard reads why it failed or what it waits
+ * for. The row's own description already says it to a screen reader.
+ */
+export function ConversationPeek({ task, status }: { task: ThreadSummary; status?: string }) {
   const words = defaultCopy.sidebar;
+  const when = age(task.updated_at, Date.now());
   return (
     <>
-      <span className="line-clamp-2 text-aui-sm font-medium text-aui-fg">
+      <span className="line-clamp-3 break-words text-aui-sm text-aui-fg">
         {task.title || "Untitled conversation"}
       </span>
-      <span className="truncate text-aui-2xs text-aui-muted">
-        {project || words.outsideProject} | {words.updated(updatedWhen(task.updated_at))}
-      </span>
-      {task.last && (
-        <span className="mt-1 flex items-start gap-1.5 text-aui-muted">
-          {task.last_by &&
-            (task.last_agent ? (
-              <AgentInitials name={task.last_by} size={16} />
-            ) : (
-              <PersonMark name={task.last_by} size={16} />
-            ))}
-          <span className="line-clamp-2 min-w-0 flex-1 text-aui-fg">{task.last}</span>
+      {status && (
+        <span aria-hidden data-peek-status className="break-words text-aui-xs text-aui-fg">
+          {status}
         </span>
       )}
+      <span className="text-aui-xs text-aui-muted tabular-nums">{words.movedAgo(when)}</span>
     </>
   );
 }

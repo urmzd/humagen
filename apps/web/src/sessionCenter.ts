@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components/copy";
 import type {
+  AgentSession,
   AgentSessionSummary,
   Alert,
   AlertCount,
@@ -24,6 +25,9 @@ export const sessionCenter = {
   waiting: () => call<AlertCount>("GET", "/api/alerts/count").then((r) => r.waiting),
   change: (id: string, body: ChangeAlertStateBody) =>
     call<Alert>("PATCH", `/api/alerts/${encodeURIComponent(id)}`, body),
+  /** Open the session where the reader reviews an alert: it starts with the agent's recap. */
+  review: (id: string) =>
+    call<AgentSession>("POST", `/api/alerts/${encodeURIComponent(id)}/review`),
 };
 export const isRootSession = (s: AgentSessionSummary) => !s.parent.startsWith("s_");
 /**
@@ -86,14 +90,32 @@ export function alertPage(a: Alert): Route | undefined {
   return route.page === "not-found" ? undefined : route;
 }
 
-/** Where opening an alert goes: its session, or the page its action names when it has no session. */
+/**
+ * A health alert from before kept a session of its own and named only its
+ * run. The run's own address opens the answer it is about.
+ */
+const heldApart = (a: Alert) => a.kind === "eval" && !a.message && !!a.run_id;
+
+/** Where opening an alert goes: the answer it is about, its session, or the page its action names. */
 export function alertDestination(a: Alert): Route | undefined {
+  if (heldApart(a)) return { page: "message", id: a.run_id! };
   if (a.session) return { page: "conversation", id: a.session, message: a.message };
   return alertPage(a);
 }
 
+/** Where an alert's View goes from its card: the message it is about, in its session. */
+export function alertOrigin(a: Alert): Route {
+  if (heldApart(a)) return { page: "message", id: a.run_id! };
+  const anchor = a.message || a.run_id;
+  return { page: "conversation", id: a.session!, ...(anchor ? { message: anchor } : {}) };
+}
+
+/** Whether a person may ask an agent about an alert: one raised for review, on a session. */
+export const reviewable = (a: Alert) => !!a.session && a.action === "review";
+
 /** What an alert's action button says: the page it opens, or the action's own name. */
 export function alertActionLabel(a: Alert): string {
+  if (a.action === "approve") return defaultCopy.attention.reviewApproval;
   const page = alertPage(a);
   const words = defaultCopy.corpora;
   if (!page) return alertAction(a);

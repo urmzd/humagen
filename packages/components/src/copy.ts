@@ -109,6 +109,74 @@ export const defaultCopy = {
         "Use whole numbers: 1–1024 GiB, 1–10,000 rows, 1–600 seconds and 1–720 refresh hours.",
     },
   },
+  /** A GitHub app's repositories under Apps, and one repository's settings. */
+  githubRepos: {
+    title: "Repositories",
+    back: "Apps",
+    open: "Repositories",
+    search: "Find a repository",
+    loading: "Reading repositories",
+    failed: "The repositories could not be read.",
+    retry: "Retry",
+    empty: "No repositories yet",
+    checkAgain: "Check Again",
+    noMatch: "No repository matches that search.",
+    notListed:
+      "GitHub did not list the installation's repositories, so only the ones this app names are shown.",
+    truncated: "Only the first 1,000 repositories are shown.",
+    columns: {
+      repository: "Repository",
+      review: "Automatic review",
+      agent: "Answers",
+      reads: "Other surfaces",
+    },
+    custom: "Custom",
+    /** How a repository's automatic review reads, in the list and its choice. */
+    review: {
+      off: "Off",
+      opened: "When opened",
+      pushes: "On each push",
+      both: "When opened and on each push",
+    },
+    follow: (what: string) => `App default (${what})`,
+    noAgent: "No agent",
+    readable: "Readable",
+    ownRuns: "Own runs only",
+    form: {
+      review: "Automatic review",
+      agent: "Answers a mention that names no agent",
+      instructions: "Instructions for runs here",
+      reads: "Read before a run starts",
+      readDiff: "The pull request's description and changed files",
+      readIssues: "Issues it links in this repository",
+      crossSurface: "Readable from other surfaces",
+      crossSurfaceHint: "Off keeps this repository to runs on its own issues and pull requests.",
+      keptBy: (apps: string[]) =>
+        `${apps.join(", ")} keeps this repository to runs on its own issues and pull requests, for the whole workspace, whatever is set here.`,
+      save: "Save",
+      saving: "Saving…",
+      reset: "Use App Defaults",
+      saved: "Repository settings saved",
+      wasReset: "Repository returned to the app's defaults",
+      conflict: "These settings changed since you opened them. Reload to see them.",
+      reload: "Reload",
+      readOnly: "A workspace administrator changes repository settings.",
+    },
+  },
+  /** A GitHub app's automation rules: what starts a session, and how it answers. */
+  githubRules: {
+    /**
+     * What a rule's sessions answer with. Only a session on a pull request
+     * can review, so the choice shows for pull request and check run rules.
+     * Left unset, a pull request rule reviews and any other replies.
+     */
+    shape: {
+      label: "Answers with",
+      hint: "A review posts findings on the pull request. A reply is prose.",
+      review: "Review",
+      reply: "Reply",
+    },
+  },
   githubTabs: {
     repository: "Repository",
     address: "GitHub URL or #number",
@@ -531,6 +599,16 @@ export const defaultCopy = {
   },
   agentStore: {
     title: "Store",
+    /** What the Store is, under its title. */
+    lede: "Ready-made teams of agents. Installing a package adds its agents to your workspace, where you can change them like your own. Removing retires them; their history stays.",
+    configure: "Configure",
+    view: "View Agents",
+    moreFor: (title: string) => `More for ${title}`,
+    connect: (what: string) => `Connect ${what}`,
+    /** A system by its name alone, in "Connect GitHub". */
+    surface: (surface: string) =>
+      ({ github: "GitHub", slack: "Slack" })[surface] ??
+      surface.charAt(0).toUpperCase() + surface.slice(1),
     installed: "Installed",
     install: "Install",
     restore: "Restore Missing",
@@ -880,6 +958,12 @@ export const defaultCopy = {
       add: "Add",
       none: "None yet.",
       create: "Create Corpus",
+      /** The sources a new corpus starts with, chosen as it is made. */
+      sources: "Sources",
+      sourcesHint:
+        "What it searches. Pick sources already in the workspace and systems already connected; you can connect a new system or upload files once it is made.",
+      noSources:
+        "Nothing is in the workspace yet. Connect a system or upload files once it is made.",
       save: "Save",
       cancel: "Cancel",
       created: (name: string) => `${name} created`,
@@ -1757,15 +1841,78 @@ export const defaultCopy = {
     all: "All Selected Agents",
     mode: "Who answers",
   },
+  /**
+   * Continuing a conversation imported from another tool: the action on a
+   * document's row, its failures, and what the new conversation says of its
+   * origin. A tool is named as its import names it ("imported from TOOL").
+   */
+  continueImport: {
+    action: "Continue Conversation",
+    /** The row for one project, when the source is filed in more than one. */
+    actionIn: (project: string) => `Continue in ${project}`,
+    /** The workspace itself, as a place to continue in. */
+    workspace: "Workspace",
+    menu: (title: string) => `Actions for ${title}`,
+    starting: (title: string) => `Starting a conversation from ${title}…`,
+    reload: "Reload Documents",
+    forbidden: "You are not allowed to start a conversation from this document.",
+    gone: "This document or its source is no longer here, or you can no longer see it.",
+    tooLarge: "This conversation is too large to continue.",
+    failed: "The conversation could not be started.",
+    tools: {
+      claude: "Claude Code",
+      codex: "Codex",
+      chatgpt: "ChatGPT",
+      "claude-ai": "claude.ai",
+    },
+    heading: (tool: string) => `Imported from ${tool}`,
+    headingUnknown: "Imported document",
+    speakers: {
+      user: "User",
+      assistant: "Assistant",
+      tool: "Tool call",
+      result: "Tool result",
+      document: "Document",
+    },
+    /** How a turn is named: its speaker there, and the tool it is from. */
+    speaker: (speaker: string, tool: string) => `${speaker}, imported from ${tool}`,
+    turnCut: "Shortened",
+    facts: "What was carried over",
+    sent: (sent: number, kept: number) =>
+      `${sent} of ${kept} ${kept === 1 ? "turn" : "turns"} sent`,
+    mainPath: "Main path",
+    oneBlock: "Sent as one block",
+    speakersUnknown: "Speakers not known",
+    shortened: (n: number) => `${n} shortened to fit`,
+    branches: (n: number) => `${n} ${n === 1 ? "branch" : "branches"} not continued`,
+    noBranches: "No other branches",
+    files: (n: number) => `Files on ${n} ${n === 1 ? "turn" : "turns"} not imported`,
+    importLeftOut: (n: number) => `Import left out ${n} ${n === 1 ? "turn" : "turns"}`,
+    importShortened: (n: number) => `Import shortened ${n} ${n === 1 ? "turn" : "turns"}`,
+    importUnknown: "What the import left out is not known",
+    started: "Started",
+    ended: "Last turn",
+    revision: (short: string) => `Revision ${short}`,
+    changedSince: "The document has changed in its source since this conversation was started.",
+    goneSince: "The document is no longer in its source.",
+  },
   conversationAccess: {
     title: "People & Access",
-    add: "Add Participant",
-    handle: "Person handle or agent name",
-    kind: "Participant type",
-    person: "Person",
-    agent: "Agent",
+    add: "Invite",
+    handle: "Add people",
+    search: "Search by name or @handle",
+    /** No one in the directory matches; Invite still adds the handle as typed. */
+    noMatch: "No one in the workspace matches. Invite adds this handle.",
+    added: "Added",
+    people: "People",
+    /** The list's heading, with how many people are in. */
+    inHere: (n: number) => `In this conversation · ${n}`,
+    /** Under the people: where a conversation's agents come from. */
+    agentsNote: "Agents are not invited: the ones its project turns on can answer here.",
     remove: "Remove",
+    removeOne: (name: string) => `Remove ${name}`,
     owner: "Owner",
+    you: "(you)",
     failed: "Access could not be changed.",
     updated: "Access updated.",
     makePrivate: "Make Private",
@@ -2012,8 +2159,9 @@ export const defaultCopy = {
     stepNeedsYou: "waiting for you",
     openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
-    workedFor: (time: string) => `Worked for ${time}`,
-    worked: "Worked",
+    /** Under a long ask one agent gave another: show all of it, or its first lines again. */
+    askMore: "Show all",
+    askLess: "Show less",
     /**
      * A run of tool calls between two parts of an answer, as one line, and
      * each call in it as a row. `one` names what a lone call was pointed at;
@@ -2066,11 +2214,17 @@ export const defaultCopy = {
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
       failed: (n: number) => `${n} failed`,
+      /** Calls that failed and that a later call in the turn recovered: said quietly, not as a failure. */
+      retried: (n: number) => `${n} retried`,
+      /** A row for a failed call that a later call recovered. */
+      retriedRow: "retried",
       /** Every call in the run failed, so there is nothing done to name. */
       allFailed: (n: number) => `${n} steps failed`,
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
+      /** A call waiting on a person, when it has no title of its own. */
+      waitingCall: "A tool call",
       showMore: "Show more",
       showLess: "Show less",
       arguments: "Arguments",
@@ -2078,6 +2232,37 @@ export const defaultCopy = {
       noResult: "No result",
       openFile: (path: string) => `Open ${path} in the Workspace`,
       details: (what: string) => `Details of ${what}`,
+      /** The failed count, as a button that opens the run of steps at its failures. */
+      showFailed: (n: number) => `${n} failed, show ${n === 1 ? "it" : "them"}`,
+      showDetails: "Show details",
+      hideDetails: "Hide details",
+      input: "Input",
+      copyCommand: "Copy command",
+      /** How long a step has run so far, for a reader of the screen. */
+      elapsed: (time: string) => `Running for ${time}`,
+    },
+    /** A delegated run that failed: why, the way to its run, and Retry. */
+    callFailure: {
+      details: "Show details",
+      retry: "Retry",
+      retrying: "Retrying",
+      /** Posted: the agent was asked again, in the conversation's next message. */
+      retried: "Asked again",
+      retryFailed: "Could not ask again. Try once more.",
+    },
+    /** A connection a run needed that the person has not made. */
+    connect: {
+      title: (name: string) => `${name} is not connected`,
+      body: (name: string) =>
+        `The agent needed your ${name} account and could not use it. Connect it, then ask again.`,
+      action: (name: string) => `Connect ${name}`,
+    },
+    /** A GitHub reference in an answer, as a chip. */
+    githubRef: {
+      pull: (ref: string) => `Pull request ${ref}`,
+      issue: (ref: string) => `Issue ${ref}`,
+      commit: (ref: string) => `Commit ${ref}`,
+      ref: (ref: string) => `GitHub ${ref}`,
     },
     /** The files a finished turn changed, as one card under it. */
     changes: {
@@ -2091,7 +2276,6 @@ export const defaultCopy = {
       more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
-    reply: "Reply",
     question: "Clarification",
     answerChoice: "Use This Answer",
     questionHint: "This answers the question. Approvals for actions remain separate.",
@@ -2104,6 +2288,182 @@ export const defaultCopy = {
     artifactDraft: "Saved artifact",
     artifactHint:
       "Review and download this version, or ask its agent for a revision in the conversation.",
+  },
+  agentLook: {
+    tab: "Appearance",
+    name: "Display name",
+    nameHint: "What people call it in the console and in Slack. People still tag it by its handle.",
+    greeting: "Greeting",
+    greetingHint:
+      "A sentence or two in its voice, shown where people meet it, such as the Slack app's Home.",
+    starters: "Starters",
+    starterTitle: (n: number) => `Starter ${n} title`,
+    starterPrompt: (n: number) => `Starter ${n} message`,
+    starterTitlePlaceholder: "Summarize the latest reports",
+    starterPromptPlaceholder: "The message it sends",
+    character: "Character",
+    /** Each mascot an agent may be drawn as. */
+    characters: {
+      detective: "Detective",
+      writer: "Writer",
+      engineer: "Engineer",
+      scientist: "Scientist",
+      inspector: "Inspector",
+      spy: "Secret agent",
+      plain: "Plain",
+    },
+    shape: "Shape",
+    color: "Color",
+    colorTaken: "Another agent has this color",
+    face: "Face",
+    faces: { eyes: "Eyes", mouth: "Eyes and mouth" },
+    finish: "Finish",
+    finishes: { fabric: "Fabric", plastic: "Plastic", smooth: "Smooth", flat: "Flat" },
+    hat: "Hat",
+    hats: { none: "None", beret: "Beret", beanie: "Beanie", party: "Party", crown: "Crown" },
+    glasses: "Glasses",
+    glassesKinds: { none: "None", round: "Round", square: "Square", shades: "Shades" },
+    headphones: "Headphones",
+    bowTie: "Bow tie",
+    shuffle: "Shuffle",
+    reset: "Use Default Appearance",
+    discard: "Discard",
+    save: "Save Appearance",
+    saved: "Appearance saved",
+    defaultBadge: "Default",
+    readOnly: "Only the agent's owners can change how it looks.",
+    nameTaken: "Another agent is called that. Pick another name.",
+    colorTakenNow: "Another agent took that color. Pick another.",
+    failed: "The appearance could not be saved.",
+    atCreate: "How it looks",
+    notKeptAtCreate:
+      "The agent was made, but its appearance was not kept. Set it on its Appearance tab.",
+  },
+  agentHome: {
+    tab: "Home",
+    ask: (name: string) => `Ask ${name}`,
+    askPlaceholder: (name: string) => `Ask ${name} to…`,
+    hello: (name: string) => `Hi, I'm ${name}.`,
+    editLook: "Edit Appearance",
+    settings: "Settings",
+    putToWork: (name: string) => `Put ${name} to work`,
+    noGreeting: "Nobody has written what this agent says about itself yet.",
+    noStarters: "It offers no starters yet.",
+    noStartersOwner: "It offers no starters yet. Add them on its Appearance tab.",
+    addStarters: "Add Starters",
+    paused: (name: string) => `${name} is paused and answers nobody until it is resumed.`,
+    startFailed: "The session could not be started. Try again.",
+    startRefused: (why: string) => `The session was not started: ${why}`,
+    lastDay: (runs: number, failed: number) =>
+      `${runs} run${runs === 1 ? "" : "s"} in the last day${failed > 0 ? `, ${failed} failed` : ""}`,
+  },
+  agentCreate: {
+    title: "New Agent",
+    artTitle: "Your own agent",
+    artLine: "Give it a goal, a name and a look. People ask it in sessions and in Slack.",
+    goal: "What's it for?",
+    goalHint: "Pick the outcome you want. You can change everything after.",
+    search: "Search templates",
+    templates: "Templates",
+    noMatch: (q: string) => `No template matches "${q}".`,
+    describe: (builder: string) => `Describe It to ${builder}`,
+    continue: "Continue",
+    customize: "Make it yours",
+    customizeHint:
+      "Its instructions, tools and starters come from the template. Change any of them later in its settings.",
+    name: "Name",
+    handle: (handle: string) => `People tag it as @${handle}.`,
+    nameNeeded: "Give it a name with at least one letter or digit.",
+    startsOn: (provider: string, model: string) => `It starts on ${provider} / ${model}.`,
+    noModel: "No model is set up yet. Ask an administrator to add a model provider first.",
+    back: "Back",
+    create: "Create Agent",
+    creating: "Creating…",
+    failed: "The agent could not be created.",
+    taken: "An agent or a person already has that name. Try another.",
+    retired: "An agent with that name was retired, and its name stays taken. Try another.",
+    lookNotKept: (name: string) =>
+      `${name} was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Appearance.`,
+    retryLook: "Save Appearance Again",
+    openWithoutLook: "Open Without Appearance",
+    templatesFailed: "The templates could not be read.",
+    unknownTemplate: "That template is not offered any more. Pick another.",
+    retry: "Retry",
+  },
+  agentSettings: {
+    nav: "Agent settings",
+    section: "Section",
+    groups: { general: "General", access: "Access", tools: "Tools", behavior: "Behavior" },
+    sections: {
+      general: "General",
+      look: "Appearance",
+      prompt: "Instructions",
+      access: "Sharing and Calls",
+      slack: "Slack",
+      queue: "Approvals",
+      context: "Skills and Knowledge",
+      model: "Model",
+      review: "Reviews",
+      memory: "Memory",
+      evals: "Evals",
+      alerts: "Rules",
+      revisions: "Revisions",
+    },
+    home: "Home",
+    settings: "Settings",
+    rename: "Rename",
+    renameLabel: "Display name",
+    save: "Save",
+    cancel: "Cancel",
+    renameFailed: "The name could not be saved.",
+    completed: (n: number) => `${n} run${n === 1 ? "" : "s"} completed this week`,
+    noneCompleted: "No runs completed this week",
+    statsFailed: "Its runs could not be counted.",
+    slack: "Slack",
+    slackOwn: (client: string) => `Answers as ${client}`,
+    slackShared: "Answers through the workspace's Slack app",
+    setUp: "Set Up",
+    manage: "Manage",
+    instructions: "Instructions",
+    instructionsLine: (lines: number, chars: number) =>
+      `${lines} line${lines === 1 ? "" : "s"}, ${chars.toLocaleString()} characters`,
+    edit: "Edit",
+    stop: "Stop or remove",
+    pause: "Pause",
+    pauseWhat: (name: string) =>
+      `Stop ${name} from answering. Its sessions stay, and you can resume it later.`,
+    resume: "Resume",
+    resumeWhat: (name: string) =>
+      `${name} is paused and answers nobody. Resume it to let it answer.`,
+    retire: "Retire",
+    retireWhat: (name: string) =>
+      `Remove ${name} from the workspace for good. Its sessions and revisions stay readable, its schedules are paused, and its name stays taken.`,
+    retireConfirm: (name: string) => `Retire ${name}?`,
+    retireConfirmWhat:
+      "It stops answering at once and leaves every list, and no new agent can take its name. Pausing keeps it instead.",
+    keep: "Keep It",
+    kept: "The platform writes this agent again, so it can be paused, not retired.",
+    controlFailed: "Its state could not be changed. Try again.",
+    controlUnread: (name: string) =>
+      `Whether ${name} is paused could not be read, so it cannot be paused or resumed yet.`,
+    readOnly: "Only the agent's owners can change these.",
+  },
+  agentSlackApp: {
+    title: "Its own Slack app",
+    connected: "Connected",
+    notConnected: "Not connected",
+    what: "Give this agent a Slack app of its own, so people can mention it and message it by name. The workspace's Slack app keeps answering for every agent.",
+    connectedAs: (client: string) =>
+      `Connected as ${client}. Mentioning it in any of the workspace's Slack apps asks this agent, and its own app answers.`,
+    step1: "Create the app in Slack. Its manifest is made from this agent's look.",
+    create: "Create in Slack",
+    step2: "Install it to your workspace, and upload this agent's picture as its icon.",
+    step3: "Paste its bot token and signing secret. Slack says which app and bot they are.",
+    token: "Bot token",
+    signing: "Signing secret",
+    connect: "Connect",
+    askAdmin: "Ask a workspace admin to connect one.",
+    failed: "The Slack app could not be read or connected.",
   },
   clientConnect: {
     heading: "Connect a system",
@@ -2200,6 +2560,31 @@ export const defaultCopy = {
     items: (count: number) => `${count} updates`,
     description:
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",
+  },
+  agentReview: {
+    title: "Pull request reviews",
+    hint: "How the agent's reviews end. The host chooses from the findings and this policy. Saved with the next revision.",
+    approve: "Approve pull requests",
+    approves: { never: "Never", when_clean: "When clean" },
+    approveHint: {
+      never: "Reviews comment or request changes, and never approve.",
+      when_clean:
+        "The host approves only when the review is clean, checks pass and policy allows. The model never approves.",
+    },
+    blockOn: "Block on",
+    blockOnHint: "Findings at or above this level request changes.",
+    severities: { error: "Error", warning: "Warning", info: "Info" },
+  },
+  agentLoadableSkills: {
+    title: "Loadable skills",
+    hint: "Library skills the agent can run as sub-agents when a task needs one. Saved with the next revision.",
+    add: "Add Skill",
+    empty: "It loads no skills.",
+    any: "Any published skill",
+    anyHint: "Replaces the named skills: it may load any published skill of its run's project.",
+    elsewhere: "Not in this agent's library. A run loads it from its project's library.",
+    unreadable: "Reading the skill library requires access to projects. Saved skills are kept.",
+    failed: "The skill library could not be read.",
   },
   agentSkillDefaults: {
     inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
@@ -2569,7 +2954,7 @@ export const defaultCopy = {
       `${percent}% working over the last ${checks} ${checks === 1 ? "check" : "checks"}`,
   },
   audit: {
-    dateRange: "Date Range",
+    dateRange: "Date range",
     rangeDefault: "Last 24 Hours",
     clearRange: "Reset Range",
     invalidRange: "Choose a valid time window of no more than 31 days.",
@@ -2586,18 +2971,20 @@ export const defaultCopy = {
       memory: "Memory",
       source: "Sources",
       credential: "Credentials",
-      action_policy: "Action Policies",
+      action_policy: "Action policies",
       assignment: "Assignments",
-      call_policy: "Agent Call Policies",
+      call_policy: "Agent call policies",
     },
     actor: "Actor",
     domain: "Domain",
     from: "From",
     to: "To",
     apply: "Apply Filters",
+    /** The one control the filters fold behind on a phone. */
+    filter: "Filter",
     export: "Export CSV",
     open: "Open Resource",
-    allDomains: "All Domains",
+    allDomains: "All domains",
     csvColumns: [
       "ID",
       "When",
@@ -2613,9 +3000,22 @@ export const defaultCopy = {
     ],
 
     title: "Audit",
+    changes: "Workspace changes",
     description:
       "Workspace changes in the last 24 hours. Pending means completion could not yet be confirmed.",
     empty: "No recorded changes in this window.",
+    limited: "Showing at most 100 records, newest first.",
+    /** The server's 100 newest records include reads the section above lists, so fewer changes show. */
+    limitedByReads:
+      "Reads listed above count toward the 100 newest records. Narrow the date range or choose a domain to see more changes.",
+    /** Every one of those 100 records is a read listed above: changes may exist, and none is on view. */
+    hiddenByReads:
+      "The 100 newest records in this window are all reads listed above. Narrow the date range or choose a domain to see changes.",
+    /** The same two lines with Projects chosen: reads are project records, so only a shorter window helps. */
+    limitedByProjectReads:
+      "Reads listed above count toward the 100 newest records. Narrow the date range to see more changes.",
+    hiddenByProjectReads:
+      "The 100 newest records in this window are all reads listed above. Narrow the date range to see changes.",
     failed: "The audit could not be loaded.",
     before: "Before",
     after: "After",
@@ -2633,8 +3033,8 @@ export const defaultCopy = {
     failed: "The read audit could not be loaded.",
   },
   approve: "Approve",
-  askApproval: "Ask a question",
-  declineAction: "Decline action",
+  askApproval: "Ask a Question",
+  declineAction: "Decline",
   cancel: "Cancel",
   edit: "Edit",
   confirmDestructive: {
@@ -2669,7 +3069,7 @@ export const defaultCopy = {
   judgement: {
     by: "Approval agent",
     decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
-    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    /** A question the approval agent answered in a session set to Auto (DES-079). */
     answered: "Answered by the approval agent",
     basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
   },
@@ -2781,6 +3181,119 @@ export const defaultCopy = {
     loadFailed: "The feedback could not be read.",
     acceptFailed: "The question could not be added to the suite.",
     dismissFailed: "The feedback could not be dismissed.",
+  },
+  agentHealth: {
+    label: "Agent health",
+    status: { untested: "Not checked yet", healthy: "Healthy", needs_review: "Needs review" },
+    summary: (passed: number, samples: number, rate: number) =>
+      `${passed} of ${samples} recent ${samples === 1 ? "run" : "runs"} passed their checks (${rate}%)`,
+    about: "How evaluation works",
+    aboutRuns:
+      "Each run is checked as it finishes: it completed, its tools worked, and a Slack answer kept to its word budget.",
+    aboutSuites:
+      "Eval suites send this agent fixed questions, by hand or on a schedule, and check the answers. Every check is exact, never a model's opinion.",
+    aboutFeedback: "A run rated down with a reason waits for review before it becomes a case.",
+    docs: "Evaluation Docs",
+    docsUrl: "https://docs.urmzd.com/humagen/reference/prompt-evaluations/",
+    refresh: "Refresh health",
+    updated: (when: string) => `Updated ${when}`,
+    failed: "Agent health could not be loaded.",
+    runs: "Recent runs",
+    passRate: "Pass rate",
+    window: (n: number, oldest: string) => `Last ${n} ${n === 1 ? "run" : "runs"}, since ${oldest}`,
+    topFailing: "Fails most",
+    failingCount: (n: number) => `${n} ${n === 1 ? "run" : "runs"}`,
+    noFailing: "Nothing failing",
+    noRuns: "Runs are checked as they finish.",
+    checks: {
+      word_budget: "Word budget",
+      answer_first: "Answers first",
+      completed: "Completed",
+      tool_errors: "Tool errors",
+      cost: "Cost limit",
+      duration: "Time limit",
+      evidence: "Linked evidence",
+      format: "Review format",
+    } as Partial<Record<string, string>>,
+    suites: "Eval suites",
+    noSuites: "No eval suites yet",
+    addSuite: "Add Eval Suite",
+    notRun: "Not run yet",
+    result: (passed: number, total: number) => `${passed} of ${total} passed`,
+    outcome: { running: "Running", passed: "Passed", failed: "Failed", errored: "Errored" },
+    runNow: "Run Now",
+    runNowFor: (suite: string) => `Run ${suite} now`,
+    runFailed: "The suite could not be started.",
+    feedback: "Feedback",
+    flagged: (n: number, more = false) =>
+      more
+        ? `${n}+ runs flagged for review`
+        : `${n} ${n === 1 ? "run" : "runs"} flagged for review`,
+    failures: "Failed checks",
+    revisionAt: (rev: number, when: string) => `Revision ${rev}, ${when}`,
+    changes: "Recent proposed changes",
+    change: {
+      incomplete: "Evaluation incomplete",
+      passed: "Evaluations passed",
+      regressed: "Regression requires an override",
+    },
+    regression: "Regression",
+    override: (reason: string) => `Override: ${reason}`,
+  },
+  agentStats: {
+    label: "Last 24 hours",
+    runs: "Runs, last 24 h",
+    success: "Success rate",
+    median: "Median time",
+    alerts: "Open alerts",
+    suites: "Eval suites",
+    none: "—",
+    noRuns: "No runs in the last 24 hours",
+    noEnded: "No run has finished in the last 24 hours",
+    successOf: (completed: number, ended: number) =>
+      `${completed} of ${ended} finished ${ended === 1 ? "run" : "runs"} completed`,
+    medianOf: "Half of the last 24 hours' runs took less than this",
+    alertsOf: "Alerts about this agent that nobody has acknowledged",
+    suitesOf: "Eval suites that test this agent",
+  },
+  evalSchedule: {
+    label: "Schedule",
+    edit: "Schedule",
+    editFor: (suite: string) => `Schedule for ${suite}`,
+    presets: {
+      off: "Off",
+      hourly: "Hourly",
+      six: "Every 6 hours",
+      daily: "Daily",
+      weekly: "Weekly",
+      custom: "Custom",
+    },
+    hours: "Every (hours)",
+    hoursHint: "From 1 to 720 hours. Halves and quarters are fine.",
+    invalid: "A schedule runs from every hour to every 30 days.",
+    actsFor: (name: string) => `Runs as ${name}, who saved it last.`,
+    runsAs: (name: string) => `runs as ${name}`,
+    actsForYou: "Saving makes it run as you.",
+    save: "Save Schedule",
+    cancel: "Cancel",
+    saved: "Schedule saved",
+    failed: "The schedule could not be saved.",
+    off: "Not scheduled",
+    set: "Set Schedule",
+    every: (seconds: number) => {
+      const hours = seconds / 3600;
+      if (seconds === 3600) return "Every hour";
+      if (seconds === 86_400) return "Every day";
+      if (seconds === 604_800) return "Every week";
+      if (seconds % 86_400 === 0) return `Every ${seconds / 86_400} days`;
+      if (Number.isInteger(hours)) return `Every ${hours} hours`;
+      return `Every ${Math.round(seconds / 60)} minutes`;
+    },
+    next: (when: string) => `next ${when}`,
+    dueNow: "next within a minute",
+    afterCurrent: "next after the current run",
+    last: (when: string) => `last run ${when}`,
+    never: "not run yet",
   },
   status: {
     queued: "Queued",
@@ -2919,6 +3432,8 @@ export const defaultCopy = {
   pageLoad: {
     title: "This page did not load",
     failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Under the title, which already says the page did not load: only what to do. */
+    hint: "Check your connection, then try again.",
     /** Something that opens over the page, such as search, whose code could not be read. */
     partFailed: "That could not be opened. Check your connection, then try again.",
   },
@@ -2974,8 +3489,36 @@ export const defaultCopy = {
       snoozed: "Nothing is snoozed.",
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
+    reviewApproval: "Review Approval",
+    /** An alert's own actions: go to where it came from, ask the agent about it, settle it. */
+    view: "View",
+    review: "Review",
+    openReview: "Open Review",
+    reviewing: "Opening…",
+    reviewFailed: "The review could not be opened.",
+    /** The menu that holds an alert's lesser actions, such as Snooze. */
+    more: "More alert actions",
     markDone: "Mark Done",
+    /** Open a settled alert again, from its menu: Undo is offered only for a moment. */
+    reopen: "Reopen",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** The child session that works on an alert, started by the agent it is about, by its shown name. */
+    fixWith: (agent: string) => `Fix with ${agent}`,
+    /** How many times the same alert was raised on one answer, drawn once. */
+    count: (n: number) => `×${n}`,
+    countLabel: (n: number) => `Raised ${n} times`,
+    /** Above alerts about turns earlier than the ones loaded. */
+    earlier: "Earlier in this session",
+    /** The session header's way to the first alert still waiting. */
+    jump: (n: number) => (n === 1 ? "Go to the open alert" : `Go to the first of ${n} open alerts`),
+    /** What an alert's card in a session opens, by the alert's action. */
+    open: {
+      answer: "Open Question",
+      approve: "Review Approval",
+      retry: "Review Failed Answer",
+      reconnect: "Open Connections",
+      session: "Open Session",
+    },
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
     table: {
       label: "Alerts",
@@ -2991,6 +3534,14 @@ export const defaultCopy = {
     snoozeSelected: "Snooze Selected for 1 Hour",
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** A text file attached to a message, shown as a card that opens it. */
+  attachedDocument: {
+    open: (name: string) => `Open ${name}`,
+    kind: (markdown: boolean) => (markdown ? "Document" : "Text file"),
+    unavailable: "The file could not be opened.",
+    truncated: "Only the start of this file is shown.",
+    close: "Close",
   },
   /** The Artifacts page: what agents published, and tiles that start a new one. */
   artifactsPage: {
@@ -3015,6 +3566,17 @@ export const defaultCopy = {
     noMatch: "No plugin matches that search.",
     noneInstalled: "You have not added any plugins yet. Add one from the catalog.",
     mcps: "MCPs",
+    /** Who you are on GitHub and Slack, linked by signing in there. */
+    accounts: {
+      title: "Connected accounts",
+      lede: "Who you are on GitHub and in Slack.",
+      connect: "Connect",
+      disconnect: "Disconnect",
+      notConnected: "Not connected",
+      /** On a GitHub or Slack app: who linked an account there. */
+      linkedPeople: "Linked people",
+      unlinkFailed: "The account could not be disconnected.",
+    },
     /** The shelves MCPs sit on. */
     families: {
       google: {
@@ -3176,15 +3738,78 @@ export const defaultCopy = {
     archiveFailed: "Could not archive. Try again.",
     unarchiveFailed: "Could not bring it back. Try again.",
     undo: "Undo",
-    /** What a row's dot says, for a screen reader and the row's tooltip. */
+    /** What a row's state mark says, for a screen reader and the mark's tooltip. */
     standing: {
       needs: "Needs you",
       running: "Running",
       failed: "A reply failed",
       unread: "Unread",
     },
-    updated: (when: string) => `Updated ${when}`,
-    outsideProject: "Outside of a project",
+    /** Where a session started, said by its row's leading mark and to a screen reader. */
+    sources: {
+      console: "Started in the web console",
+      slack: "From a Slack thread",
+      slack_dm: "From a Slack DM",
+      github: "From GitHub",
+      scheduled: "From a schedule",
+      assignment: "From an assignment",
+    },
+    /** Where a session started, short, on the row's second line beside its time. */
+    sourceShort: {
+      console: "Web / Console",
+      slack: "Slack",
+      slack_dm: "Slack DM",
+      github: "GitHub",
+      scheduled: "Schedule",
+      assignment: "Assignment",
+    },
+    /** The sidebar badge's details for a tooltip and assistive technology (DES-054). */
+    state: {
+      waitingYou: (what: string, kind?: "approval" | "question") =>
+        !what
+          ? "Waiting for you"
+          : kind === "approval"
+            ? `Waiting for you: approve ${what}`
+            : `Waiting for you: ${what}`,
+      waitingOther: (what: string, kind?: "approval" | "question") =>
+        !what
+          ? "Waiting for someone"
+          : kind === "approval"
+            ? `Waiting for approval: ${what}`
+            : `Waiting for an answer: ${what}`,
+      /**
+       * It waits on a person and the listing could not tell whether that is
+       * the reader (waiting_unknown): said without naming whom, never as
+       * someone else.
+       */
+      waitingUnknown: (what: string, kind?: "approval" | "question") =>
+        !what ? "Waiting" : kind === "approval" ? `Waiting: approve ${what}` : `Waiting: ${what}`,
+      failed: (reason: string) => (reason ? `Failed: ${reason}` : "Failed"),
+      working: "Working",
+      alert: (title: string) => `Alert: ${title}`,
+      unread: "Unread",
+    },
+    /** The sections of the sidebar's list, each with its count. */
+    participated: "Participated",
+    recent: "Recent",
+    /** A count of sessions when more are left to load. */
+    countMore: (count: number) => `${count}+`,
+    /** The list's views, in its filter menu. */
+    views: {
+      flat: "Recent",
+      recents: "By day",
+      projects: "By project",
+    },
+    /** The handle on the sidebar's edge. */
+    resize: "Resize sidebar",
+    /** An open alert on a session, by how urgent it is. */
+    alert: {
+      urgent: "Urgent alert",
+      normal: "Alert",
+      low: "Low priority alert",
+    },
+    /** How long ago a conversation moved, from its row's age: "now", "5h", "2d". */
+    movedAgo: (age: string) => (age === "now" ? "Just now" : `${age} ago`),
     /** A one-time tip, until the person dismisses it. */
     searchTip: {
       title: "Search across conversations",
@@ -3193,34 +3818,33 @@ export const defaultCopy = {
       dismiss: "Dismiss",
     },
   },
-  /** A conversation's approval mode, a text control under the composer (DES-057). */
+  /** A conversation's approval mode, a text control under the composer (DES-057, DES-079). */
   approvals: {
-    label: "Approvals",
-    ask: "Ask Me",
-    askHint: "Every gated action waits for you.",
-    auto: "Run",
-    autoHint:
-      "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
-    autoFor: (name: string) => `Run, chosen by ${name}`,
-    /** The secondary option beside Run: the approval agent also answers questions (DES-079). */
-    answers: "Answer Questions",
-    decide: "Run and Answer",
-    decideHint:
-      "The approval agent also answers a question an agent asks you when the session already settles it, and hands you the rest. Each answer says it was the approval agent's, and is audited.",
-    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
+    /** The menu's heading, and the control's name for assistive technology. */
+    label: "Approval mode",
+    /** The question over the menu's rows. */
+    question: "Who approves gated actions?",
+    /** The two modes, each with the one line its menu row says. The API calls Manual "ask". */
+    ask: "Manual",
+    askHint: "You approve every gated action.",
+    auto: "Auto",
+    autoHint: "The approval agent approves and answers for you, and asks when unsure.",
+    autoFor: (name: string) => `Auto, chosen by ${name}`,
+    /** Under the menu's rows, when someone else set the session's mode. */
+    chosenBy: (name: string) => `Chosen by ${name}.`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
-    failed: "Could not change approvals. Try again.",
+    failed: "Could not change the approval mode. Try again.",
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
-    letAgentDecide: "Let the approval agent decide in this thread",
-    /** Under the note that the approval agent decides, to set the thread back. */
-    askMeAgain: "Ask Me Again",
-    /** Under the note that a person decides again, to hand it back to the approval agent. */
-    letAgentDecideAgain: "Let the Approval Agent Decide",
+    letAgentDecide: "Set this thread to Auto",
+    /** Under the note that the thread is set to Auto, to set it back. */
+    switchToAsk: "Switch to Manual",
+    /** Under the note that the thread is set to Manual, to set it to Auto again. */
+    switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
-      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+      `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to ask a person about every gated action again.`,
+      `${who} set this thread to Manual. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -3384,6 +4008,42 @@ export const defaultCopy = {
     internal: () => "Run failed",
   },
   /**
+   * A failed run in plain words: the title says what happened to the agent,
+   * the body why and what to do. The runtime's own words wait behind Show details
+   * (`conversation.toolLine.showDetails`, the words a failed step uses).
+   */
+  runFailure: {
+    /** The agent, when the failure does not say which. */
+    someone: "The agent",
+    couldNotRun: (agent: string) => `${agent} could not run`,
+    couldNotFinish: (agent: string) => `${agent} could not finish`,
+    couldNotReply: (agent: string) => `${agent} could not send its answer`,
+    because: {
+      no_model_provider:
+        "Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
+      credential: "A sign-in or key it uses was refused. An admin can check its connections.",
+      provider_credential:
+        "Its model provider's key could not be read. An admin can check it in Settings > Model providers.",
+      budget:
+        "It reached its spending limit. An admin can raise the limit, then you can try again.",
+      rate_limited: "A service it uses got too many requests. Wait a moment, then try again.",
+      provider_rate_limited:
+        "Its model provider got too many requests. Wait a moment, then try again.",
+      permission_denied:
+        "It does not have permission to do this. An admin can give it the access it needs.",
+      timeout: "It ran out of time. Try again, or ask for less at once.",
+      unavailable: "A service it needs did not answer. Try again shortly.",
+      failed_steps:
+        "Several steps in a row failed, so it stopped. Open the steps above to see why.",
+      max_iterations:
+        "It used every step it may take for one answer. Try again with a narrower request.",
+      undeliverable:
+        "The app this conversation is in refused the answer. Check that the app is still connected, then try again.",
+      max_attempts: "It failed on every try. Try again later.",
+      unknown: "It stopped on an error. Try again, or report it if it happens again.",
+    },
+  },
+  /**
    * What to say under each failure's title, for a host that has no words of its
    * own to put in `Failure.message`. It never repeats the title.
    */
@@ -3420,6 +4080,38 @@ export const defaultCopy = {
     noDescription: "No description",
     empty: "No agent can be asked here yet.",
     handle: (name: string) => `@${name}`,
+  },
+  modelProviders: {
+    title: "Model providers",
+    lede: "Workspace providers make models available. Choose a model for each agent in its settings.",
+    add: "Add OpenAI-Compatible Server",
+    configured: "Configured providers",
+    available: "Available providers",
+    empty: "No providers configured.",
+    deployment: "Deployment",
+    deploymentHint: "Managed by the deployment",
+    workspaceHint: "Managed by the workspace",
+    unconfigured: "Not set up",
+    setup: "Set Up",
+    setupProvider: (name: string) => `Set Up ${name}`,
+    enabled: "On",
+    activation: (name: string) => `Enable ${name}`,
+    manage: (name: string) => `Manage ${name}`,
+    status: {
+      checking: "Checking",
+      operational: "Answering",
+      degraded: "Slow",
+      down: "Failing",
+    },
+    check: "Check",
+    edit: "Edit",
+    remove: "Remove",
+    removeProvider: (name: string) => `Remove ${name}`,
+    removeHint: "This deletes the provider configuration and its stored key.",
+    readFailed: "The providers could not be read.",
+    checkFailed: "The provider could not be checked.",
+    updateFailed: (name: string) => `The setting for ${name} could not be saved.`,
+    removeFailed: "The provider could not be removed.",
   },
   /** The chat bar's + menu and what it selects for a conversation. */
   /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */
@@ -3531,6 +4223,35 @@ export const defaultCopy = {
       skillsFailed: "Skills could not be loaded.",
       noSkills: "No skills are available in this project.",
       noSkillMatch: "No skill matches.",
+      repos: "Repositories",
+      reposLoading: "Loading repositories",
+      noRepos: "No repositories are connected.",
+      connectGitHub: "Connect GitHub",
+    },
+    /**
+     * The row under Home's composer: one word control per setting a new
+     * session has, each saying its value and opening a picker.
+     */
+    setup: {
+      label: "Session settings",
+      /** The agents control with no agent mentioned and no default to name. */
+      anyAgent: "Any agent",
+      agents: (count: number) => `${count} agents`,
+      /** Said in the agents picker while the message mentions nobody. */
+      defaultAnswers: (agent: string) => `With no mention, ${agent} answers.`,
+      bestAnswers: "With no mention, the best fit answers.",
+      noRepos: "None",
+      /** Why a row cannot change. */
+      unreadable: "Could not be read. Reload to try again.",
+      notSandboxed: "Runs here are not sandboxed, so there is no image to choose.",
+      channelFixed: "A thread in a channel uses the channel's setup.",
+      imagesLoading: "Loading images",
+      repos: (count: number) => (count === 1 ? "1 repo" : `${count} repos`),
+      reposMax: (max: number) => `Pick up to ${max}.`,
+      findRepo: "Find a repository",
+      noRepoMatch: "No repository matches.",
+      findImage: "Find an image",
+      noImageMatch: "No image matches.",
     },
     /** Where the conversation is filed, in the composer's bar, as a list. */
     selected: "Selected for this conversation",
@@ -3540,9 +4261,14 @@ export const defaultCopy = {
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
     placeholder: "Ask anything",
-    /** Under an answer that went to an agent because it was selected, not tagged. */
-    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
-    routed: (agent: string) => `Routed to ${agent}`,
+    /** The chat bar is drawn before the agents are read: the @ menu's row, and what a screen reader hears, until they are. */
+    loadingAgents: "Loading agents",
+    /** A message sent before the agents are read stays in the bar, read-only, and is sent when they arrive. */
+    gettingReady: "Getting agents ready. Your message sends when they are.",
+    /** The tooltip of Cancel beside it, which gives the message back to edit. */
+    cancelHeldHint: "Keep editing instead (Esc)",
+    /** The agents could not be read. The draft stays in the bar. */
+    agentsFailed: "Agents could not be loaded.",
     /** Home's suggestions, as a list. */
     suggestions: "Suggestions",
     scrollBack: "Scroll Back",
@@ -3648,22 +4374,19 @@ export const defaultCopy = {
   rated: { up: "Rated helpful", down: "Rated not helpful" },
   /** Where a schedule's answers go, and the weekly recap a project can add. */
   automations: {
-    title: "Scheduled",
-    lede: "Work that runs at set times. Each run is a session, and its answer goes where you choose.",
-    newSchedule: "New Schedule",
-    empty: "Nothing scheduled yet",
+    title: "Automations",
+    /** What starts an automation is its trigger. A schedule is the one trigger there is. */
+    lede: "Work an agent starts without being asked. Each one runs on a schedule, each run is a session, and its answer goes where you choose.",
+    newSchedule: "New Automation",
+    empty: "No automations yet",
     active: "Active",
     paused: "Paused",
-    tabs: "Scheduled work",
-    schedulesTab: "Schedules",
-    backgroundTab: "Background",
   },
+  /** Work a session's agents keep at for it: shown in that session's Details, nowhere else. */
   background: {
     title: "Background",
-    empty: "No background work",
+    stopLabel: (text: string) => `Stop: ${text}`,
     stop: "Stop",
-    retry: "Retry",
-    couldNotLoad: "Background work could not be loaded",
     couldNotStop: "It could not be stopped",
     kind: { watch: "Watch", goal: "Goal", task: "Task" } as Record<string, string>,
     state: {
@@ -3802,10 +4525,6 @@ export const defaultCopy = {
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
     needsYou: "Needs you",
-    /** The strip under the chat bar on the web: the newest things the person's agents made. */
-    recentlyMade: "Recently made",
-    /** In place of the strip when it could not be read. */
-    madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>
@@ -3839,7 +4558,7 @@ export const defaultCopy = {
       label: "Company announcement",
       markRead: "Mark as Read",
       hide: "Hide for Me",
-      open: "Open Announcement",
+      open: "Open",
     },
     findHelp: {
       title: "Find an Agent or Project",
@@ -3867,6 +4586,10 @@ export const defaultCopy = {
     moreAlerts: (n: number) => `${n} more open alert${n === 1 ? "" : "s"}`,
     review: "Review",
     whoAnswers: "Who answers you",
+    meetAgents: "Meet your agents",
+    askAgentSlack: (app: string, handle: string) => `Ask with @${app} @${handle}.`,
+    askAgentWeb: (handle: string) => `Ask with @${handle}.`,
+    startersOf: (name: string, titles: string[]) => `${name} can: ${titles.join(" · ")}`,
     dmRouting: "In direct messages, send my questions to",
     connections: "Plugins",
     manageAll: "Manage all",
@@ -4057,17 +4780,19 @@ export const defaultCopy = {
     page: {
       /** The composer's placeholder: "New session in Globex". */
       composer: (title: string) => `New session in ${title}`,
+      /** The title row's trail, for assistive technology. */
+      where: "Breadcrumb",
       recents: "Recents",
-      /** A session in Recents: where it started. */
-      trace: {
-        slack: "Slack",
-        github: "GitHub",
-        console: "Console",
-        scheduled: "Scheduled",
-        /** A schedule's run: "Scheduled: weekly-recap". */
-        schedule: (name: string) => `Scheduled: ${name}`,
-        /** More agents or people than the row shows: "+2". */
-        more: (n: number) => `+${n}`,
+      /** The project's setup: steps to get started, or a summary beside Recents. */
+      setup: {
+        title: "Setup",
+        steps: "Get started",
+        /** How many steps are done: "2 of 5 set up". */
+        progress: (done: number, total: number) => `${done} of ${total} set up`,
+        done: "Done",
+        notDone: "Not set up",
+        show: "Show",
+        hide: "Hide",
       },
       noSessions: "No sessions yet",
       untitled: "Untitled session",
@@ -4083,25 +4808,29 @@ export const defaultCopy = {
       cancel: "Cancel",
       instructions: {
         title: "Instructions",
-        none: "No instructions",
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Instructions",
         editLabel: "Edit Instructions",
+        viewLabel: "View Instructions",
         /** Under the editor: "120 / 4,000". */
         count: (n: number) => `${n.toLocaleString()} / 4,000`,
         failed: "The instructions could not be saved. Try again.",
       },
       context: {
         title: "Context",
-        none: "No corpora",
-        /** A corpus on the card: "HR policies, 3 sources". */
+        /** How many corpora it attaches: "3 corpora". */
+        count: (n: number) => `${n} ${n === 1 ? "corpus" : "corpora"}`,
+        /** A corpus in the list a reader sees: "HR policies, 3 sources". */
         corpus: (title: string, sources: number) =>
           `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Context",
         editLabel: "Edit Context",
+        viewLabel: "View Context",
         /** The sheet, when the reader may read no corpus. */
         noCorpora: "No corpora to attach",
         failed: "The context could not be saved. Try again.",
@@ -4118,6 +4847,9 @@ export const defaultCopy = {
           ].join(", "),
         view: "View",
         viewLabel: "View Memory",
+        /** The row's action while there are no notes yet. */
+        addRow: "Add",
+        addLabel: "Add Memory",
         none: "No notes",
         waiting: "Waiting for approval",
         kept: "Notes",
@@ -4134,10 +4866,12 @@ export const defaultCopy = {
       },
       scheduled: {
         title: "Scheduled",
-        none: "Nothing scheduled",
+        /** How many schedules it has: "2 schedules". */
+        count: (n: number) => `${n} ${n === 1 ? "schedule" : "schedules"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add Schedule",
-        heading: "New schedule",
+        viewLabel: "View Schedules",
         name: "Name",
         when: "When",
         custom: "Custom",
@@ -4150,12 +4884,14 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        /** Every link out of Humagen; Slack channels are the kind a project keeps today. */
         title: "External references",
-        none: "No references linked",
+        /** How many it links: "2 Slack channels". */
+        count: (n: number) => `${n} ${n === 1 ? "channel" : "channels"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add External Reference",
-        heading: "Link a Slack channel",
+        viewLabel: "View External References",
         client: "Slack app",
         channel: "Slack channel ID",
         channelHint: "Starts with C, or G for a private channel",
@@ -4290,12 +5026,11 @@ export const defaultCopy = {
     item: (label: string) => `On ${label}`,
     clearItem: "Clear Item",
   },
-  /** A session's Details panel: its progress, agents, outputs, where it ran, and what it used. */
+  /** A session's Details panel: its agents, outputs, where it ran, and what it used. */
   details: {
     title: "Details",
     /** The header's Details button, with how many calls are running or waiting. */
     open: (n: number) => (n ? `Details, ${n} working` : "Details"),
-    progress: "Progress",
     working: (agents: number, tools: number) =>
       [
         "Working",
@@ -4325,6 +5060,149 @@ export const defaultCopy = {
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
   },
   /**
+   * The session panel's own sections and the header's view controls
+   * (SessionViews.tsx, SessionContext.tsx): where the session runs, how full
+   * its context is, the connectors it may reach, what it made and changed.
+   */
+  sessionPanel: {
+    /** The header's view controls. */
+    views: "Session views",
+    more: "More Views",
+    view: {
+      details: "Details",
+      terminal: "Terminal",
+      changes: "Changes",
+      browser: "Browser",
+      files: "Files",
+      artifacts: "Artifacts",
+      background: "Background Tasks",
+    },
+    /** Environment. */
+    sandbox: "Sandbox",
+    sandboxState: {
+      isolated: "Isolated",
+      host: "On this server",
+      none: "Not started",
+      unreachable: "Unreachable",
+      loading: "Checking",
+    },
+    sandboxHint: {
+      none: "Starts when a tool needs it",
+      unreachable: "Could not be reached",
+    },
+    retry: "Try Again",
+    openTerminal: "Open Terminal",
+    files: "Files",
+    browser: "Browser",
+    repo: (repo: string) => repo,
+    branch: "Branch",
+    /** Context. */
+    context: "Context",
+    contextOf: (percent: number) => `${percent}%`,
+    contextNone: "Not reported",
+    contextRows: {
+      window: "Window",
+      model: "Model",
+      prompt: "Prompt",
+      cached: "Cached",
+      output: "Output",
+      calls: "Model calls",
+      cost: "Cost",
+    },
+    contextUsed: (used: string, window: string) => `${used} of ${window} tokens`,
+    /** Connectors. */
+    connectors: "Connectors",
+    connected: (n: number) => `${n} connected`,
+    connectorUsed: "Used here",
+    connectorReady: "Connected",
+    connectorOff: "Not connected",
+    manageConnectors: "Manage Connectors",
+    connectorsFailed: "Connectors could not be read.",
+    /** Where the session is attached: the Slack thread it is, and the posts, issues and pull requests it made or follows. */
+    attached: "Attached to",
+    slackThread: "Slack thread",
+    /** Outputs and changes. */
+    outputs: "Outputs",
+    artifact: "Artifact",
+    changes: "Changes",
+    filesChanged: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+    pull: (repo: string, n: number) => `${repo.split("/").pop() ?? repo} #${n}`,
+    ci: {
+      failing: (n: number) => `${n} failing`,
+      running: "Running",
+      passing: "Passing",
+      none: "No checks",
+      unknown: "CI unavailable",
+    },
+    openOnGitHub: (what: string) => `Open ${what} on GitHub`,
+    showMore: (n: number) => `Show ${n} More`,
+    /** What the session was set up with before its first message. */
+    image: "Image",
+    imageSub: (ref: string, sandbox: string) => [ref, sandbox].filter(Boolean).join(" · "),
+    manageImages: "Manage images",
+    chosenRepo: "Chosen repository",
+    /** The header's Terminal and Browser, when they cannot open, and why. */
+    unavailable: {
+      terminalHost:
+        "No terminal here: this deployment runs tools on the server, with no sandbox to open one in",
+      terminalUnreachable: "No terminal now: the sandbox could not be reached",
+      browser: "No browser: this session's agent has none",
+      browserUnknown: "No browser now: it could not be checked",
+    },
+    starting: "Starting environment…",
+    started: "Environment ready",
+    startFailed: (why: string) => `The environment could not start: ${why}`,
+    /** Where it started, which replaced the header's Item link. */
+    startedIn: "Started in",
+    otherSessions: "Other Sessions Here",
+    /** Expanding a section. */
+    expand: (what: string) => `Show ${what}`,
+    collapse: (what: string) => `Hide ${what}`,
+  },
+  /**
+   * A new session's setup beside the composer's plus (SessionPickers.tsx):
+   * where its tools run, and the repositories it works in.
+   */
+  sessionSetup: {
+    image: "Image",
+    defaultImage: "Default",
+    /** The default image, said on the control under the composer. */
+    defaultImageValue: "Default image",
+    defaultHint: (ref: string) => (ref ? `Everyone's · ${ref}` : "Everyone's"),
+    warm: "Ready now",
+    cold: "Starts on first use",
+    checking: "Checking",
+    failed: "Failed",
+    manage: "Manage Images",
+  },
+  /** Settings → Images: the images a workspace's sessions may run in. */
+  images: {
+    title: "Images",
+    empty: "No images of your own yet",
+    add: "Add Image",
+    name: "Name",
+    namePlaceholder: "Agent tools",
+    ref: "Image",
+    refHint: (registries: string) => `From ${registries}. Pinned to its digest when it is checked.`,
+    credential: "Pull credential",
+    credentialHint: "user:token, for a private image. Kept apart and never shown again.",
+    warm: "Keep warm",
+    warmHint: "One instance stays started on each sandbox host, so a session does not wait.",
+    status: { checking: "Checking", ready: "Ready", failed: "Failed" },
+    /** A ready image being checked again: sessions still run it. */
+    rechecking: "Checking Again",
+    /** Why a ready image's latest check failed; it runs the digest it had. */
+    stillRuns: (problem: string) =>
+      `Last check failed: ${problem}. Sessions still run it as pinned.`,
+    checkAgain: "Check Again",
+    remove: "Remove",
+    off: "This deployment runs only its default image.",
+    defaultRow: "Default",
+    defaultSub: (ref: string) => `Everyone's image · ${ref}`,
+    pinned: (digest: string) => `Pinned ${digest}`,
+  },
+
+  /**
    * The session's workbench: the tabs of the pane Details opens, and what a
    * person did by hand in them, which goes with their next message
    * (docs/architecture/workbench.md).
@@ -4336,8 +5214,6 @@ export const defaultCopy = {
       browser: "Browser",
       terminal: "Terminal",
       changes: "Changes",
-      sidechat: "Side Chat",
-      search: "Search",
     },
     expand: "Expand Workbench",
     collapse: "Collapse Workbench",
@@ -4529,6 +5405,28 @@ export const defaultCopy = {
     exit: (code: number) => `exit ${code}`,
     timedOut: "stopped at the 15 second limit",
   },
+  /** A composer message that starts with "!": a command run in the session's sandbox (BangCommand.tsx). */
+  bangCommand: {
+    /** The hint while the draft starts with "!". */
+    hint: "Runs in this session's sandbox. The agent sees the output with your next message.",
+    hintHome:
+      "Starts a session and runs this in its sandbox. The agent sees the output with your next message.",
+    empty: "Type a command after !",
+    /** A command runs alone: a file attached to it would be run as part of it. */
+    withFiles: "A command runs alone. Remove the attached files to run it.",
+    /** Where no command can run. Said in the hint, and again when it is sent. */
+    noSandbox: "Commands cannot run here: this deployment has no isolated sandbox.",
+    /** The command block in the conversation. */
+    label: (who: string, command: string) => `${who} ran ${command}`,
+    you: "You",
+    ran: "ran a command",
+    exited: (code: number) => `Exit ${code}`,
+    timedOut: "Stopped at the 15 second limit",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
+  },
   /** The Changes tab (WorkbenchChanges.tsx). */
   workbenchChanges: {
     empty: "No changes yet",
@@ -4585,91 +5483,79 @@ export const defaultCopy = {
       `Created ${path} (${lines} ${lines === 1 ? "line" : "lines"})`,
     recordDeleted: (path: string) => `Deleted ${path}`,
   },
-  /** The Side Chat tab (WorkbenchSidechat.tsx). */
-  workbenchSidechat: {
-    /** The tab before anything is asked: its title, over the box. */
-    empty: "Ask about this session on the side",
-    /** The session has no saved turn a side chat could start from. */
-    nothing: "Nothing to ask about yet",
-    /** The reader may not post here, so may not start one. */
-    readOnly: "You can read this session, not ask in it",
-    placeholder: "Ask on the side",
-    earlier: "Earlier side chats",
-    /** A side chat that was given no title. */
-    untitled: "Side chat",
-    /** The title a side chat is saved under, from its first question. */
-    title: (question: string) => `Side chat: ${question}`,
-    all: "All Side Chats",
-    fresh: "New Side Chat",
-    openFull: "Open as Conversation",
-    /** Under a side chat's header: how much of the session it was given. */
-    from: (when: string) => `Reads this session as it was ${when}. Nothing here is posted in it.`,
-    thread: "Side chat",
-    saidBy: (name: string) => `Message from ${name}`,
-    answeredBy: (name: string) => `Answer from ${name}`,
-    add: "Add to Message",
-    added: "Added to Message",
-    /** What the main thread's agent reads above the answer. */
-    summary: (agent: string, question: string) =>
-      question
-        ? `Side chat answer from ${agent} to "${question}"`
-        : `Side chat answer from ${agent}`,
-    part: (summary: string, i: number, n: number) => `${summary} (part ${i} of ${n})`,
-    missing: "This side chat is unavailable",
-    failed: {
-      start: "The side chat could not be started. Try again.",
-      post: "The message could not be sent. Try again.",
-      list: "Earlier side chats could not be read.",
-      stop: "The answer could not be stopped.",
-    },
-  },
-  /** The Search tab (WorkbenchSearch.tsx). */
-  workbenchSearch: {
-    field: "Search this session",
-    /** The key that puts the cursor in the field, as the field shows it. */
-    shortcut: { mac: "⌘⇧F", other: "Ctrl Shift F" },
-    clear: "Clear Search",
-    results: "Results",
-    group: {
-      files: "Files",
-      pulls: "Pull requests and issues",
-      links: "Links",
-      commands: "Commands",
-      browser: "Browser steps",
-      tools: "Tools",
-      agents: "Agents",
-      attachments: "Attachments",
-    },
-    /** Where a result opens, at the end of its row. */
-    opens: {
-      workspace: "Workspace",
-      terminal: "Terminal",
-      browser: "Browser",
-      activity: "Activity",
-      session: "Session",
-      message: "Message",
-      page: "Page",
-      external: "New tab",
-    },
-    /** A link's second line. */
-    note: {
-      origin: "Where this session started",
-      child: "A session this one started",
-      context: "Linked for context",
-      evidence: "Linked as evidence",
-    },
-    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
-    count: (n: number) => `${n} ${n === 1 ? "result" : "results"}`,
-    showAll: (n: number) => `Show All ${n}`,
-    keys: "↑ ↓ to move, Enter to open",
-    empty: "Nothing in this session to find yet",
-    emptyAction: "Open Details",
-    none: (query: string) => `Nothing in this session matches "${query}"`,
-    /** The session's own record could not be read; the rest is still searched. */
-    partial: "Linked sessions and attachments could not be read.",
-    retry: "Retry",
-  },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
+  /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
+  dock: {
+    sendNow: "Send now",
+    /** Send's tooltip: how to send and add a line, and what the keys do while an agent works. */
+    sendHint: (mac: boolean) =>
+      mac
+        ? "Send (↵). Shift+↵ adds a line. While an agent works, ↵ queues and ⌘↵ sends now"
+        : "Send (Enter). Shift+Enter adds a line. While an agent works, Enter queues and Ctrl+Enter sends now",
+    /** The composer's Stop: everything running in the session. */
+    stopAll: "Stop",
+    stopAllLabel: "Stop everything running in this session",
+    stopAllHint: "Stop everything running in this session (Esc)",
+    stoppingAll: "Stopping everything in this session",
+    stopAllFailed: "Some of the work could not be stopped. Try Stop again.",
+    /** One running item's own Stop: an agent, a call to another agent, a step or background work. */
+    stop: "Stop",
+    stopping: "Stopping",
+    stopped: "Stopped",
+    stopLabel: (what: string) => `Stop ${what}`,
+    stoppingLabel: (what: string) => `Stopping ${what}`,
+    stoppedLabel: (what: string) => `${what} stopped`,
+    backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
+    /** The footer under the composer: the approval mode, the AI notice and the usage ring. */
+    footer: "Session details",
+    more: "More session controls",
+    /** The line under a composer. {name} is the product's name. */
+    aiNotice: "{name} is AI and can make mistakes.",
+    /** The link at the end of that line, to the workspace's page of terms. */
+    terms: "Terms",
+    usage: {
+      open: "Usage",
+      ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,
+      ringIdle: "Usage. Open usage",
+      context: "Context",
+      title: "Usage",
+      /** Which model the context is on. */
+      model: "Model",
+      contextUsed: (tokens: string, window: string) => `${tokens} of ${window} tokens`,
+      spent: "Spent so far",
+      tokens: "Tokens so far",
+      tokenCount: (tokens: string) => `${tokens} tokens`,
+      runs: (n: number) => (n === 1 ? "1 run" : `${n} runs`),
+      topAgents: "Most used by",
+      atLeast: "At least this much: the oldest runs were not counted.",
+      nothingYet: "Nothing used yet.",
+      limits: "Limits",
+      noLimits: "None set",
+      limitsHidden: "Shown to people who can read billing",
+      resets: (when: string) => `Resets ${when}`,
+      failed: "Usage could not be read.",
+      retry: "Retry",
+      loading: "Loading usage",
+      near: (what: string) => `Near the ${what} limit`,
+      over: (what: string, when: string) =>
+        `${what} is used up. New runs are blocked until ${when}.`,
+      overApprove: (what: string, when: string) =>
+        `${what} is used up. New runs need approval until ${when}.`,
+      measure: {
+        runs: "Runs",
+        tokens: "Tokens",
+        spend: "Spend",
+        concurrent: "Running at once",
+      } as Record<"runs" | "tokens" | "spend" | "concurrent", string>,
+      period: { day: "Daily", month: "Monthly" } as Record<"day" | "month", string>,
+      scope: {
+        tenant: "Workspace",
+        project: "Project",
+        agent: "Agent",
+        client: "Client",
+      } as Record<"tenant" | "project" | "agent" | "client", string>,
+    },
+  },
   latest: {
     jump: "Jump to latest",
     /** An answer is still being written out of view. */
@@ -4690,7 +5576,7 @@ export const defaultCopy = {
     /** On a call that does not wait: the agent carries on by itself and answers later. */
     delegated: "Delegated",
     asked: "Asked",
-    /** Under an answer: how long the response worked and how much it brought in. */
+    /** In Details: how long the response worked and how much it brought in. */
     worked: (time: string, agents: number, tools: number) =>
       [
         `Worked ${time}`,
@@ -4709,7 +5595,6 @@ export const defaultCopy = {
       agents
         ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
         : `Failed after ${time}`,
-    waitingForYou: "Waiting for you",
     thinking: "Thinking",
     input: "Input",
     result: "Result",
@@ -4870,6 +5755,7 @@ export const defaultCopy = {
     answered: "Answered",
     /** An agent's answer, as a screen reader names it. */
     answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",
@@ -4940,9 +5826,12 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
-    /** In a Slack channel bound to a project, to someone the app maps to nobody in humagen. */
-    unmappedInBound:
-      "This channel is a project's channel in Humagen, and only people Humagen knows post in it. Ask an admin to connect your Slack account.",
+    /**
+     * In Slack, privately, to someone the app's client maps to nobody, on any
+     * message, command, shortcut or button: nothing was started for them.
+     */
+    notConnected: (product: string) =>
+      `Your Slack account is not connected to ${product}, so nothing was started. Ask a workspace admin to connect your account.`,
     /** In a Slack channel bound to a project, to someone asking about another person's message. */
     notTheirsInBound:
       "This channel is a project's channel in Humagen, where a message is asked only as its writer's own. Ask in the thread in your own words.",

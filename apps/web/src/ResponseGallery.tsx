@@ -1,7 +1,6 @@
 import { answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
-import { useState } from "react";
-import { ActivityLanes, costOf, WorkedButton } from "./ResponseActivity.tsx";
+import { ActivityLanes, costOf } from "./ResponseActivity.tsx";
 import { SessionPanel } from "./SessionPanel.tsx";
 import { summarize } from "./sessionSummary.ts";
 import { referenceOf } from "./trace.ts";
@@ -30,7 +29,6 @@ export function ResponseGallery() {
 
 function Example({ name, events }: { name: string; events: (typeof streams)[number][1] }) {
   const state = foldAll(events);
-  const [open, setOpen] = useState(name !== "One agent");
   const answer = answerOf(state);
   return (
     <article
@@ -44,13 +42,10 @@ function Example({ name, events }: { name: string; events: (typeof streams)[numb
         {state.agent}
       </p>
       {answer.text && <p className="whitespace-pre-wrap text-aui-fg text-aui-sm">{answer.text}</p>}
-      <WorkedButton state={state} open={open} onToggle={() => setOpen((v) => !v)} />
-      {open && (
-        <div className="flex flex-col gap-3 border-[var(--humagen-rule)] border-t pt-3">
-          <p className="text-aui-muted text-aui-xs">{costOf(state)}</p>
-          <ActivityLanes state={state} messageId={state.id} />
-        </div>
-      )}
+      <div className="flex flex-col gap-3 border-[var(--humagen-rule)] border-t pt-3">
+        <p className="text-aui-muted text-aui-xs">{costOf(state)}</p>
+        <ActivityLanes state={state} messageId={state.id} />
+      </div>
     </article>
   );
 }

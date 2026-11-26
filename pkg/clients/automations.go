@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/urmzd/humagen/pkg/trigger"
 )
 
 // MatchAutomations reads only a signature-verified payload. Rules cannot grant
@@ -163,6 +165,10 @@ type AutoReviewRequest struct {
 	// Push is a push to the pull request; otherwise it opened, reopened or
 	// left draft, and is reviewed whole.
 	Push bool
+	// Author is the pull request's author, and AuthorID their GitHub user
+	// ID, as the signed payload names them.
+	Author   string
+	AuthorID int64
 }
 
 // MatchAutoReview reads a signature-verified pull_request payload and reports
@@ -181,7 +187,11 @@ func (c Client) MatchAutoReview(kind string, body []byte) (AutoReviewRequest, bo
 		PullRequest struct {
 			Draft bool   `json:"draft"`
 			State string `json:"state"`
-			Head  struct {
+			User  struct {
+				Login string `json:"login"`
+				ID    int64  `json:"id"`
+			} `json:"user"`
+			Head struct {
 				SHA string `json:"sha"`
 			} `json:"head"`
 		} `json:"pull_request"`
@@ -205,7 +215,7 @@ func (c Client) MatchAutoReview(kind string, body []byte) (AutoReviewRequest, bo
 	if !c.GitHub.AutoReview.Reviews(repo) {
 		return AutoReviewRequest{}, false
 	}
-	return AutoReviewRequest{Repository: repo, Number: p.Number, SHA: strings.ToLower(p.PullRequest.Head.SHA), Push: p.Action == "synchronize"}, true
+	return AutoReviewRequest{Repository: repo, Number: p.Number, SHA: strings.ToLower(p.PullRequest.Head.SHA), Push: p.Action == "synchronize", Author: p.PullRequest.User.Login, AuthorID: p.PullRequest.User.ID}, true
 }
 
 func fullSHA(s string) bool {
@@ -217,8 +227,8 @@ func fullSHA(s string) bool {
 }
 
 // MentionOnPullRequest reads a signature-verified comment or review payload
-// and reports the pull request a person mentioned the app or one of this
-// client's agents on. Automatic review resumes there.
+// and reports the pull request a person asked on with the trigger
+// ("@humagen", Triggers). Automatic review resumes there.
 func (c Client) MentionOnPullRequest(kind string, body []byte) (repo string, number int, ok bool) {
 	if c.Surface != GitHub || !c.Enabled || c.GitHub == nil {
 		return "", 0, false
@@ -264,53 +274,53 @@ func (c Client) MentionOnPullRequest(kind string, body []byte) (repo string, num
 	if number <= 0 || !repoPattern.MatchString(repo) || !c.Serves(owner) {
 		return "", 0, false
 	}
-	for _, name := range c.mentionable() {
-		if mentions(text, name) {
-			return repo, number, true
-		}
+	if _, asked := trigger.Read(text, c.Triggers(), nil); asked {
+		return repo, number, true
 	}
 	return "", 0, false
 }
 
-// mentionable is what a comment may @mention to address this client: the
-// app's login, and the agents and bots it routes to.
-func (c Client) mentionable() []string {
-	names := []string{strings.TrimSuffix(c.GitHub.Login, "[bot]"), c.DefaultAgent}
-	for _, a := range c.Agents {
-		if a != "*" {
-			names = append(names, a)
+// Triggers are the handles a comment asks this client with: "@humagen"
+// (pkg/trigger), and the app's own login without "[bot]" when it is
+// another, such as an app called humagen-acme.
+func (c Client) Triggers() []string {
+	out := []string{trigger.Name}
+	if c.GitHub != nil {
+		if handle := strings.TrimSuffix(c.GitHub.Login, "[bot]"); handle != "" && !strings.EqualFold(handle, trigger.Name) {
+			out = append(out, handle)
 		}
 	}
-	for login, agent := range c.Bots {
-		names = append(names, strings.TrimSuffix(login, "[bot]"), agent)
-	}
-	return names
+	return out
 }
 
-// mentions reports whether text @mentions name as a whole word: not part of
-// a longer name or an email address. A sentence may end right after it.
-func mentions(text, name string) bool {
-	if name == "" {
-		return false
+// PullPushed reads a signature-verified pull_request payload and reports a
+// push to an open pull request the client serves: its repository, number
+// and new head, which the payload's after and the pull request's head both
+// name. The app's approvals of an earlier head are dismissed there.
+func (c Client) PullPushed(kind string, body []byte) (repo string, number int, head string, ok bool) {
+	if c.Surface != GitHub || !c.Enabled || c.GitHub == nil || kind != "pull_request" {
+		return "", 0, "", false
 	}
-	lower, at := strings.ToLower(text), "@"+strings.ToLower(name)
-	for from := 0; ; {
-		i := strings.Index(lower[from:], at)
-		if i < 0 {
-			return false
-		}
-		i += from
-		end := i + len(at)
-		before := i == 0 || !nameByte(lower[i-1]) && lower[i-1] != '.' && lower[i-1] != '@'
-		rest := lower[end:]
-		after := rest == "" || !nameByte(rest[0]) && (rest[0] != '.' || len(rest) == 1 || !nameByte(rest[1]))
-		if before && after {
-			return true
-		}
-		from = end
+	var p struct {
+		Action      string `json:"action"`
+		Number      int    `json:"number"`
+		After       string `json:"after"`
+		PullRequest struct {
+			Head struct {
+				SHA string `json:"sha"`
+			} `json:"head"`
+		} `json:"pull_request"`
+		Repository struct {
+			FullName string `json:"full_name"`
+		} `json:"repository"`
 	}
-}
-
-func nameByte(b byte) bool {
-	return b == '-' || b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z'
+	if json.Unmarshal(body, &p) != nil || p.Action != "synchronize" || !strings.EqualFold(p.After, p.PullRequest.Head.SHA) {
+		return "", 0, "", false
+	}
+	repo = p.Repository.FullName
+	owner, _, _ := strings.Cut(repo, "/")
+	if p.Number <= 0 || !fullSHA(p.PullRequest.Head.SHA) || !repoPattern.MatchString(repo) || !c.Serves(owner) {
+		return "", 0, "", false
+	}
+	return repo, p.Number, strings.ToLower(p.PullRequest.Head.SHA), true
 }

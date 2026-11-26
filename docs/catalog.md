@@ -21,6 +21,7 @@
 | [Typed learning dependencies](architecture/learning-dependencies.md) | Architecture | How skills and reviewed memory link back to the runs that produced them |
 | [Develop with Tilt](guides/develop.md) | Guide | One `tilt up` for the API, the console with hot reload and Postgres, reusable by projects built on Humagen |
 | [Deploy](guides/deploy.md) | Guide | Run Humagen locally, with Compose, Helm, Flux or `humagen deploy` |
+| [CI and release](guides/ci-and-release.md) | Guide | The sharded Go tests, when Release skips a second CI run, and the image each release pushes |
 | [GitHub and Slack trial](guides/integrations.md) | Guide | Set up a local trial with a GitHub installation and a Slack app |
 | [Work out a refund path](guides/travel-refund.md) | Guide | Two native agents on one conversation's booking records: one reads them and current policy pages and cannot write, one writes the approved request |
 | [Build a sourced chronology from records](guides/records-research.md) | Guide | A native agent reads the records in a conversation, cites and quotes each dated event, lists unknowns, and opens current official pages |
@@ -34,6 +35,7 @@
 | [Read mixed evidence](guides/media-evidence.md) | Guide | What a native agent reads of attached PDFs, images and audio, and the transcription path left after #383 |
 | [Read a cloud document and approve an edit](guides/cloud-documents.md) | Guide | A native agent on the person's own Google Docs and Drive connections, and what revision history depends on |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
+| [Upgrading](guides/upgrading.md) | Guide | Steps an operator runs once after a release, such as filing past work into sessions |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
 | [Upgrading to saige v0.45.0](guides/upgrading-to-saige.md) | Guide | What changes for operators and Go programs now that orchagent is folded into saige |
 | [Names](guides/renaming.md) | Guide | The ecosystem's current names and the retired ones |

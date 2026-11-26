@@ -145,6 +145,11 @@ func SourcesOf(meta map[string]string) []string {
 // included.
 const MetaSkills = wire.PrivateMetaPrefix + "warp.skills"
 
+// MetaRequestedBy is the key the platform writes the person into who asked,
+// through a surface's credential, for a run that acts for nobody (a Slack
+// app's `asked_by`). Only a run the platform's API raises is believed.
+const MetaRequestedBy = "humagen.requested_by"
+
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
 // connector put there, and only a tag whose origin is a client surface is
@@ -303,6 +308,11 @@ type Run struct {
 	// Message is the person's message in a shared thread that the run
 	// answers. Runs answering one message are side by side, not branches.
 	Message string `json:"message,omitempty"`
+	// RequestedBy is the person, by subject, who asked through a surface's
+	// credential for a run that acts for nobody: a Slack person asking about
+	// someone else's message, or asking again a turn that acted for nobody.
+	// The run uses nobody's credentials; this only says who asked.
+	RequestedBy string `json:"requested_by,omitempty"`
 
 	// Lease is the run's budget in micro-USD. Zero means unmetered.
 	Lease int64 `json:"lease"`
@@ -345,7 +355,12 @@ type Run struct {
 	// Memory is the memory trees the run's instance was given and what it
 	// wrote to them.
 	Memory []MemoryUse `json:"memory,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	// NeedsConnection is the connections the run needed and the person it
+	// acts for had not made (RecordConnectionNeed). A run that called
+	// another agent carries what that agent's run needed as well, so the
+	// turn a person reads can offer to connect it.
+	NeedsConnection []ConnectionNeed `json:"needs_connection,omitempty"`
+	Error           string           `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
@@ -380,6 +395,10 @@ type Run struct {
 	// requesters are every name the person who asked for the run went by
 	// when it was accepted, pinned so a mapping removed later still counts.
 	requesters []string
+	// reviewStarted says the run turned from a reply into a review
+	// (StartReview). It is kept on the run's record, so every process and
+	// every later read sees it.
+	reviewStarted bool
 	// tally sums the usage reported while the run works. final is set once
 	// the runtime's own figure has replaced it.
 	tally *event.Tally
@@ -536,7 +555,7 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 	// schedule's run, placed it in one. A run called by an agent belongs to
 	// its root's conversation.
 	thread, prev, picked, routed, text, client := runID, "", "", "", wire.TextOf(tag), ClientOf(tag)
-	channel, message := "", ""
+	channel, message, requested := "", "", ""
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
 	project, within := ProjectOf(tag), WithinOf(tag)
@@ -546,10 +565,14 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 		}
 		prev, picked, routed = wire.Meta(tag)[MetaPrev], wire.Meta(tag)[MetaPicked], wire.Meta(tag)[MetaRouted]
 		channel, message = wire.Meta(tag)[MetaChannel], wire.Meta(tag)[MetaMessage]
-	} else if schedule != "" {
+		if parent == "" {
+			requested = wire.Meta(tag)[MetaRequestedBy]
+		}
+	} else if schedule != "" || wire.Origin(tag) == OriginGitHub {
 		// The platform files a schedule's run in a session of its own, in
-		// the schedule's project, and names it here (Platform.Invoke drops
-		// any the tag brought).
+		// the schedule's project, and a GitHub run in the session of the
+		// issue or pull request it was asked on, and names it here
+		// (Platform.Invoke drops any the tag brought).
 		if v := wire.Meta(tag)[MetaThread]; v != "" {
 			thread = v
 		}
@@ -585,7 +608,7 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 			Citations: []Citation{},
 			ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
 			Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
-			Channel: channel, Message: message,
+			Channel: channel, Message: message, RequestedBy: requested,
 			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, CallID: edge.CallID, Lifecycle: lifecycleOf(parent, edge.Mode),
 			Lease: edge.Lease, Schedule: schedule,
 			Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
@@ -1478,8 +1501,19 @@ func decodeCursor(c string) (at int64, id string, err error) {
 }
 
 // Threads returns a tenant's conversations, most recently active first. A limit
-// of zero returns them all.
+// of zero returns them all. A store error is logged and what was read before
+// it is returned; a caller that must not answer from a partial list uses
+// ListThreads.
 func (x *Index) Threads(tenant string, limit int) []ThreadSummary {
+	out, err := x.ListThreads(tenant, limit)
+	if err != nil {
+		x.log.Error("runs: could not list conversations", "tenant", tenant, "error", err)
+	}
+	return out
+}
+
+// ListThreads is Threads with the store's error returned to the caller.
+func (x *Index) ListThreads(tenant string, limit int) ([]ThreadSummary, error) {
 	if limit <= 0 {
 		limit = MaxThreadScan
 	}
@@ -1488,10 +1522,7 @@ func (x *Index) Threads(tenant string, limit int) []ThreadSummary {
 		out = append(out, s.summary())
 		return len(out) < limit
 	})
-	if err != nil {
-		x.log.Error("runs: could not list conversations", "tenant", tenant, "error", err)
-	}
-	return out
+	return out, err
 }
 
 // eachThread calls fn for a tenant's conversations, most recently active

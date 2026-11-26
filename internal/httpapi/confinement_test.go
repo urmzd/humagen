@@ -116,6 +116,11 @@ type hidden struct {
 // acts as each person, so the routes naming one have something to hide from
 // another workspace, and housekeeping runs on the offline provider, so a
 // title agent is asked.
+// slackMachine is the credential the canaries' Slack apps name: an app of
+// its own, never the owner, as a Slack app's credential starts no run as
+// itself.
+const slackMachine = "svc-slack-acme"
+
 func confined(t *testing.T) *fixture {
 	t.Helper()
 	return newFixtureWith(t, platform.Config{
@@ -274,15 +279,15 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if inside {
 		h.open = "slack-open"
 		bound = h.open
-		must("POST", "/api/clients", h.naming(slackApp(h.open, "A01OPEN", "svc-acme")), http.StatusCreated)
+		must("POST", "/api/clients", h.naming(slackApp(h.open, "A01OPEN", slackMachine)), http.StatusCreated)
 	} else {
-		must("POST", "/api/clients", h.naming(slackApp(h.client, "A01ZQX", "svc-acme")), http.StatusCreated)
+		must("POST", "/api/clients", h.naming(slackApp(h.client, "A01ZQX", slackMachine)), http.StatusCreated)
 	}
 	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`.","slack":{"client":"`+bound+`","channel":"C01CANARY"}}`, http.StatusCreated)
 	if inside {
 		// The open client's home is in the hidden project: the client is
 		// the outsider's to read, its home is not.
-		homed := strings.Replace(h.naming(slackApp(h.open, "A01OPEN", "svc-acme")), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
+		homed := strings.Replace(h.naming(slackApp(h.open, "A01OPEN", slackMachine)), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
 		if out := must("PUT", "/api/clients/"+h.open, homed, http.StatusOK); !strings.Contains(fmt.Sprint(out["home"]), h.project) || out["default_agent"] != h.agent {
 			t.Fatalf("the owner does not see the open client's home and agent: %v", out)
 		}
@@ -594,6 +599,12 @@ func (h hidden) holds(body string) bool {
 // unplaced are the path parameters that name something outside any project,
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
+	if strings.HasPrefix(path, "/api/images/") {
+		// A workspace's images are the whole workspace's, as its clients
+		// are, and this fixture's deployment takes none of its own: another
+		// tenant's image is refused by TestAnImageIsRefusedWhenItIsNotAllowedOrNotTheTenants.
+		return true
+	}
 	if strings.HasPrefix(path, "/api/store/") {
 		// A store package is the platform's, the same in every workspace:
 		// naming one names nothing the hidden workspace holds.
@@ -730,8 +741,18 @@ func (h hidden) value(path, param string) (string, bool) {
 		return h.variant, true
 	case "client":
 		return h.client, true
+	case "account":
+		// A user id on the hidden client's surface; the client itself is
+		// what an outsider cannot find.
+		return "U01HIDDEN", prefix("/api/clients/")
 	case "provider":
 		return h.provider, true
+	case "owner", "repo":
+		// A repository of the hidden client: the client is what is hidden,
+		// so any repository it names is.
+		if prefix("/api/clients/") {
+			return map[string]string{"owner": "acme", "repo": "site"}[param], true
+		}
 	case "part":
 		return "p1", true
 	case "question":
@@ -741,6 +762,11 @@ func (h hidden) value(path, param string) (string, bool) {
 	case "mid":
 		if prefix("/api/sessions/") {
 			return h.sessionMessage, h.sessionMessage != ""
+		}
+	case "n":
+		// The first file attached to the hidden session's message.
+		if prefix("/api/sessions/") {
+			return "0", h.sessionMessage != ""
 		}
 	}
 	return "", false
@@ -1158,7 +1184,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			return string(out)
 		}
 		open := func(field string) string {
-			return strings.Replace(slackApp(h.open, "A01OPEN", "svc-acme"), `"default_agent":"helper"`, field, 1)
+			return strings.Replace(slackApp(h.open, "A01OPEN", slackMachine), `"default_agent":"helper"`, field, 1)
 		}
 		for _, tc := range []struct {
 			method, path string

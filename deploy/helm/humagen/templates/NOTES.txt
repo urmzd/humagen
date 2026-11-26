@@ -15,3 +15,10 @@ Humagen will stop at start. Create a Secret and set existingSecret.
 To try it without an ingress:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "humagen.fullname" . }} 8080:{{ .Values.service.port }}
 {{- end }}
+{{- if (.Values.browser | default dict).enabled }}
+
+A browser for agents runs as {{ include "humagen.browserFullname" . }}, and the workspace
+{{ include "humagen.browserWorkspace" . }} has its tool server, {{ include "humagen.browserTool" . }}. Grant an agent
+mcp:{{ include "humagen.browserTool" . }}:write to let it use the browser. It is one browser: every
+agent with the grant has the same sign-ins and tabs.
+{{- end }}

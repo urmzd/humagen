@@ -1,13 +1,16 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage } from "@humagen/web";
+import { AgentMessage, type MascotPersona, mascotPersonaOf } from "@humagen/web";
 import { useEffect, useMemo, useState } from "react";
 import type { AgentSetup, AgentSetupPlan } from "../../../packages/client/src/generated/types.ts";
 import { PublishedSkillPicker } from "./AgentDefaultSkills.tsx";
+import { CharacterPicker, trimLook } from "./AgentLookEditor.tsx";
 import { type Run, turnOf } from "./adapter.ts";
+import { setAgentLooks } from "./agentHues.ts";
 import { type AgentTemplate, agentTemplates, setupTools } from "./agentTemplates.ts";
 import {
+  type AgentLook,
   api,
   coworking,
   type DirectoryPerson,
@@ -27,6 +30,7 @@ import { href } from "./route.ts";
 import { SetupPolicies } from "./SetupPolicies.tsx";
 import { button, field, Label, Page, Problem, primary, SkeletonRows } from "./ui.tsx";
 
+const lookWords = defaultCopy.agentLook;
 const words = defaultCopy.agentSetup;
 const terminal = (run?: Run) => !!run && ["completed", "failed", "stopped"].includes(run.status);
 
@@ -133,6 +137,9 @@ export function AgentSetupWizard({
     project: me.personal_project ?? "~",
     rules: {},
   });
+  // How the agent will look, kept once it exists: its look is saved right
+  // after the agent is, and the rest of it (its color) on its Look tab.
+  const [look, setLook] = useState<AgentLook>({});
   const [testRequest, setTestRequest] = useState("");
   const [run, setRun] = useState<Run>();
   const [refresh, setRefresh] = useState(0);
@@ -266,7 +273,22 @@ export function AgentSetupWizard({
     try {
       const record = await action();
       report(record);
-      if (activate && record.phase === "ready") onActivated(record.name);
+      if (activate && record.phase === "ready") {
+        const kept = trimLook(look);
+        if (Object.keys(kept).length > 0) {
+          try {
+            const v = await api.setAgentLook(record.name, kept);
+            setAgentLooks({ [record.name]: v.look }, [record.name]);
+          } catch (error) {
+            // The agent is made; only its look is not, and its Look tab sets it.
+            setProblem(
+              `${lookWords.notKeptAtCreate} ${error instanceof Error ? error.message : ""}`.trim(),
+            );
+            return;
+          }
+        }
+        onActivated(record.name);
+      }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : words.failed);
     } finally {
@@ -329,6 +351,42 @@ export function AgentSetupWizard({
           </button>
         )}
         {saved && editing && <p className="text-aui-xs text-aui-muted">{words.locked}</p>}
+        {step === 0 && !saved && (
+          <fieldset className="flex min-w-0 flex-col gap-3 rounded-aui border border-aui-border p-4">
+            <legend className="px-1 text-aui-xs font-medium text-aui-muted">
+              {lookWords.atCreate}
+            </legend>
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+              <Label text={lookWords.name} hint={lookWords.nameHint}>
+                <input
+                  id="agent-setup-display-name"
+                  className={field}
+                  value={look.display_name ?? ""}
+                  placeholder={plan.spec.name || "Barbara"}
+                  maxLength={40}
+                  onChange={(event) => setLook((l) => ({ ...l, display_name: event.target.value }))}
+                />
+              </Label>
+              <Label text={lookWords.greeting}>
+                <input
+                  id="agent-setup-greeting"
+                  className={field}
+                  value={look.greeting ?? ""}
+                  maxLength={280}
+                  onChange={(event) => setLook((l) => ({ ...l, greeting: event.target.value }))}
+                />
+              </Label>
+            </div>
+            <CharacterPicker
+              base={plan.spec.name || "agent"}
+              character={
+                (look.character ?? mascotPersonaOf(plan.spec.name || "agent")) as MascotPersona
+              }
+              hue={0}
+              onPick={(c) => setLook((l) => ({ ...l, character: c }))}
+            />
+          </fieldset>
+        )}
         {step === 0 && (
           <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
             <Label text={words.name} hint={words.nameHint}>

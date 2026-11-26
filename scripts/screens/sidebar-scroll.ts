@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
 
-/** Stress the real shell with long content, then wheel each column separately. */
+/**
+ * Stress the real shell with long content, then wheel each column separately.
+ * In the sidebar the top row, New, Search and the section links
+ * (`data-sidebar-start`) and the account stay put while the session list scrolls.
+ */
 export async function sidebarScroll(page: Page): Promise<void> {
   const phone = (page.viewportSize()?.width ?? 0) < 768;
   const content = page.locator("main .aui-scroll");
@@ -14,7 +18,7 @@ export async function sidebarScroll(page: Page): Promise<void> {
   });
   if (phone) await page.getByRole("button", { name: /^Open sidebar/ }).click();
   const sidebar = page.getByRole("complementary", { name: "Navigation", includeHidden: true });
-  const list = sidebar.locator(".aui-scroll").first();
+  const list = sidebar.locator("[data-sidebar-scroll]");
   await list.evaluate((element) => {
     const fixture = document.createElement("ul");
     fixture.setAttribute("data-scroll-fixture", "");
@@ -30,9 +34,19 @@ export async function sidebarScroll(page: Page): Promise<void> {
   const geometry = () =>
     sidebar.evaluate((element) => {
       const box = element.getBoundingClientRect();
-      const header = element.firstElementChild?.getBoundingClientRect();
+      // The resize handle comes first when the sidebar is open; the header is the first other child.
+      const header = [...element.children]
+        .find((child) => child.getAttribute("role") !== "separator")
+        ?.getBoundingClientRect();
       const footer = element.lastElementChild?.getBoundingClientRect();
-      return { top: box.top, bottom: box.bottom, header: header?.height, footer: footer?.bottom };
+      const start = element.querySelector("[data-sidebar-start]")?.getBoundingClientRect();
+      return {
+        top: box.top,
+        bottom: box.bottom,
+        header: header?.height,
+        footer: footer?.bottom,
+        start: start?.top,
+      };
     });
   const initial = await geometry();
   assert.equal(initial.top, 0, "sidebar starts at the viewport top");
@@ -42,14 +56,18 @@ export async function sidebarScroll(page: Page): Promise<void> {
   await list.hover();
   await page.mouse.wheel(0, 600);
   await page.waitForFunction(
-    () => (document.querySelector("aside > .aui-scroll")?.scrollTop ?? 0) > 0,
+    () => (document.querySelector("[data-sidebar-scroll]")?.scrollTop ?? 0) > 0,
   );
   assert.equal(
     await content.evaluate((element) => element.scrollTop),
     0,
     "sidebar scroll leaves content still",
   );
-  assert.deepEqual(await geometry(), initial, "sidebar chrome stays fixed");
+  assert.deepEqual(
+    await geometry(),
+    initial,
+    "sidebar chrome, New, Search and the sections stay fixed",
+  );
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });

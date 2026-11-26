@@ -326,6 +326,11 @@ type DockerSandbox struct {
 	// ConnectorsImage is where stdio MCP servers run, which must have
 	// their commands. Empty is Image.
 	ConnectorsImage string `json:"connectors_image,omitempty"`
+	// ImageRegistries are the registries a workspace may add images of
+	// its own from ("ghcr.io"), each pulled through this daemon, pinned by
+	// digest and checked before a session may run it. Empty allows none:
+	// every session runs Image.
+	ImageRegistries []string `json:"image_registries,omitempty"`
 	// WorkRoot is the host directory the runs' work directories are made
 	// in, which the Docker daemon must be able to mount. Empty is
 	// humagen/sandbox in the user cache directory.
@@ -556,7 +561,7 @@ func (s *System) Defaults() {
 		sp.Server.Addr = "127.0.0.1:8080"
 	}
 	if sp.Server.PublicURL == "" {
-		sp.Server.PublicURL = "http://localhost:8080"
+		sp.Server.PublicURL = DefaultPublicURL
 	}
 	if sp.Server.Role == "" {
 		sp.Server.Role = "all"
@@ -629,7 +634,7 @@ func (s System) Tenant() string { return s.Spec.Auth.Tenant.Fixed }
 
 func (s System) check(kinds Kinds) error {
 	sp := s.Spec
-	if err := sp.Connections.check(); err != nil {
+	if err := sp.Connections.check(sp.Server.PublicURL); err != nil {
 		return err
 	}
 	if err := sp.Notifications.check(); err != nil {

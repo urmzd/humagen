@@ -1,13 +1,16 @@
 package platform_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -86,6 +89,53 @@ func TestAThreadThatStartedAsAConversationStaysOne(t *testing.T) {
 	}
 	if _, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "1700000000.000200", "<@UAPP> and the invoice")); !errors.Is(err, platform.ErrSurfaceThreadBeforeSessions) {
 		t.Fatalf("a reply in a conversation thread = %v", err)
+	}
+}
+
+// A Slack thread a conversation started in before sessions, in a channel
+// bound to nothing or in a direct message, is refused as a session with the
+// one error that says so, for a mention and for a listened reply alike, and
+// the same message posted as a conversation is answered in that thread.
+func TestAThreadFromBeforeSessionsIsStillAnsweredAsAConversation(t *testing.T) {
+	p, machine := slackRoomOn(t, startWith(t, platform.Config{Router: func(string) join.Asker {
+		return join.AskerFunc(func(_ context.Context, c join.Candidate, _ string) (join.Decision, error) {
+			return join.Decision{Agent: c.Name, Join: true, Reason: "it would take anything"}, nil
+		})
+	}}), nil)
+	const root = "1700000000.000100"
+	for _, tc := range []struct{ name, channel string }{
+		{"a channel bound to nothing", "C0UNBOUND"},
+		{"a direct message", "D0ANA"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			first, err := p.StartThread(t.Context(), machine, fromSlack(tc.channel, root, "", "<@UAPP> @lead plan it"))
+			if err != nil || len(first.Runs) != 1 || first.Thread.Session != nil {
+				t.Fatalf("the conversation's first message: %d runs, session %v, %v", len(first.Runs), first.Thread.Session, err)
+			}
+			settle(t, p, first.Runs[0].ID)
+			both := func(ts, text string, listen bool) platform.Posted {
+				t.Helper()
+				in := slackSession(tc.channel, root, ts, text)
+				in.Listen = listen
+				if _, _, err := p.StartSurfaceSession(t.Context(), machine, in); !errors.Is(err, platform.ErrSurfaceThreadBeforeSessions) {
+					t.Fatalf("as a session = %v, want ErrSurfaceThreadBeforeSessions", err)
+				}
+				again := fromSlack(tc.channel, root, ts, text)
+				again.Listen = listen
+				got, err := p.StartThread(t.Context(), machine, again)
+				if err != nil || got.Thread.ID != first.Thread.ID || len(got.Runs) != 1 {
+					t.Fatalf("as a conversation: thread %s (want %s), %d runs, %v", got.Thread.ID, first.Thread.ID, len(got.Runs), err)
+				}
+				settle(t, p, got.Runs[0].ID)
+				return got
+			}
+			both("1700000000.000200", "<@UAPP> @lead and the invoice", false)
+			if directMessage := tc.channel[0] == 'D'; directMessage {
+				return // every message there is the app's: none is sent as heard
+			}
+			awaitListener(t, p, first.Thread.ID, "ana")
+			both("1700000000.000300", "and the terms?", true)
+		})
 	}
 }
 
@@ -264,5 +314,50 @@ func TestOnlyTheClientsMachinePostsForAPersonOnTheMessagesRoute(t *testing.T) {
 	only.PostOnly = true
 	if _, err := p.SendMessages(t.Context(), machine, only); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("post_only with nobody to post for = %v", err)
+	}
+}
+
+// The messages route listens as the threads route does: a session a
+// thread's first message started is listened to, and a message there that
+// addresses nobody is answered or kept; one a later reply started is not.
+func TestTheMessagesRouteListensInASessionAThreadsFirstMessageStarted(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	first, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"))
+	if err != nil || !first.Created {
+		t.Fatalf("the thread's first message = %+v, %v", first, err)
+	}
+	// It is listened to once the app has answered there.
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		root, err := p.ReadSession(t.Context(), machine, first.Root, "", "", false)
+		if err == nil && root.Thread.Addressed && root.Thread.Listening {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a session a thread's first message started: addressed %v, listening %v, %v", root.Thread.Addressed, root.Thread.Listening, err)
+		}
+	}
+	heard := machineSays("C01RENEW", "1700000000.000200", "1700000000.000100", "and what about the price?")
+	heard.Listen = true
+	got, err := p.SendMessages(t.Context(), machine, heard)
+	if err != nil || got.Root != first.Root || got.Posted.Message.ID == "" {
+		t.Fatalf("a message that addresses nobody in a listened session = %+v, %v", got, err)
+	}
+
+	later, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000600", "1700000000.000500", "<@UAPP> can you summarise this thread?"))
+	if err != nil || !later.Created {
+		t.Fatalf("a mention in a later reply = %+v, %v", later, err)
+	}
+	if s, err := p.ReadSession(t.Context(), machine, later.Root, "", "", false); err != nil || s.Thread.Listening {
+		t.Fatalf("a session a later reply started: listening %v, %v", s.Thread.Listening, err)
+	}
+	unheard := machineSays("C01RENEW", "1700000000.000700", "1700000000.000500", "thanks, and the other one?")
+	unheard.Listen = true
+	if _, err := p.SendMessages(t.Context(), machine, unheard); !errors.Is(err, platform.ErrNotListening) {
+		t.Fatalf("a message that addresses nobody where nobody listens: %v", err)
+	}
+	nowhere := machineSays("C01RENEW", "1700000000.000950", "1700000000.000900", "anyone around?")
+	nowhere.Listen = true
+	if _, err := p.SendMessages(t.Context(), machine, nowhere); !errors.Is(err, platform.ErrNotListening) {
+		t.Fatalf("a message that addresses nobody where there is no session: %v", err)
 	}
 }

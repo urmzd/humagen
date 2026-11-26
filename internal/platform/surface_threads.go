@@ -8,10 +8,13 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -74,6 +77,11 @@ func (r SurfaceRef) message() string { return cmp.Or(r.Message, r.TS) }
 
 // ErrSurfacePlace is a surface's message that names where to file its thread.
 var ErrSurfacePlace = fmt.Errorf("%w: a surface's thread is filed where its channel is bound, never where the request says", threads.ErrInvalid)
+
+// ErrNotListening is a message that addressed nobody, posted where the app
+// is not listening: no thread is there, or the thread did not begin with a
+// message addressed to the app. Nothing of it is kept.
+var ErrNotListening = errors.New("platform: nobody is listening in this thread: mention the app to ask it")
 
 // ErrAnnouncementGone reports a reply to an announcement's post on a
 // client's surface that starts nothing: the announcement was withdrawn, or
@@ -147,7 +155,7 @@ func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, 
 	if c.Surface != clients.Slack {
 		return text, nil
 	}
-	cx := slackContext{AppUser: ref.AppUser, Bots: c.Bots, HandleOf: func(subject string) (string, bool) {
+	cx := slackContext{AppUser: ref.AppUser, AppName: p.Names(tenant).Product(), Bots: p.teamBots(tenant, c), HandleOf: func(subject string) (string, bool) {
 		if p.People == nil {
 			return "", false
 		}
@@ -157,6 +165,7 @@ func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, 
 	if c.Slack != nil {
 		cx.People = c.Slack.People
 	}
+	cx.Deferred = p.ownAppBots(tenant, c)
 	out, refused := slackText(text, cx)
 	var tags []threads.Mention
 	for _, r := range refused {
@@ -188,15 +197,29 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	if in.Project != "" || in.Channel != "" || in.Visibility != "" || in.Default != "" {
 		return Posted{}, ErrSurfacePlace
 	}
+	// A message that names an agent's own app is that app's to answer.
+	if p.deferredToOwnApp(who.Tenant, c, in.Text) {
+		in.PostOnly = true
+	}
 	sf := ref.surface(c.ID)
 	if err := sf.Validate(); err != nil {
 		return Posted{}, err
 	}
-	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref}
+	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref, heard: in.Listen}
 	if th, ok, err := p.Threads.BySurface(who.Tenant, sf); err != nil {
 		return Posted{}, err
 	} else if ok {
+		if in.Listen {
+			if !p.listensTo(who, th, in.ActAs) {
+				return Posted{}, ErrNotListening
+			}
+			// Heard either way; answered only when the agent says it is for it.
+			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
+		}
 		return p.PostMessage(ctx, who, th.ID, post)
+	}
+	if in.Listen {
+		return Posted{}, ErrNotListening
 	}
 	if resource, ok := slackResource(ref.Channel); ok {
 		if err := p.observeClientResource(c, resource); err != nil {
@@ -222,6 +245,27 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 		}
 	}
 	return got, err
+}
+
+// callsFor asks the agents that answer a thread whether a message that
+// addressed nobody calls for one of them: the question a message that names
+// no agent is routed by (join.Route), asked of the thread's own agents. No
+// agent to ask, an asker that fails, and a no all read the same: the message
+// is kept and nobody answers. An agent never joins by accident.
+func (p *Platform) callsFor(ctx context.Context, tenant string, th threads.Thread, message string) bool {
+	names := slices.Clone(th.Agents)
+	if th.Default != "" && th.Default != Open && !slices.Contains(names, th.Default) {
+		names = append(names, th.Default)
+	}
+	if th.Session != nil && th.Session.Agent != "" && !slices.Contains(names, th.Session.Agent) {
+		names = append(names, th.Session.Agent)
+	}
+	keep := func(name string) bool { return len(names) == 0 || slices.Contains(names, name) }
+	cs, err := p.candidates(ctx, tenant, p.Projects.Tree(tenant), th.Project, keep)
+	if err != nil || len(cs) == 0 {
+		return false
+	}
+	return len(join.Joined(join.Route(ctx, p.asker(tenant), cs, message))) > 0
 }
 
 // surfaced is a message's surface, as the platform has checked it, and the
@@ -321,8 +365,60 @@ func (p *Platform) surfaceOfPost(who auth.Principal, th threads.Thread, in Messa
 	if err != nil {
 		return nil, err
 	}
-	if th.Surface == nil || *th.Surface != in.Surface.surface(c.ID) {
-		return nil, fmt.Errorf("%w: this thread is not that surface's", threads.ErrInvalid)
+	if err := surfaceRoot(th, in.Surface.surface(c.ID)); err != nil {
+		return nil, err
 	}
 	return &surfaced{client: c, ref: *in.Surface}, nil
+}
+
+// listenOnAnswer starts listening in an addressed thread once a run there
+// has answered: it completed with words in its answer. A refused mention
+// starts no run, and a run that failed, was stopped, or is still quiet or
+// waiting on a person has answered nothing, so a later message that
+// addresses nobody is not read until one does. A quiet run that answers
+// later starts it when it ends.
+//
+// It listens to the person whose mention the run answered, and only an
+// answer to a newer mention hands it to someone else (answered).
+func (p *Platform) listenOnAnswer(run runs.Run) error {
+	if run.Thread == "" || run.Status != runs.Completed || strings.TrimSpace(run.Answer) == "" {
+		return nil
+	}
+	return p.answered(run.Tenant, run.Thread, wire.Meta(run.Tag())[runs.MetaMessage])
+}
+
+// answered records that the app answered message mid of a thread. Only a
+// mention moves whom an addressed thread listens to: it listens to the
+// poster of the newest mention answered there, by the mention's surface id.
+// A heard reply that tags no agent asked nothing, so the listener's own
+// unmentioned follow-ups neither move nor refresh it.
+func (p *Platform) answered(tenant, thread, mid string) error {
+	m, err := p.Threads.Message(tenant, thread, mid)
+	if err == nil && m.Heard && !tagsAgent(m) {
+		return nil
+	}
+	if err == nil {
+		_, err = p.Threads.Listen(tenant, thread, m.By, m.SurfaceID, p.now())
+	}
+	if errors.Is(err, threads.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
+// listensTo says whether a thread reads a message from as that addresses
+// nobody: it is listening, to them. Only the person whose message the app
+// answered most recently there may carry on without a mention.
+func (p *Platform) listensTo(who auth.Principal, th threads.Thread, as *ActAs) bool {
+	if !th.Listening || th.Listener == nil {
+		return false
+	}
+	by, _, _, _, err := p.author(who, as)
+	return err == nil && by != "" && by == th.Listener.Person
+}
+
+// tagsAgent says whether a message tags an agent, which asks as a mention of
+// the app does.
+func tagsAgent(m threads.Message) bool {
+	return slices.ContainsFunc(m.Mentions, func(t threads.Mention) bool { return t.Kind == threads.Agent && t.Refused == "" })
 }

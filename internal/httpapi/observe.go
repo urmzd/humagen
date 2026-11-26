@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -783,11 +784,21 @@ func (s *Server) searchKnowledge(w http.ResponseWriter, r *http.Request, who aut
 type suiteView struct {
 	evals.Suite
 	Runs []evals.Run `json:"runs"`
+	// CreatedByName is what the person who last saved the suite is called:
+	// the person its schedule acts for.
+	CreatedByName string `json:"created_by_name,omitempty"`
+	// NextRunAt is when the schedule next starts the suite; absent when it
+	// has no schedule.
+	NextRunAt time.Time `json:"next_run_at,omitzero"`
+	// ScheduleBusy is true while a run of a scheduled suite is going: the
+	// schedule starts the next one after it ends.
+	ScheduleBusy bool `json:"schedule_busy,omitempty"`
 }
 
 func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	out := []suiteView{}
 	seer := s.P.Seer(who)
+	names := s.P.Names(who.Tenant)
 	suites, err := s.P.Evals.List(who.Tenant)
 	if err != nil {
 		s.problem(w, err)
@@ -797,7 +808,15 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		if !seer.Suite(suite) {
 			continue
 		}
-		runs, _ := s.P.EvalRunsView(who, suite.Name)
+		runs, schedule, err := s.P.EvalSuiteListing(who, suite)
+		if errors.Is(err, evals.ErrNotFound) {
+			// Deleted since the list was read: it is gone, not a failure.
+			continue
+		}
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		if len(runs) > 20 {
 			runs = runs[:20]
 		}
@@ -806,7 +825,11 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 				runs[i].Results = []evals.Result{}
 			}
 		}
-		out = append(out, suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs)})
+		view := suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs), CreatedByName: names.Of(suite.CreatedBy)}
+		if schedule.Scheduled {
+			view.NextRunAt, view.ScheduleBusy = schedule.Next, schedule.Busy
+		}
+		out = append(out, view)
 	}
 	ok(w, http.StatusOK, map[string]any{"suites": out})
 }

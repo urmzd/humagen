@@ -1,8 +1,16 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, type UiAction } from "@humagen/core";
+import { ActionId, type QueuedMessage, type UiAction } from "@humagen/core";
 import { railEntry, useQueue } from "@humagen/web";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { type ApprovalMode, ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, type Run, turnOf } from "./adapter.ts";
 import {
@@ -12,41 +20,32 @@ import {
   type ProjectView,
   type Revision,
   type ThreadPage,
-  type Thread as ThreadRecord,
   type ThreadSummary,
 } from "./api.ts";
 import { asksOf } from "./asks.ts";
-import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { bangCommand, commandHint, commandHold, commandsHere } from "./BangCommand.tsx";
+import { aiNoticeHeight, Composer, type ComposerSeed } from "./Composer.tsx";
 import type { ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
-import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
+import { rememberDock, useDockArrival } from "./dockArrival.ts";
+import type { HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { LazyFrame } from "./lazy.tsx";
-import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.tsx";
-import { RunsConversation, ThreadRoom } from "./pages.ts";
-import type { ConversationPanel, ConversationView } from "./route.ts";
+import { PlusMenu, RunsConversation, ThreadRoom } from "./pages.ts";
+import { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
+import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
-import { useThreadSelection } from "./selection.ts";
+import { SessionSettings } from "./SessionPickers.tsx";
+import { ComposerFooter } from "./SessionUsage.tsx";
+import { DEFAULT_SETUP, type SessionSetup, useSessionOptions } from "./sessionOptions.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";
-import { AgentMark, isWorking, Page, Problem } from "./ui.tsx";
+import { AgentMark, isWorking, Page, Problem, textAction } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
 
 const words = defaultCopy.threads;
 
-/** The thread a page holds before one is read: nothing selected, nowhere. */
-const noThread: ThreadRecord = {
-  id: "",
-  project: "",
-  channel: "general",
-  visibility: "private",
-  participants: [],
-  version: 0,
-  created_by: "",
-  created_at: "",
-  updated_at: "",
-};
 /** The answers to one point in the conversation, oldest first. */
 export function siblingsOf(turns: Run[], run: Run): Run[] {
   return turns.filter((t) => (t.prev ?? "") === (run.prev ?? ""));
@@ -151,13 +150,19 @@ function ChatBar({
   me,
   handle,
   plus,
+  besideFor,
   onAvailable,
+  agentsRead,
   ...rest
 }: Omit<Parameters<typeof Composer>[0], "tags" | "plus"> & {
+  /** The row under the bar, built from what the bar completes, in place of `footer`. */
+  besideFor?: (choices: Completion) => ReactNode;
   /** Called with the agents that may answer in the project, once they are read. */
   onAvailable?: (available: { name: string }[]) => void;
   project: string;
   agents: Revision[];
+  /** Whether the workspace's agents are read. The bar is drawn before, and the project's list read beside them. */
+  agentsRead: boolean;
   homes: Record<string, string>;
   projects: ProjectView[] | null;
   root: ProjectView | null;
@@ -174,13 +179,16 @@ function ChatBar({
     topicsOf(projects ?? [], root, project),
     me,
     handle,
+    agentsRead,
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
   useEffect(() => {
     if (tags.agents) onAvailable?.(tags.agents);
   }, [tags.agents]);
   const voice = useVoiceNotes();
-  return <Composer {...rest} tags={tags} plus={plus?.(tags)} voice={voice} />;
+  return (
+    <Composer {...rest} beside={besideFor?.(tags)} tags={tags} plus={plus?.(tags)} voice={voice} />
+  );
 }
 
 /**
@@ -213,6 +221,8 @@ export function Chat({
   tick,
   agents,
   agentsRead = true,
+  agentsFailed = false,
+  onRetryAgents,
   homes = {},
   projects,
   canRun,
@@ -273,8 +283,14 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
-  /** Whether the agents have been read. Until they are, Home holds the composer's place rather than saying none are set up. */
+  /**
+   * Whether the agents have been read. Until they are, the chat bar is drawn
+   * and takes typing; a message sent waits for them, and @ says they are loading.
+   */
   agentsRead?: boolean;
+  /** The agents could not be read: the bar says so, keeps the draft, and offers Retry. */
+  agentsFailed?: boolean;
+  onRetryAgents?: () => void;
   /** Where each agent that lives in a project lives, so completion offers only what may answer here. */
   homes?: Record<string, string>;
   /** The project tree a new conversation can be filed in, or null while it loads. */
@@ -294,17 +310,10 @@ export function Chat({
   const [turns, setTurns] = useState<Run[]>([]);
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
-  // The + selection of a conversation of runs, saved on its thread as a room's is.
-  const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
-    saved: (t) => {
-      setRoom((r) => (r ? { ...r, thread: t } : r));
-      onChanged();
-    },
-    reread: (p) => setRoom((r) => (r ? { ...r, thread: p.thread } : r)),
-    problem: (why) => setProblem(why),
-  });
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // An agent a link named is mentioned at the start of the draft, ahead of what it asks.
+  // The end of the conversation, where messages that wait are shown.
+  const [queuePlace, setQueuePlace] = useState<HTMLElement | null>(null);
   const [seed, setSeed] = useState<ComposerSeed | undefined>(() =>
     startAgent || startAsk
       ? { text: `${startAgent ? `@${startAgent} ` : ""}${startAsk ?? ""}` }
@@ -335,6 +344,11 @@ export function Chat({
   // Read when the project's agents arrive, not drawn: kept out of state so a
   // key typed does not render the conversation again.
   const draft = useRef("");
+  // The agents the draft mentions, for the setup row: set only when they
+  // change, so a key typed renders nothing here.
+  const [mentioned, setMentioned] = useState<string[]>([]);
+  // Home's bar, remembered as it leaves for the conversation its first message opens.
+  const bar = useRef<HTMLDivElement>(null);
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -475,85 +489,145 @@ export function Chat({
     Promise.all(ids.map((id) => api.stopRun(id))).catch((e) =>
       setProblem(e instanceof ApiError ? e.message : defaultCopy.conversation.stopDelayed),
     );
+  // A message not sent goes back to the person: in the box on Home, where
+  // the first message opens the conversation and nothing may queue behind
+  // it, and held in the queue in a conversation, to send again.
+  const seedOf = (m: QueuedMessage): ComposerSeed => ({
+    text: m.text,
+    files: m.uploads?.map((f, i) => ({
+      id: `retry-${i}`,
+      name: f.name,
+      text: "",
+      data: f.data,
+    })),
+  });
+  const giveBack = (m: QueuedMessage, why: string | null) => {
+    setProblem(why);
+    queue.reject();
+    if (!threadId) {
+      queue.clear();
+      setSeed(seedOf(m));
+    }
+  };
+  // The chat bar is drawn before the agents are read, so a message sent
+  // then waits here, and goes once they arrive: the workspace's, and the
+  // ones that may answer where it goes. It stays in the box, read-only,
+  // so it is never out of sight; Cancel or Escape gives it back to edit.
+  const agentsReady = agentsRead && !agentsFailed && (threadId !== null || offered !== null);
+  const held = useRef<QueuedMessage | null>(null);
+  const [holding, setHolding] = useState(false);
+  const hold = (m: QueuedMessage | null) => {
+    held.current = m;
+    setHolding(m !== null);
+  };
+  // A held message let go unsent: its words are already in the box, now editable.
+  const unhold = () => {
+    hold(null);
+    queue.reject();
+    queue.clear();
+  };
   const queue = useQueue({
     onStart: (m) => {
-      setProblem(null);
-      replying.current = { ids: [], stop: false };
-      const done = (runs: Run[] = []) => {
-        onChanged();
-        const ids = runs.filter((r) => isWorking(r.status)).map((r) => r.id);
-        if (ids.length === 0) return queue.turnEnded("done");
-        // Stop was asked while the message was being posted.
-        if (replying.current.stop) void stopRuns(ids);
-        replying.current = { ...replying.current, ids };
-        setAwaiting(ids);
-      };
-      const failed = (e: unknown) => {
-        setProblem(e instanceof ApiError ? e.message : words.failed.post);
-        queue.reject();
-        // The first message opens the conversation, so nothing may queue
-        // behind it: one that did not post goes back in the box to send again.
-        if (!threadId) {
-          queue.clear();
-          setSeed({
-            text: m.text,
-            files: m.uploads?.map((f, i) => ({
-              id: `retry-${i}`,
-              name: f.name,
-              text: "",
-              data: f.data,
-            })),
-          });
-        }
-      };
-      // Home starts a private conversation in the picked project, or a
-      // shared thread when it was opened from a channel. Either opens at
-      // its address, where the next message goes.
-      if (!threadId) {
-        coworking
-          .start({
-            project: project ?? "",
-            channel: selection.channel,
-            text: m.text,
-            uploads: m.uploads,
-            visibility: startChannel ? "shared" : "private",
-          })
-          .then((p) => {
-            // Run, chosen before the session started, is applied to it now.
-            if (pendingApproval !== "ask")
-              void coworking.setApprovalMode(p.thread.id, pendingApproval).catch(() => undefined);
-            onThread(p.thread.id);
-            done(p.runs);
-          })
-          .catch(failed);
+      if (agentsFailed) return giveBack(m, null);
+      if (!agentsReady) {
+        hold(m);
+        // Sent, the box emptied: the words go back in it while they wait.
+        setSeed(seedOf(m));
         return;
       }
-      // A conversation of runs takes the message after the turn on screen.
-      // Posted, it is a room: the message, and any run its tags started.
-      coworking
-        .post(threadId, { text: m.text, uploads: m.uploads, ...(tail ? { after: tail.id } : {}) })
-        .then((p) => {
-          setRoom((r) =>
-            r
-              ? {
-                  ...r,
-                  turns: [
-                    ...r.turns,
-                    { kind: "message", message: p.message },
-                    ...p.runs.map((run) => ({ kind: "run" as const, run })),
-                  ],
-                }
-              : r,
-          );
-          done(p.runs);
-        })
-        .catch(failed);
+      begin(m);
     },
     onInterrupt: () => {
+      // Stopped before it was sent: the message goes back, never lost.
+      if (held.current) return unhold();
       replying.current = { ...replying.current, stop: true };
       if (replying.current.ids.length > 0) void stopRuns(replying.current.ids);
     },
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the held message is read, not watched
+  useEffect(() => {
+    const waiting = held.current;
+    if (!waiting) return;
+    // Failed, or no agent to answer it: the words stay in the box to edit.
+    if (agentsFailed || (agentsReady && agents.length === 0)) unhold();
+    else if (agentsReady) {
+      hold(null);
+      setSeed({ text: "", files: [] });
+      begin(waiting);
+    }
+  }, [agentsReady, agentsFailed]);
+
+  function begin(m: QueuedMessage) {
+    setProblem(null);
+    replying.current = { ids: [], stop: false };
+    const done = (runs: Run[] = []) => {
+      onChanged();
+      const ids = runs.filter((r) => isWorking(r.status)).map((r) => r.id);
+      if (ids.length === 0) return queue.turnEnded("done");
+      // Stop was asked while the message was being posted.
+      if (replying.current.stop) void stopRuns(ids);
+      replying.current = { ...replying.current, ids };
+      setAwaiting(ids);
+    };
+    const failed = (e: unknown) =>
+      giveBack(m, e instanceof ApiError ? e.message : words.failed.post);
+    // A "!" message runs a command and starts no run. Where none may run,
+    // it is not sent to an agent: it comes back, saying why.
+    const command = commandsRefused !== undefined && bangCommand(m.text) !== null;
+    if (command && commandsRefused) return giveBack(m, commandsRefused);
+    // Home starts a private conversation in the picked project, or a
+    // shared thread when it was opened from a channel. Either opens at
+    // its address, where the next message goes. A command starts the
+    // session and runs in its sandbox.
+    if (!threadId) {
+      coworking
+        .start({
+          project: project ?? "",
+          channel: selection.channel,
+          text: m.text,
+          uploads: m.uploads,
+          visibility: startChannel ? "shared" : "private",
+          ...(startChannel ? {} : setup),
+          ...(command ? { command } : {}),
+        })
+        .then((p) => {
+          // Run, chosen before the session started, is applied to it now.
+          if (pendingApproval !== "ask")
+            void coworking.setApprovalMode(p.thread.id, pendingApproval).catch(() => undefined);
+          // The bar and its footer move down into the conversation as one piece.
+          rememberDock(bar.current?.querySelector(".humagen-composer-container") ?? null);
+          onThread(p.thread.id);
+          done(p.runs);
+        })
+        .catch(failed);
+      return;
+    }
+    // A conversation of runs takes the message after the turn on screen.
+    // Posted, it is a room: the message, and any run its tags started.
+    coworking
+      .post(threadId, {
+        text: m.text,
+        uploads: m.uploads,
+        ...(tail ? { after: tail.id } : {}),
+        ...(command ? { command } : {}),
+      })
+      .then((p) => {
+        setRoom((r) =>
+          r
+            ? {
+                ...r,
+                turns: [
+                  ...r.turns,
+                  { kind: "message", message: p.message },
+                  ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                ],
+              }
+            : r,
+        );
+        done(p.runs);
+      })
+      .catch(failed);
+  }
 
   // A reply already in flight when the conversation is read, such as the
   // first message sent from Home, is the running turn: new messages queue
@@ -655,6 +729,18 @@ export function Chat({
   // from a project's page in that project: the composer picks no project.
   // Its approval mode is held until the session starts.
   const [pendingApproval, setPendingApproval] = useState<ApprovalMode>("ask");
+  // So are its image and repositories, sent with its first message: the
+  // image beside the plus, the repositories as context from the plus menu.
+  const [setup, setSetup] = useState<SessionSetup>(DEFAULT_SETUP);
+  const sessionOptions = useSessionOptions(!startChannel);
+  // Why a "!" message may not run here, or null; and what the bar says of one.
+  const commandsRefused = commandsHere(
+    sessionOptions?.terminal,
+    threadId ? threadId.startsWith("s_") : !startChannel,
+  );
+  // Only whether the draft is a command, and an empty one, is kept, so the
+  // bar is not drawn again on every key.
+  const [commandDraft, setCommandDraft] = useState<"!" | "!x" | null>(null);
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -662,8 +748,10 @@ export function Chat({
     send: (text, _pick, uploads) => queue.send(text, undefined, uploads),
     sendNow: (text, _pick, uploads) => queue.sendNow(text, undefined, uploads),
   };
-  const composer = canRun && agents.length > 0 && (
+  // Drawn with the page: only sending and mentions wait for the agents.
+  const composer = canRun && (agents.length > 0 || !agentsRead || agentsFailed) && (
     <div
+      ref={bar}
       className={
         composerOnly
           ? "flex w-full min-w-0 flex-col gap-2"
@@ -671,9 +759,44 @@ export function Chat({
       }
     >
       <Problem message={problem} />
+      {agentsFailed && (
+        <Problem
+          message={defaultCopy.chat.agentsFailed}
+          action={
+            onRetryAgents && (
+              <button type="button" className={textAction} onClick={onRetryAgents}>
+                {defaultCopy.retry}
+              </button>
+            )
+          }
+        />
+      )}
+      {holding ? (
+        <div className="flex items-center justify-between gap-3 px-3 text-aui-xs text-aui-muted">
+          <p role="status" aria-label={defaultCopy.chat.gettingReady}>
+            {defaultCopy.chat.gettingReady}
+          </p>
+          <button
+            type="button"
+            className={textAction}
+            title={defaultCopy.chat.cancelHeldHint}
+            onClick={unhold}
+          >
+            {defaultCopy.cancel}
+          </button>
+        </div>
+      ) : (
+        !agentsReady &&
+        !agentsFailed && (
+          <p role="status" aria-label={defaultCopy.chat.loadingAgents} className="sr-only">
+            {defaultCopy.chat.loadingAgents}
+          </p>
+        )
+      )}
       <ChatBar
         project={where}
         agents={agents}
+        agentsRead={agentsRead && !agentsFailed}
         homes={homes}
         projects={projects}
         root={root ?? null}
@@ -689,21 +812,98 @@ export function Chat({
         }
         emptyText={placeholderFor}
         queue={sending}
+        // In a conversation, messages that wait are shown at its end, not in the box.
+        queuePlace={threadId && !composerOnly ? queuePlace : undefined}
+        held={holding}
+        onCancelHeld={unhold}
         autoFocus={!threadId}
         seed={seed}
         onDraft={(text) => {
           draft.current = text;
+          const command = bangCommand(text);
+          setCommandDraft(command === null ? null : command === "" ? "!" : "!x");
+          if (threadId) return;
+          const now = mentionsIn(
+            text,
+            agents.map((a) => a.spec.name),
+          );
+          const same = (was: string[], now: string[]) =>
+            was.length === now.length && was.every((n, i) => n === now[i]);
+          setMentioned((was) => (same(was, now) ? was : now));
         }}
-        trailing={
-          threadId ? (
-            room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
-          ) : (
-            <ApprovalToggle
-              me={handle || me}
-              pending={pendingApproval}
-              onPending={setPendingApproval}
-            />
-          )
+        note={
+          commandDraft &&
+          commandsRefused !== undefined &&
+          commandHint(commandDraft, commandsRefused, !threadId)
+        }
+        hold={(text, files) => commandHold(text, files, commandsRefused)}
+        // Under the bar, its approval mode, always in the same place: in a
+        // conversation once its mode is read (until then it waits, disabled),
+        // and on Home held for the session it starts.
+        footer={
+          <ComposerFooter
+            start={
+              threadId ? (
+                <ApprovalToggle thread={room?.thread} disabled={!room?.thread} me={handle || me} />
+              ) : (
+                <ApprovalToggle
+                  me={handle || me}
+                  pending={pendingApproval}
+                  onPending={setPendingApproval}
+                />
+              )
+            }
+          />
+        }
+        // On Home, beside +, the new session's settings: one menu of rows.
+        besideFor={
+          threadId
+            ? undefined
+            : ({ agents: available, defaultAgent }) => {
+                return (
+                  <SessionSettings
+                    project={{
+                      projects,
+                      value: project,
+                      personalProject,
+                      channel: selection.channel,
+                      onChange: (name) =>
+                        select({ ...selection, project: name, channel: "general" }),
+                      onCreated: onProjectCreated,
+                    }}
+                    agents={{
+                      available,
+                      mentioned,
+                      defaultAgent,
+                      onMention: (name) =>
+                        setSeed({ mention: name, remove: mentioned.includes(name) }),
+                      finder: findHelp
+                        ? {
+                            onSearch: findHelp,
+                            draft: () => draft.current,
+                            // The match is mentioned: ahead of what was described, or where the cursor was.
+                            onChoose: (match, description) => {
+                              setSeed(
+                                draft.current.trim()
+                                  ? { mention: match.agent }
+                                  : { text: `@${match.agent} ${description}` },
+                              );
+                              // Chosen, the work is ready to send: the box takes focus from the menu.
+                              queueMicrotask(() =>
+                                document.getElementById("composer-input")?.focus(),
+                              );
+                            },
+                          }
+                        : undefined,
+                    }}
+                    options={sessionOptions}
+                    setup={setup}
+                    onSetup={setSetup}
+                    fixed={startChannel ? defaultCopy.chat.setup.channelFixed : undefined}
+                    connectHref={href({ page: "settings", section: "connections" })}
+                  />
+                );
+              }
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
@@ -720,64 +920,23 @@ export function Chat({
                 if (dropped.length > 0) setProblem(defaultCopy.chat.notHere(dropped));
               }
         }
+        // In a conversation of runs, + is a menu that selects its agents as a
+        // room does, so a follow-up goes to them; its project is fixed by its
+        // runs. On Home, + attaches files and the row under the bar holds the rest.
         plus={
           threadId
-            ? // A conversation of runs selects its agents as a room does, so a
-              // follow-up goes to them; its project is fixed by its runs.
-              ({ agents: available, skills, skillsFailed }) => ({
+            ? ({ agents: available }) => ({
                 menu: (close, attach, leave, draft) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
                     {...mentionPicks(draft, available, setSeed)}
-                    skills={skills}
-                    skillsFailed={skillsFailed}
-                    onSkill={(name) => {
-                      setSeed({ text: `/${name} `, mode: "prepend" });
-                    }}
-                    selection={runs.selection}
-                    onChange={runs.select}
                     onAttach={attach}
                     onClose={close}
                   />
                 ),
               })
-            : ({ agents: available, skills, skillsFailed }) => ({
-                menu: (close, attach, leave, draft) => (
-                  <PlusMenu
-                    onLeave={leave}
-                    agents={available}
-                    {...mentionPicks(draft, available, setSeed)}
-                    skills={skills}
-                    skillsFailed={skillsFailed}
-                    onSkill={(name) => {
-                      setSeed({ text: `/${name} `, mode: "prepend" });
-                    }}
-                    selection={selection}
-                    onChange={select}
-                    onAttach={attach}
-                    onClose={close}
-                    finder={
-                      findHelp ? (
-                        <FindHelp
-                          initialDescription={draft}
-                          onSearch={findHelp}
-                          canChoose={canRun}
-                          onChoose={(match, description) => {
-                            // The match is mentioned: ahead of what was described, or where the cursor was.
-                            setSeed(
-                              draft.trim()
-                                ? { mention: match.agent }
-                                : { text: `@${match.agent} ${description}` },
-                            );
-                            close();
-                          }}
-                        />
-                      ) : undefined
-                    }
-                  />
-                ),
-              })
+            : undefined
         }
       />
     </div>
@@ -791,6 +950,7 @@ export function Chat({
     (threadId.startsWith("s_") ||
       room.thread.read_only ||
       room.thread.fork ||
+      room.thread.import ||
       room.turns.some((t) => t.message))
   ) {
     return (
@@ -860,7 +1020,7 @@ export function Chat({
         banner={banner}
         greeting={greeting}
         canRun={canRun}
-        hasAgents={!agentsRead || agents.length > 0}
+        hasAgents={!agentsRead || agentsFailed || agents.length > 0}
         below={home}
       >
         {composer}
@@ -925,6 +1085,7 @@ export function Chat({
         setChosen={setChosen}
         setSeed={setSeed}
         composer={composer}
+        onQueuePlace={setQueuePlace}
         activity={activity ?? lastActivity.current}
         activityOpen={activity !== null}
       />
@@ -959,14 +1120,44 @@ function ConversationLoading({
         <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-4">
           {children}
         </div>
-        <div className="mx-auto w-full max-w-4xl px-4 pb-4">
-          <div
-            aria-hidden
-            className="aui-skeleton-delay h-[var(--humagen-composer-h)] rounded-aui-lg border border-aui-border"
-          />
-        </div>
+        <DockPlaceholder />
       </Page>
     </section>
+  );
+}
+
+/**
+ * The composer's place while a conversation loads. Arriving from Home's first
+ * message, it is Home's own bar and footer, drawn inert, sliding down to
+ * here (dockArrival.ts); otherwise a quiet outline of the bar and its footer.
+ */
+function DockPlaceholder() {
+  const dock = useRef<HTMLDivElement>(null);
+  const picture = useRef<HTMLDivElement>(null);
+  const html = useDockArrival(dock);
+  useLayoutEffect(() => {
+    if (html && picture.current) picture.current.innerHTML = html;
+  }, [html]);
+  return (
+    <div
+      ref={dock}
+      data-layer="composer-placeholder"
+      className="humagen-composer-placeholder mx-auto flex w-full max-w-4xl flex-col gap-1.5 px-4 pb-3"
+    >
+      {html ? (
+        <div ref={picture} inert aria-hidden className="pointer-events-none" />
+      ) : (
+        <>
+          <div
+            aria-hidden
+            className="aui-skeleton-delay h-[var(--humagen-composer-h)] rounded-[1.25rem] border border-aui-border"
+          />
+          <div aria-hidden className="h-7" />
+          {/* The AI notice's line. */}
+          <div aria-hidden data-layer="composer-placeholder-notice" className={aiNoticeHeight} />
+        </>
+      )}
+    </div>
   );
 }
 

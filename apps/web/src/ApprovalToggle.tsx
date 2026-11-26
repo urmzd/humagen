@@ -1,17 +1,23 @@
 import { defaultCopy } from "@humagen/components";
-import { FastForwardIcon, HandIcon } from "@humagen/render-web";
-import { useEffect, useState } from "react";
+import { CheckIcon, FastForwardIcon, HandIcon } from "@humagen/render-web";
+import { type KeyboardEvent, useEffect, useState } from "react";
 import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
 import { POLICY } from "./models.ts";
+import { Popover } from "./ui.tsx";
+
+/** The approval control: the mode's icon and word in a quiet pill, as tall as the composer's controls. */
+const pill =
+  "inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center gap-1.5 rounded-full bg-aui-hover/60 px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
 
 /**
- * How a session's gated actions are approved: ✋ a person, or ⏩ the approval agent,
- * which in "decide" also answers questions the session already settles (DES-079).
+ * How a session's gated actions are approved: ✋ Ask, a person, or ⏩ Auto,
+ * the approval agent, which also answers questions the session already
+ * settles (DES-057, DES-079).
  */
-export type ApprovalMode = "ask" | "auto" | "decide";
+export type ApprovalMode = "ask" | "auto";
 
-/** The built-in that decides gated actions in a session set to Run. */
+/** The built-in that decides gated actions in a session set to Auto. */
 const APPROVER = "approver";
 
 let approverRead: Promise<Revision | null> | null = null;
@@ -53,14 +59,14 @@ export function useApproverReady(): boolean | null {
 }
 
 /**
- * A session's approval mode under the composer, always shown: a two-state
- * icon button, ✋ Ask Me (every gated action waits for a person) or ⏩ Run
- * (the approval agent decides each, handing a person anything it is unsure
- * of). Its tooltip says what the mode does, and when the approval agent has
- * no model to run on, that every action waits for a person. In Run, a
- * secondary text control, Answer Questions, turns on Run and Answer, where
- * the approval agent also answers questions the session settles (DES-079);
- * it is off until pressed, and Ask Me turns it off. With no session yet, as
+ * A session's approval mode under the composer, always shown: one control,
+ * the mode's icon (✋ Ask or ⏩ Auto), named "Approval
+ * mode: <mode>" for assistive technology and in a tooltip on hover and
+ * focus, that opens a menu of the two under an "Approval mode" heading. Each row says in one line what happens in that
+ * mode (DES-057, DES-079), so the choice is read before it is made
+ * and nothing about it sits in a tooltip. The menu also says when the
+ * approval agent has no model to run on, so every action waits for a person,
+ * and who chose the mode when it was someone else. With no session yet, as
  * on Home, the choice is held and applied once the session starts.
  */
 export function ApprovalToggle({
@@ -69,7 +75,10 @@ export function ApprovalToggle({
   nameOf = (s) => s,
   pending = "ask",
   onPending,
+  disabled = false,
 }: {
+  /** The session's mode is still being read: the pill holds its place and waits. */
+  disabled?: boolean;
   /** The session, once there is one. */
   thread?: Pick<Thread, "id" | "approval">;
   /** The reader's handle, to tell their own choice from someone else's. */
@@ -84,32 +93,13 @@ export function ApprovalToggle({
   const [approval, setApproval] = useState(thread?.approval);
   const [problem, setProblem] = useState("");
   useEffect(() => setApproval(thread?.approval), [thread?.approval]);
-  const mode: ApprovalMode = thread
-    ? approval?.mode === "auto" || approval?.mode === "decide"
-      ? approval.mode
-      : "ask"
-    : pending;
+  // Any approval a session holds is Auto; the server reads an old one as Auto too.
+  const mode: ApprovalMode = thread ? (approval ? "auto" : "ask") : pending;
   const someoneElse = approval && thread && approval.by !== me ? nameOf(approval.by) : "";
-  const label =
-    mode === "ask"
-      ? words.ask
-      : mode === "decide"
-        ? someoneElse
-          ? words.decideFor(someoneElse)
-          : words.decide
-        : someoneElse
-          ? words.autoFor(someoneElse)
-          : words.auto;
-  const hint =
-    mode === "ask"
-      ? words.askHint
-      : ready === false
-        ? words.waiting
-        : mode === "decide"
-          ? words.decideHint
-          : words.autoHint;
+  const label = mode === "ask" ? words.ask : someoneElse ? words.autoFor(someoneElse) : words.auto;
   const choose = (next: ApprovalMode) => {
     setProblem("");
+    if (next === mode) return;
     if (!thread) {
       onPending?.(next);
       return;
@@ -124,36 +114,117 @@ export function ApprovalToggle({
       },
     );
   };
+  const options: { mode: ApprovalMode; name: string; hint: string }[] = [
+    { mode: "ask", name: words.ask, hint: words.askHint },
+    { mode: "auto", name: words.auto, hint: words.autoHint },
+  ];
+  // Arrow keys, Home and End move through the rows, and Escape or Tab closes
+  // the menu and puts focus back on the control, as in every menu here.
+  const keys = (close: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" || e.key === "Tab") {
+      // Focus goes back to the control, not on past it.
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+      return;
+    }
+    const rows = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    const to =
+      e.key === "ArrowDown"
+        ? (at + 1) % rows.length
+        : e.key === "ArrowUp"
+          ? (at - 1 + rows.length) % rows.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? rows.length - 1
+              : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    rows[to]?.focus();
+  };
   const Icon = mode === "ask" ? HandIcon : FastForwardIcon;
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1">
-      <button
-        type="button"
-        onClick={() => choose(mode === "ask" ? "auto" : "ask")}
-        aria-label={`${words.label}: ${label}`}
-        title={`${label}. ${hint}`}
-        data-approval-mode={mode}
-        className="inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-      >
-        <Icon size={16} />
-        {/* The mode in words where the bar has room; the icon alone in a narrow one. */}
-        <span aria-hidden className="humagen-approval-label text-aui-xs">
-          {mode === "ask" ? words.ask : words.auto}
-        </span>
-      </button>
-      {mode !== "ask" && (
-        // The secondary option: a text control, pressed while Run and Answer is on.
+  // The mode's icon and its word, in a quiet pill.
+  const face = (
+    <>
+      <Icon size={14} className={mode === "auto" ? "text-aui-warn" : undefined} />
+      <span>{mode === "ask" ? words.ask : words.auto}</span>
+    </>
+  );
+  if (disabled)
+    return (
+      <span className="inline-flex min-w-0 items-center gap-1" data-approval-mode="loading">
         <button
           type="button"
-          aria-pressed={mode === "decide"}
-          onClick={() => choose(mode === "decide" ? "auto" : "decide")}
-          title={words.decideHint}
-          data-approval-answers={mode === "decide" ? "on" : "off"}
-          className={`inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${mode === "decide" ? "text-aui-fg underline underline-offset-4" : "text-aui-muted"}`}
+          // The name starts with the words the pill shows, as the enabled one's does.
+          aria-label={`${mode === "ask" ? words.ask : words.auto}, ${words.label}`}
+          aria-disabled
+          className={`${pill} cursor-default opacity-60 hover:bg-aui-hover/60 hover:text-aui-muted`}
         >
-          {words.answers}
+          {face}
         </button>
-      )}
+      </span>
+    );
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1" data-approval-mode={mode}>
+      <Popover popup="menu" label={`${words.label}: ${label}`} className={pill} button={face}>
+        {(close) => (
+          <div
+            role="menu"
+            aria-label={words.label}
+            onKeyDown={keys(close)}
+            className="flex flex-col"
+          >
+            <p aria-hidden className="px-2.5 pt-1 pb-1.5 text-aui-xs text-aui-muted">
+              {words.question}
+            </p>
+            {options.map((o) => {
+              const RowIcon = o.mode === "ask" ? HandIcon : FastForwardIcon;
+              const on = o.mode === mode;
+              return (
+                <button
+                  key={o.mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={on}
+                  // biome-ignore lint/a11y/noAutofocus: an opened menu takes focus on its current row.
+                  autoFocus={on}
+                  data-approval-option={o.mode}
+                  onClick={() => {
+                    close();
+                    choose(o.mode);
+                  }}
+                  // Auto acts without a person, so its icon carries the warning color. A filled
+                  // row would read as the chosen one, which only the check says.
+                  className="flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none hover:bg-aui-hover focus-visible:bg-aui-hover"
+                >
+                  <RowIcon
+                    size={16}
+                    className={`mt-0.5 shrink-0 ${o.mode === "auto" ? "text-aui-warn" : "text-aui-muted"}`}
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-aui-sm text-aui-fg">{o.name}</span>
+                    <span className="text-aui-xs text-aui-muted">{o.hint}</span>
+                  </span>
+                  <CheckIcon
+                    size={16}
+                    aria-hidden
+                    className={`mt-0.5 shrink-0 text-aui-fg ${on ? "" : "invisible"}`}
+                  />
+                </button>
+              );
+            })}
+            {(ready === false || someoneElse) && (
+              <p className="mt-1 border-[var(--humagen-rule)] border-t px-2.5 pt-2 pb-1 text-aui-xs text-aui-muted">
+                {[someoneElse && words.chosenBy(someoneElse), ready === false && words.waiting]
+                  .filter(Boolean)
+                  .join(" ")}
+              </p>
+            )}
+          </div>
+        )}
+      </Popover>
       {problem && (
         <span role="alert" className="text-aui-2xs text-aui-bad">
           {problem}

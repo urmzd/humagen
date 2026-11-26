@@ -5,7 +5,7 @@ import type { Client, Source, ToolCredentials } from "./api.ts";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { Connections } from "./Connections.tsx";
-import { stubFetch } from "./dom.ts";
+import { stubFetch, underTitle } from "./dom.ts";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { SourceLifecycle } from "./SourceLifecycle.tsx";
 
@@ -249,13 +249,22 @@ const reviewedNotion = {
   ],
 };
 
-/** Reviews Notion's tools from its card's one action; returns that button. */
+/**
+ * Chooses one of a row's actions from the arrow beside its control, as a
+ * person does once the item is theirs; returns the arrow, where focus goes back.
+ */
+async function choose(row: HTMLElement, name: string, action: string) {
+  const more = within(row).getByRole("button", { name: `More for ${name}` });
+  more.focus();
+  fireEvent.keyDown(more, { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }));
+  return more;
+}
+
+/** Reviews Notion's tools from the arrow beside its Connected control; returns that arrow. */
 async function openToolReview() {
   const notion = await screen.findByRole("listitem", { name: "Notion" });
-  const review = within(notion).getByRole("button", { name: "Review Tools" });
-  review.focus();
-  fireEvent.click(review);
-  return review;
+  return choose(notion, "Notion", "Review Tools");
 }
 
 test("keyboard tool review opens the provider Sheet, keeps a refused approval visible, and restores focus", async () => {
@@ -418,11 +427,7 @@ test("key MCPs: a value, a replaced reference and a removal, each from its card"
   await within(screen.getByRole("listitem", { name: "calendar" })).findByText("Connected");
   assert.equal(screen.queryByDisplayValue("private-value"), null);
 
-  fireEvent.click(
-    within(screen.getByRole("listitem", { name: "issues" })).getByRole("button", {
-      name: "Replace",
-    }),
-  );
+  await choose(screen.getByRole("listitem", { name: "issues" }), "issues", "Replace");
   const issues = within(await sheet("issues")).getByRole("region", { name: "issues" });
   fireEvent.change(within(issues).getByLabelText(/^Reference/), {
     target: { value: "op://People/alice/replacement" },
@@ -624,10 +629,12 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
   );
   const workspace = render(<Connections scope="apps" canConnect canWrite />);
   assert.ok(await screen.findByRole("heading", { name: "Apps", level: 1 }));
+  // The title heads the page alone: no line of explanation under it.
+  assert.deepEqual(underTitle(), []);
   const apps = await screen.findByRole("list", { name: "Apps" });
   const slack = await within(apps).findByRole("listitem", { name: "Slack" });
-  await within(slack).findByText("Installed");
-  assert.ok(within(slack).getByRole("button", { name: "Manage" }));
+  // Its status is its control: pressing Installed manages it.
+  assert.ok(await within(slack).findByRole("button", { name: "Installed" }));
   assert.equal(screen.getAllByRole("listitem", { name: "Slack" }).length, 1, "Slack appears once");
   // A person's plugins are not the workspace's page.
   assert.equal(screen.queryByRole("list", { name: "MCPs" }), null);
@@ -683,6 +690,58 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
   fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
   assert.ok(await screen.findByText("No personal skills yet"));
   assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
+});
+
+test("an installed app's status is its control, with its menu beside it at the row's end, as a plugin's is", async () => {
+  const preset = (id: string, name: string, kind: string, scope: string) => ({
+    id,
+    name,
+    kind,
+    scope,
+    available: true,
+    connected: true,
+  });
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        preset("notion", "Notion", "oauth", "person"),
+        preset("slack", "Slack", "client_oauth", "workspace"),
+        preset("github", "GitHub", "github_install", "workspace"),
+      ],
+    }),
+  );
+  const workspace = render(<Connections scope="apps" canConnect canWrite />);
+  const apps = await screen.findByRole("list", { name: "Apps" });
+  for (const name of ["Slack", "GitHub"]) {
+    const row = await within(apps).findByRole("listitem", { name });
+    const more = within(row).getByRole("button", { name: `More for ${name}` });
+    const group = row.lastElementChild as HTMLElement;
+    // The status is the control, and its arrow is the menu: one unit at the row's end.
+    const installed = within(row).getByRole("button", { name: "Installed" });
+    assert.ok(group.contains(installed), `${name}: Installed is in the group`);
+    assert.ok(group.contains(more), `${name}: its arrow is in the group`);
+    assert.match(group.className, /(^| )ml-auto( |$)/, "the group sits at the row's end");
+    assert.match(group.className, /(^| )shrink-0( |$)/);
+    // In a column narrower than the group it wraps inside the row, never past its edge.
+    assert.match(group.className, /(^| )max-w-full( |$)/, "the group stays inside the row");
+    // The control and its arrow are one split button that does not wrap.
+    const unit = installed.parentElement as HTMLElement;
+    assert.equal(unit.getAttribute("data-slot"), "button-group");
+    assert.ok(unit.contains(more), `${name}: the arrow stays beside Installed`);
+    // The name gives up room so the group fits beside it at 390 pixels.
+    const title = within(row).getByRole("button", { name });
+    assert.equal(group.contains(title), false);
+    assert.match(title.className, /(^| )min-w-16( |$)/);
+  }
+  workspace.unmount();
+
+  render(<Connections canConnect canWrite />);
+  const notion = await screen.findByRole("listitem", { name: "Notion" });
+  const more = within(notion).getByRole("button", { name: "More for Notion" });
+  // A plugin's row has the same one control at its end as an app's.
+  assert.match((notion.lastElementChild as HTMLElement).className, /(^| )ml-auto( |$)/);
+  assert.ok(notion.lastElementChild?.contains(more));
+  assert.match(within(notion).getByRole("button", { name: "Notion" }).className, / min-w-28 /);
 });
 
 test("an item that is off says so on its card; an administrator sees Enable and how", async () => {
@@ -834,7 +893,7 @@ test("the GitHub app's sheet holds the rules that start a session, saved on the 
   );
   render(<Connections scope="apps" canConnect canWrite />);
   const card = await screen.findByRole("listitem", { name: "GitHub" });
-  fireEvent.click(within(card).getByRole("button", { name: "Manage" }));
+  fireEvent.click(within(card).getByRole("button", { name: "Installed" }));
   const dialog = await sheet("GitHub");
   const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
   const rule = within(rules).getByRole("listitem", { name: "review-prs" });
@@ -863,6 +922,177 @@ test("the GitHub app's sheet holds the rules that start a session, saved on the 
     [
       ["review-prs", "pull_request", "opened", "code-reviewer"],
       ["triage-issues", "issues", "opened", "triage"],
+    ],
+  );
+});
+
+test("a rule answers with a review or a reply, a pull request rule reviewing unless told", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+
+  // A stored pull request rule without a shape reads as the review it is.
+  const rule = within(rules).getByRole("listitem", { name: "review-prs" });
+  await choose(rule, "review-prs", "Edit");
+  const edit = within(rules).getByRole("form", { name: "Edit review-prs" });
+  const shape = () => within(edit).getByLabelText(/^Answers with/) as HTMLSelectElement;
+  assert.equal(shape().value, "review");
+  assert.deepEqual(
+    within(shape())
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+    ["Review", "Reply"],
+  );
+
+  // A check run replies unless told, and an issue or a push cannot review.
+  fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value: "check_run" } });
+  assert.equal(shape().value, "reply");
+  for (const event of ["issues", "push"]) {
+    fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value: event } });
+    assert.equal(within(edit).queryByLabelText(/^Answers with/), null, event);
+  }
+  fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value: "pull_request" } });
+  assert.equal(shape().value, "review");
+
+  fireEvent.change(shape(), { target: { value: "reply" } });
+  fireEvent.click(within(edit).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; event: string; shape?: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, a.event, a.shape]),
+    [["review-prs", "pull_request", "reply"]],
+  );
+});
+
+test("a rule's answer stays through an event that offers it, and comes back with its own event", async () => {
+  const client = githubApp();
+  client.github.automations[0] = { ...client.github.automations[0], shape: "reply" } as never;
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  const rule = within(rules).getByRole("listitem", { name: "review-prs" });
+  await choose(rule, "review-prs", "Edit");
+  const edit = within(rules).getByRole("form", { name: "Edit review-prs" });
+  const shape = () => within(edit).getByLabelText(/^Answers with/) as HTMLSelectElement;
+  const event = (value: string) =>
+    fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value } });
+  assert.equal(shape().value, "reply");
+
+  // The stored answer comes back when the event returns to the rule's own.
+  event("issues");
+  assert.equal(within(edit).queryByLabelText(/^Answers with/), null);
+  event("pull_request");
+  assert.equal(shape().value, "reply");
+
+  // A chosen answer stays between the two events that offer the choice.
+  fireEvent.change(shape(), { target: { value: "review" } });
+  event("check_run");
+  assert.equal(shape().value, "review");
+  event("pull_request");
+  assert.equal(shape().value, "review");
+
+  // An event without the choice clears it, and another event starts at its default.
+  event("push");
+  event("check_run");
+  assert.equal(shape().value, "reply");
+  event("pull_request");
+  assert.equal(shape().value, "reply");
+
+  fireEvent.click(within(edit).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; event: string; shape?: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, a.event, a.shape]),
+    [["review-prs", "pull_request", "reply"]],
+  );
+});
+
+test("a rule left at its default saves no shape, so the server's default holds", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  fireEvent.click(within(rules).getByRole("button", { name: "Add Rule" }));
+  const form = within(rules).getByRole("form", { name: "New rule" });
+  assert.equal((within(form).getByLabelText(/^Answers with/) as HTMLSelectElement).value, "review");
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "check-prs" } });
+  fireEvent.change(within(form).getByLabelText(/^Repository/), { target: { value: "acme/api" } });
+  await waitFor(() => assert.ok(within(form).getByRole("option", { name: "@code-reviewer" })));
+  fireEvent.change(within(form).getByLabelText(/^Agent/), {
+    target: { value: "code-reviewer" },
+  });
+  fireEvent.change(within(form).getByLabelText(/^Instructions/), {
+    target: { value: "Check the change." },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; shape?: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, "shape" in a]),
+    [
+      ["review-prs", false],
+      ["check-prs", false],
     ],
   );
 });

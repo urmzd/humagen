@@ -5,7 +5,7 @@ import { ActionPolicies } from "./ActionPolicies.tsx";
 import { AgentControls } from "./AgentControls.tsx";
 import { AgentNetwork } from "./AgentNetwork.tsx";
 import { Assignments } from "./Assignments.tsx";
-import { stubFetch } from "./dom.ts";
+import { stubFetch, underTitle } from "./dom.ts";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -64,6 +64,8 @@ test("action policies save explicit tightening rules, never an invented tool gra
   });
   render(<ActionPolicies canWrite />);
   const select = await screen.findByRole("combobox", { name: "Call agents" });
+  // The title heads the page alone: no line of explanation under it.
+  assert.deepEqual(underTitle(), []);
   fireEvent.change(select, { target: { value: "never" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
   await waitFor(() => assert.equal(net?.seen.filter((r) => r.method === "PUT").length, 1));

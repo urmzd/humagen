@@ -16,7 +16,7 @@ import {
 import { useGroup } from "./form";
 import { AlertTriangleIcon, ChevronDownIcon, EllipsisIcon, RefreshIcon } from "./icons";
 import { cn } from "./lib/utils.ts";
-import { SuppressContext } from "./meta";
+import { ActionsExtraContext, SuppressContext } from "./meta";
 import { buttonVariants } from "./ui/button.tsx";
 
 export const ActionContext = createContext<ActionHandler>(() => {});
@@ -135,12 +135,14 @@ export function Button({
   const [draft, setDraft] = useState("");
   const group = useGroup(collects);
   const dense = useContext(DenseContext);
+  const failureRow = useContext(FailureRowContext);
   // Reporting is the lesser of a failure's two actions, so it is text beside Retry, not a second box.
   const quiet = !style && action?.id === ActionId.report;
   const cls = cn(
-    buttonClass(quiet ? "ghost" : (style ?? "default")),
+    buttonClass(quiet ? "ghost" : failureRow ? "default" : (style ?? "default")),
     quiet && "text-aui-muted",
-    dense && "h-6 px-2 py-0",
+    (dense || failureRow) && "h-6 px-2 py-0",
+    failureRow && "text-aui-xs",
     "aria-pressed:border-aui-accent aria-pressed:bg-aui-accent/10",
   );
 
@@ -188,6 +190,7 @@ export function Button({
       <button
         type="button"
         data-aui="button"
+        data-aui-action={action?.id}
         data-style={style ?? "default"}
         className={cls}
         aria-label={accessibilityLabel ?? (shown !== label ? shown : undefined)}
@@ -326,6 +329,7 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
   const [pending, setPending] = useState<{ spec: ConfirmSpec; run: () => void } | null>(null);
   const row = useRef<HTMLFieldSetElement>(null);
   const kind = blockId?.split(":")[0];
+  const extra = useContext(ActionsExtraContext)?.(blockId ?? "") ?? null;
 
   const cancel = () => {
     setPending(null);
@@ -337,12 +341,13 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
 
   if (kind && suppressed.has(`block:${kind}`)) return null;
   // Same as Slack: a row with nothing in it is left out.
-  if (Children.toArray(children).length === 0) return null;
+  if (Children.toArray(children).length === 0 && !extra) return null;
   return (
     <fieldset
       ref={row}
       data-aui="actions"
       data-aui-block={kind}
+      data-aui-block-id={blockId}
       aria-label={kind ? `${kind[0]?.toUpperCase()}${kind.slice(1)} actions` : "Actions"}
       className="flex min-w-0 flex-wrap items-center gap-1.5"
     >
@@ -358,7 +363,10 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
       ) : (
         <ConfirmContext.Provider value={(spec, run) => setPending({ spec, run })}>
           <ChoiceContext.Provider value={confirmChoice ? { selected, select: setSelected } : null}>
-            {keepSplitsTogether(children)}
+            <FailureRowContext.Provider value={kind === "failure"}>
+              {keepSplitsTogether(children)}
+              {extra}
+            </FailureRowContext.Provider>
           </ChoiceContext.Provider>
           {confirmChoice && (
             <div className="flex basis-full min-w-0 flex-wrap items-center justify-between gap-3 border-aui-border border-t pt-3">
@@ -385,6 +393,12 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
 
 /** Buttons inside a dense row (a task row) shrink to 24px. */
 export const DenseContext = createContext(false);
+
+/**
+ * Buttons in a failure's recovery row are small and plain, so a failed
+ * answer reads as one quiet line and its Retry does not outweigh the thread.
+ */
+const FailureRowContext = createContext(false);
 
 /**
  * Secondary choices. Right after a Button it attaches to it as a split button

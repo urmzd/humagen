@@ -341,15 +341,16 @@ export function workspaceScreens(call: Call): Screen[] {
           const draft = "Keep this message while I choose the right agent.";
           await composer.fill(draft);
           assert.equal(await page.getByRole("region", { name: c.title, exact: true }).count(), 0);
-          await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
+          // Find an agent sits under Agents in the session settings menu beside +.
+          const menu = page.getByRole("dialog", {
+            name: defaultCopy.chat.setup.label,
+            exact: true,
+          });
           await page
-            .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
-            .getByRole("button", { name: /^Agents\b/ })
+            .getByRole("button", { name: defaultCopy.chat.setup.label, exact: true })
             .click();
-          await page
-            .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
-            .getByRole("button", { name: c.title, exact: true })
-            .click();
+          await menu.locator('[data-pane-row="agents"]').click();
+          await menu.getByRole("button", { name: c.title, exact: true }).click();
           let posts = 0;
           const requested = (request: import("playwright-core").Request) => {
             if (request.method() === "POST" && new URL(request.url()).pathname === "/api/threads")
@@ -363,12 +364,7 @@ export function workspaceScreens(call: Call): Screen[] {
             await match.waitFor();
             if (choose) {
               await match.click();
-              assert.equal(
-                await page
-                  .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
-                  .count(),
-                0,
-              );
+              assert.equal(await menu.count(), 0);
             }
             // A chosen match is mentioned after the draft, which is kept.
             if (choose)

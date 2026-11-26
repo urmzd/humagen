@@ -91,6 +91,8 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen create github|slack [flags] connect a surface through the API
        humagen store list|install|remove  use the agent store through the API
        humagen import sessions|skills|agents  bring sessions, skills and agents from other assistants in, through the API
+       humagen migrate sessions [-apply]  file past work into sessions; a dry run unless -apply
+       humagen migrate journal [-apply]   rewrite each journaled request to the request as it was asked; a dry run unless -apply
        humagen config check|print -f PATH check a spec, or print it with every default
        humagen config copy-keys           list the console's text branding.copy may replace
        humagen slack manifest [flags]     print the Slack app manifest
@@ -171,6 +173,8 @@ func run(o Options, args []string) error {
 		return slackCmd(args[1:], os.Stdout)
 	case "config":
 		return configCmd(o, args[1:], os.Stdout)
+	case "migrate":
+		return migrateCmd(args[1:], os.Stdout)
 	case "help", "-h", "-help", "--help":
 		fmt.Println(usage)
 		return nil
@@ -455,7 +459,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
-	connectionAuth, err := connectionAuthorization(ctx, file.cfg.System, keys)
+	connectionAuth, err := connectionAuthorization(ctx, file.cfg.System, keys, getenv, log)
 	if err != nil {
 		return err
 	}
@@ -496,6 +500,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Workspace:            *workspaceDir,
 		Sandbox:              sbx,
 		SandboxContained:     sandboxing.contained(),
+		SandboxImages:        sandboxing.images(),
 		Concurrency:          *concurrency,
 		Role:                 role,
 		Leader:               elector,
@@ -543,7 +548,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		if err := checkNewAgentName(ctx, p, *tenant, spec.Name); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
-		if err := registerSpec(ctx, p.Agents, *tenant, spec); err != nil {
+		if err := registerFlagSpec(ctx, p, *tenant, spec, log); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
 	}
@@ -567,6 +572,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	for _, app := range slack {
 		app.client = slackClients[app.tenant]
 	}
+	noteSlackPeople(p, o.notes)
 	postReleaseNotes(p, file.cfg, release.Running(o.Version.Version), o.Changelog, log)
 	// After the agents, so an agent the file or the seed names keeps its
 	// name and a person whose handle would be it gets a suffix.
@@ -580,6 +586,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	errc := make(chan error, 8)
 	ran := make(chan struct{})
 	go func() { defer close(ran); errc <- p.Run(ctx) }()
+	// A sandbox host that has never run a workspace's ready images gets
+	// them now, before a session asks.
+	go p.PullReadyImages(ctx)
 	if o.running != nil {
 		o.running(p)
 	}

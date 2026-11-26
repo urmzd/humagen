@@ -56,6 +56,7 @@ func brandedServer(t *testing.T, tenant string) (http.Handler, string) {
 		Name: "North", Logo: &spec.Logo{Path: filepath.Join(dir, "north.png"), Alt: "North logo"},
 		Starters: []spec.Starter{{Agent: "lead", Label: "Plan the week", Text: "Plan "}},
 		Copy:     map[string]string{"navigation.agents": "Assistants"},
+		TermsURL: "https://north.example/terms",
 	}}}}
 	brand, err := branding.Load(cfg)
 	if err != nil {
@@ -133,6 +134,17 @@ func TestAThemedLogoIsListedOnlyWhenSet(t *testing.T) {
 	}
 	if res, _ := brandGet(t, north, "/api/branding/logo/dark"); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("no dark logo: %d", res.StatusCode)
+	}
+}
+
+func TestTheTermsLinkIsListedOnlyWhenSet(t *testing.T) {
+	h, _ := brandedServer(t, "default")
+	if _, body := brandGet(t, h, "/api/branding"); !strings.Contains(body, `"terms_url":null`) {
+		t.Fatalf("a deployment that names no terms has no link: %s", body)
+	}
+	north, _ := brandedServer(t, "north")
+	if _, body := brandGet(t, north, "/api/branding"); !strings.Contains(body, `"terms_url":"https://north.example/terms"`) {
+		t.Fatalf("a workspace's terms: %s", body)
 	}
 }
 

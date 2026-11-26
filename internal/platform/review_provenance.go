@@ -13,12 +13,14 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/session"
 )
 
-const reviewNeedsCorrection = "Review needs correction: its scope does not match the recorded review context."
+const reviewNeedsCorrection = "Review needs correction: the commit it reviewed is not recorded."
 const reviewEvidenceUnavailable = "Review evidence is unavailable to this audience. An authorized summary is required."
 
 // reviewText projects claims into references the host can substantiate. Model
@@ -29,7 +31,7 @@ func (p *Platform) reviewText(ctx context.Context, run runs.Run, text string, wh
 	if json.Unmarshal([]byte(presentation.ReviewJSON(text)), &report) != nil || report.Format != presentation.ReviewFormatV2 {
 		return text
 	}
-	if len(text) > 128<<10 || len(report.Findings) > 100 || report.Scope == nil {
+	if len(text) > 128<<10 || len(report.Findings) > 100 {
 		return reviewNeedsCorrection
 	}
 	events, err := p.Journal.Events(run.Tenant, []string{run.ID})
@@ -38,37 +40,17 @@ func (p *Platform) reviewText(ctx context.Context, run runs.Run, text string, wh
 	}
 	// Historical reads must not acquire evidence created after this answer.
 	// The completion timestamp is authoritative; UpdatedAt can change later.
-	var cutoffSeq uint64
-	for _, e := range events {
-		if (e.Type == event.TypeCompleted || e.Type == event.TypeStopped) && !e.Time.IsZero() && (cutoff.IsZero() || e.Time.Before(cutoff)) {
-			cutoff = e.Time
-		}
-		if (e.Type == event.TypeCompleted || e.Type == event.TypeStopped) && (cutoffSeq == 0 || e.Seq < cutoffSeq) {
-			cutoffSeq = e.Seq
-		}
-	}
-	head := wire.SurfaceOf(run.Tag()).GitHubHeadSHA
+	cutoff, cutoffSeq := reviewCutoff(events, cutoff)
+	head := pinnedHead(run.Tag())
 	if head == "" {
-		for _, e := range events {
-			done, ok := e.Data.(event.ToolDone)
-			if !ok || done.Name != "github_read_context" || done.Error != "" || cutoff.IsZero() || e.Time.After(cutoff) || cutoffSeq != 0 && e.Seq > cutoffSeq {
-				continue
-			}
-			var result struct {
-				Subject struct {
-					Head struct {
-						SHA string `json:"sha"`
-					} `json:"head"`
-				} `json:"subject"`
-			}
-			if json.Unmarshal([]byte(done.Result), &result) == nil && result.Subject.Head.SHA != "" {
-				head = result.Subject.Head.SHA
-			}
-		}
+		head = readHead(events, cutoff, cutoffSeq)
 	}
-	if head == "" || report.Scope.Commit != head {
+	// The host pins the reviewed commit; the model never supplies it, and
+	// a value it wrote anyway is replaced.
+	if head == "" {
 		return reviewNeedsCorrection
 	}
+	report.Pin(head)
 	tree, treeErr := p.Runs.Tree(run.Tenant, run.ID)
 	byID := map[string]runs.Run{run.ID: run}
 	if treeErr == nil {
@@ -140,7 +122,7 @@ func (p *Platform) reviewText(ctx context.Context, run runs.Run, text string, wh
 			}
 			return true
 		}
-		if p.RunPlace(run.Tenant, candidate).Project != destination || p.privateThread(run.Tenant, candidate.Thread) {
+		if p.RunPlace(run.Tenant, candidate).Project != destination || p.publishesPrivately(candidate) {
 			return false
 		}
 		if candidate.ID == run.ID {
@@ -297,6 +279,84 @@ func (p *Platform) reviewEvent(ctx context.Context, e event.Envelope, who *auth.
 	return e
 }
 
+// reviewCutoff is when a run's answer was final: its first completion or
+// stop, no later than cutoff when cutoff is set, and that event's sequence.
+func reviewCutoff(events []event.Envelope, cutoff time.Time) (time.Time, uint64) {
+	var cutoffSeq uint64
+	for _, e := range events {
+		if (e.Type == event.TypeCompleted || e.Type == event.TypeStopped) && !e.Time.IsZero() && (cutoff.IsZero() || e.Time.Before(cutoff)) {
+			cutoff = e.Time
+		}
+		if (e.Type == event.TypeCompleted || e.Type == event.TypeStopped) && (cutoffSeq == 0 || e.Seq < cutoffSeq) {
+			cutoffSeq = e.Seq
+		}
+	}
+	return cutoff, cutoffSeq
+}
+
+// readHead is the pull request head a run read with github_read_context
+// before its answer was final, for a run whose tag pinned none.
+func readHead(events []event.Envelope, cutoff time.Time, cutoffSeq uint64) string {
+	head := ""
+	for _, e := range events {
+		done, ok := e.Data.(event.ToolDone)
+		if !ok || done.Name != "github_read_context" || done.Error != "" || cutoff.IsZero() || e.Time.After(cutoff) || cutoffSeq != 0 && e.Seq > cutoffSeq {
+			continue
+		}
+		var result struct {
+			Subject struct {
+				Head struct {
+					SHA string `json:"sha"`
+				} `json:"head"`
+			} `json:"subject"`
+		}
+		if json.Unmarshal([]byte(done.Result), &result) == nil && result.Subject.Head.SHA != "" {
+			head = result.Subject.Head.SHA
+		}
+	}
+	return head
+}
+
+// reviewedHead is the commit a run's review is about: the head the host
+// pinned when it started, else the one it read before it answered.
+func (p *Platform) reviewedHead(run runs.Run) string {
+	if head := pinnedHead(run.Tag()); head != "" {
+		return head
+	}
+	events, err := p.Journal.Events(run.Tenant, []string{run.ID})
+	if err != nil {
+		return ""
+	}
+	cutoff, seq := reviewCutoff(events, time.Time{})
+	return readHead(events, cutoff, seq)
+}
+
+// pinnedHead is the pull request head the host pinned when a run on GitHub
+// started: the event's head, else its channel's, "" when it has none.
+func pinnedHead(tag event.Envelope) string {
+	if head := wire.SurfaceOf(tag).GitHubHeadSHA; transport.ValidSHA(head) {
+		return head
+	}
+	if a, err := address.Parse(tag.Channel); err == nil {
+		if head, _ := a.Param("head_sha"); transport.ValidSHA(head) {
+			return head
+		}
+	}
+	return ""
+}
+
+// asksReview reports whether the run v answers for may post a native
+// review: one the host saved as asked for a review, one that called
+// start_review, or one from before the host saved a shape. It reads the
+// run's record alone, so a reply's delivery waits on nothing.
+func (p *Platform) asksReview(c clients.Client, v transport.View) (bool, error) {
+	run, err := p.Runs.Get(c.Tenant, v.RunID)
+	if err != nil {
+		return false, errors.New("review context is not available")
+	}
+	return runShape(run) != wire.ShapeReply, nil
+}
+
 func (p *Platform) reviewView(c clients.Client, v transport.View) (string, error) {
 	if !strings.Contains(v.Text, presentation.ReviewFormatV2) {
 		return v.Text, nil
@@ -353,7 +413,7 @@ func (p *Platform) reviewSessionAccess(ctx context.Context, tenant, reader, targ
 			if err != nil {
 				return ""
 			}
-			if !strings.HasPrefix(r.Key.Parent, "s_") {
+			if !threads.SessionParent(r.Key.Parent) {
 				return r.ID
 			}
 			id = r.Key.Parent

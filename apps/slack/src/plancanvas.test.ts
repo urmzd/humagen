@@ -11,12 +11,12 @@ import {
   DM,
   FakeHumagen,
   FakeSlack,
-  mention,
+  interactive,
+  mappedWorld,
   OTHER_USER,
   settle,
   USER,
   type World,
-  world,
 } from "./harness.ts";
 import { Names } from "./history.ts";
 import {
@@ -445,6 +445,19 @@ test("commenters are named when the app may read names", async () => {
 
 // In the app
 
+/**
+ * Ana asks about olu's message: the app asks it, for nobody, so it carries
+ * what people wrote on the plan. A person's own message is theirs, posted
+ * into the session its Slack thread is.
+ */
+const askAbout = (text: string, ts: string) =>
+  interactive({
+    type: "message_action",
+    callback_id: "aui_ask_about",
+    channel: { id: CHANNEL },
+    message: { ts, text, user: OTHER_USER },
+  });
+
 async function finish(w: World) {
   w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
   w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "ok" });
@@ -457,8 +470,8 @@ test("a question in a channel with a plan canvas carries people's new comments, 
   slack.comments = COMMENTS;
   const plans = memoryPlanStore();
   plans.set(CHANNEL, { canvas: "F01", seen: [] });
-  const w = world({ plans }, { slack, humagen: new FakeHumagen() });
-  await w.app.handle(mention("ship it", "1700000100.000100"));
+  const w = mappedWorld({ plans }, undefined, undefined, { slack, humagen: new FakeHumagen() });
+  await w.app.handle(askAbout("ship it", "1700000100.000100"));
   await settle();
   const first = w.humagen.asked[0];
   assert.ok(first);
@@ -467,15 +480,15 @@ test("a question in a channel with a plan canvas carries people's new comments, 
   assert.deepEqual(plans.get(CHANNEL)?.seen, ["c1", "c1/r1"]);
   await finish(w);
 
-  await w.app.handle(mention("and now?", "1700000200.000100"));
+  await w.app.handle(askAbout("and now?", "1700000200.000100"));
   await settle();
   assert.equal(w.humagen.asked[1]?.text, "and now?");
   await finish(w);
 });
 
 test("a channel without a plan canvas is asked nothing new by a turn", async () => {
-  const w = world();
-  await w.app.handle(mention("ship it", "1700000300.000100"));
+  const w = mappedWorld();
+  await w.app.handle(askAbout("ship it", "1700000300.000100"));
   await settle();
   assert.equal(w.humagen.asked[0]?.text, "ship it");
   await finish(w);

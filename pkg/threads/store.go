@@ -211,6 +211,9 @@ func decodeHead(raw []byte) (head, error) {
 	if h.Mode == modeBestFit {
 		h.Mode = ModeJoin
 	}
+	if h.Approval != nil {
+		h.Approval.Mode = ApprovalModeOf(h.Approval.Mode)
+	}
 	return h, nil
 }
 
@@ -390,7 +393,7 @@ func settled[T any](v T) T {
 func newID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
-	return "th-" + hex.EncodeToString(b[:])
+	return IDPrefix + hex.EncodeToString(b[:])
 }
 
 // opening checks a new thread's record and fills in what the store sets: its
@@ -503,6 +506,11 @@ func (s *Store) open(tenantName string, in Thread, m *Message, at time.Time) (Th
 // conversation from before threads may name nobody: one no person asked in,
 // changed first by someone who may not own it.
 func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error) {
+	if t.Session != nil {
+		if err := t.Session.Check(); err != nil {
+			return Thread{}, err
+		}
+	}
 	th, _, err := s.open(tenantName, t, nil, at)
 	return th, err
 }
@@ -573,6 +581,49 @@ func (s *Store) place(tenantName string, cur Thread, next *head, w *write, at ti
 	return nil
 }
 
+// Redate sets when a thread was started and when it was last active, and
+// moves it in the activity order to match. It is how a record opened for
+// past work (humagen migrate sessions) takes the times of that work, not
+// the time it was opened. It changes nothing else, not even the record's
+// version. An updated time before the created time is the created time,
+// and one before the thread's latest message, read with the record in the
+// same edit, is that message's time: a message posted since the caller
+// read the thread keeps it as active as it is.
+func (s *Store) Redate(tenantName, id string, created, updated time.Time) (Thread, error) {
+	if created.IsZero() || updated.IsZero() {
+		return Thread{}, fmt.Errorf("%w: a thread is dated by two times", ErrInvalid)
+	}
+	if updated.Before(created) {
+		updated = created
+	}
+	changed, told := false, updated
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		changed = false
+		active := updated
+		if next.Head > 0 {
+			m, _, err := s.message(tenantName, id, next.Head)
+			if err != nil {
+				return err
+			}
+			if m.At.After(active) {
+				active = m.At
+			}
+		}
+		if next.CreatedAt.Equal(created) && next.UpdatedAt.Equal(active) {
+			return state.ErrUnchanged
+		}
+		next.CreatedAt, next.UpdatedAt, changed, told = created, active, true, active
+		return nil
+	})
+	if err != nil {
+		return Thread{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: told})
+	}
+	return h.Thread, nil
+}
+
 // Claim makes by the owner of a thread nobody started, the record of a
 // conversation from before threads that no person asked in: they start it,
 // and take part as its owner. A thread someone started is returned as it is.
@@ -597,6 +648,58 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 		}
 		next.Version, next.UpdatedAt = next.Version+1, at
 		next.Default = legacy.Default(next.Default)
+		return next.validate()
+	})
+	if err != nil {
+		return Thread{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, nil
+}
+
+// Adopt makes a conversation from before sessions (a "th-" thread) the
+// session identity names, under its own id, so its messages, runs, surface
+// ids, activity entry and links stay as they are. The record gains its
+// session identity, and the session's agent becomes the one agent it
+// selects and its default, as every session's is; its version moves. Where
+// it is filed, whether it is shared or private, who takes part and when it
+// was last active do not change. version must be the current one
+// (ErrVersion). A thread that is a session already, is archived or
+// read-only, selects another agent or several, or whose id is not a
+// thread's is refused (ErrInvalid); adopting one again as the same session
+// changes nothing.
+func (s *Store) Adopt(tenantName, id string, version int, identity SessionIdentity, at time.Time) (Thread, error) {
+	if !strings.HasPrefix(id, IDPrefix) {
+		return Thread{}, fmt.Errorf("%w: only a %q conversation is adopted as a session", ErrInvalid, IDPrefix)
+	}
+	if strings.TrimSpace(identity.Agent) == "" || strings.TrimSpace(identity.Parent) == "" {
+		return Thread{}, fmt.Errorf("%w: a session names its agent and its parent", ErrInvalid)
+	}
+	if err := identity.Check(); err != nil {
+		return Thread{}, err
+	}
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		changed = false
+		switch {
+		case next.Session != nil && next.Session.same(identity):
+			return state.ErrUnchanged
+		case next.Session != nil:
+			return fmt.Errorf("%w: %s is a session already", ErrInvalid, id)
+		case next.Archive != nil || next.ReadOnly:
+			return fmt.Errorf("%w: an archived or read-only conversation is not adopted", ErrInvalid)
+		case next.Version != version:
+			return fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, next.Version, version)
+		case len(next.Agents) > 1 || (len(next.Agents) == 1 && next.Agents[0] != identity.Agent):
+			return fmt.Errorf("%w: %s selects other agents, and a session has one", ErrInvalid, id)
+		}
+		adopted := identity
+		adopted.Repos = slices.Clone(identity.Repos)
+		next.Session = &adopted
+		next.Default, next.Agents, next.Mode = identity.Agent, []string{identity.Agent}, ""
+		next.Version, changed = next.Version+1, true
 		return next.validate()
 	})
 	if err != nil {
@@ -900,6 +1003,42 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 	return s.update(tenantName, id, version, at, fn, false)
 }
 
+// Retitle names a thread for the platform, not for a person. fn reads the
+// record as it stands and returns the title and its source, TitlePlaceholder
+// or TitleGenerated, or ok false to leave it. A title a person gave is never
+// replaced: fn is not called for one. The record's version moves, as for any
+// change of its title, and when it was last active does not. It reports
+// whether the title changed.
+func (s *Store) Retitle(tenantName, id string, at time.Time, fn func(Thread) (title, source string, ok bool)) (Thread, bool, error) {
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		changed = false
+		if next.TitleSource == TitlePerson || next.Archive != nil {
+			return state.ErrUnchanged
+		}
+		title, source, ok := fn(next.clone())
+		if !ok || title == next.Title && source == next.TitleSource {
+			return state.ErrUnchanged
+		}
+		if source != TitlePlaceholder && source != TitleGenerated {
+			return fmt.Errorf("%w: the platform gives a placeholder or a generated title", ErrInvalid)
+		}
+		next.Title, next.TitleSource = title, source
+		if err := next.validate(); err != nil {
+			return err
+		}
+		next.Version, changed = next.Version+1, true
+		return nil
+	})
+	if err != nil {
+		return Thread{}, false, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, changed, nil
+}
+
 // UpdateMoving is Update that may also move a private thread to another
 // project or channel: a shared thread, and one on a surface or started from
 // an announcement, stays where it is (ErrInvalid), and a project it moves to
@@ -920,7 +1059,7 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 		}
 		moves := next.Project != cur.Project || next.Channel != cur.Channel
 		switch {
-		case (next.Session == nil) != (cur.Session == nil) || next.Session != nil && *next.Session != *cur.Session:
+		case (next.Session == nil) != (cur.Session == nil) || next.Session != nil && !next.Session.same(*cur.Session):
 			return fmt.Errorf("%w: session identity is immutable", ErrInvalid)
 		case next.ReadOnly != cur.ReadOnly:
 			return fmt.Errorf("%w: archive status is immutable", ErrInvalid)
@@ -938,6 +1077,12 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 			return fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
 		}
 		next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
+		// A title changed here is a person's: the platform names a
+		// thread only through Retitle, which never replaces one.
+		next.TitleSource = cur.TitleSource
+		if next.Title != cur.Title {
+			next.TitleSource = TitlePerson
+		}
 		next.Default = legacy.Default(next.Default)
 		if err := next.validate(); err != nil {
 			return err

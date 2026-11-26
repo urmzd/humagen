@@ -75,6 +75,17 @@ type cast struct {
 	schemas map[string][]*saigetypes.ParameterSchema
 	// freeText are agents whose model gives no structured output.
 	freeText map[string]bool
+	// described is the description of each tool each agent's model was
+	// offered, by agent and tool, as last offered.
+	described map[string]map[string]string
+}
+
+// description is the description an agent's model was last offered a tool
+// with.
+func (c *cast) description(agent, tool string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.described[agent][tool]
 }
 
 // talk is a model that answers its first scripted turns, then starts saying
@@ -140,6 +151,10 @@ func (r *recorded) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	shown := modelTurn{}
 	for _, d := range req.Tools {
 		shown.tools = append(shown.tools, d.Name)
+		if r.c.described[r.agent] == nil {
+			r.c.described[r.agent] = map[string]string{}
+		}
+		r.c.described[r.agent][d.Name] = d.Description
 	}
 	for _, m := range req.Messages {
 		switch m := m.(type) {
@@ -239,6 +254,7 @@ func stage(t *testing.T, c *cast, cfg platform.Config) *platform.Platform {
 	c.instances, c.cut, c.sent = map[string]int{}, map[string]chan struct{}{}, map[string][]string{}
 	c.schemas = map[string][]*saigetypes.ParameterSchema{}
 	c.shown = map[string][]modelTurn{}
+	c.described = map[string]map[string]string{}
 	c.scripts = map[string]*agenttest.ScriptedProvider{}
 	cutOnce := map[string]*sync.Once{}
 	for name := range c.talks {

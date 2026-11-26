@@ -10,6 +10,7 @@ export * from "./queue";
 export * from "./response";
 export * from "./review";
 export * from "./session";
+export * from "./spelling";
 export * from "./timeline";
 export * from "./types";
 export * from "./usage";

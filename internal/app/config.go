@@ -266,6 +266,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		}
 		set("sandbox-image", b.Image)
 		set("sandbox-connectors-image", b.ConnectorsImage)
+		set("sandbox-image-registries", strings.Join(b.ImageRegistries, ","))
 		set("sandbox-work-root", b.WorkRoot)
 		set("sandbox-host", b.Host)
 		set("sandbox-tls-dir", b.TLSDir)
@@ -441,6 +442,20 @@ func checkNewAgentName(ctx context.Context, p *platform.Platform, tenant, name s
 	return p.CheckAgentName(tenant, name)
 }
 
+// retiredNameSkipped says, loudly, that the file names an agent that was
+// retired, at where in the file, and that the start went on without it. A
+// retired name stays taken so nothing it left (memory, schedules, policies,
+// its project) passes to a new agent, and the file does not lift that: the
+// agent stays retired until the file names another. Failing the start
+// instead would let anyone who may retire an agent stop every workspace.
+func retiredNameSkipped(log *slog.Logger, tenant, name, where string) {
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Error("the platform file names an agent that was retired; it stays retired and this start goes on without it, so give it another name in the file",
+		"platform", tenant, "agent", wire.NormalizeName(name), "at", where)
+}
+
 // applyPlatforms makes the platform what the Platform documents declare: the
 // workspace's instructions and its projects merged into the tree, agents
 // created or revised, declared settings applied, a GitHub client managed by
@@ -497,18 +512,24 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 			if err := checkNewAgentName(ctx, p, tenant, s.Name); err != nil {
 				return fmt.Errorf("platform %q: agents[%d] %q: %w", tenant, i, s.Name, err)
 			}
+			// The file owns what it declares: nobody retires it while it does.
+			p.DeclareFileAgent(tenant, s.Name)
 			_, err := p.Agents.Create(ctx, tenant, *s, "file")
 			if errors.Is(err, wire.ErrExists) {
 				_, err = p.Agents.Revise(ctx, tenant, *s, 0, "file")
+			}
+			if errors.Is(err, wire.ErrRetired) {
+				retiredNameSkipped(log, tenant, s.Name, fmt.Sprintf("agents[%d]", i))
+				continue
 			}
 			if err != nil {
 				return fmt.Errorf("platform %q: agent %q: %w", tenant, s.Name, err)
 			}
 		}
-		if err := applyHomes(ctx, p, doc); err != nil {
+		if err := applyHomes(ctx, p, doc, log); err != nil {
 			return err
 		}
-		if err := applySchedules(p, tenant, doc.Spec.Workspace); err != nil {
+		if err := applySchedules(p, tenant, doc.Spec.Workspace, log); err != nil {
 			return err
 		}
 		if err := applyWorkspace(ctx, p, doc); err != nil {
@@ -683,7 +704,7 @@ func fileAgents(a spec.Agents) projects.Agents {
 // registry: a name the check could not see, in an agent read from a file, is
 // refused here. A home that left the file stays, as a project does. A home
 // something outside it still needs fails the start, naming what.
-func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) error {
+func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform, log *slog.Logger) error {
 	tenant, w := doc.Metadata.Name, doc.Spec.Workspace
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		return fmt.Errorf("platform %q: the platform's own agents: %w", tenant, err)
@@ -707,12 +728,21 @@ func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) er
 				continue
 			}
 			if _, err := p.Agents.Get(ctx, tenant, n, 0); err != nil {
+				// A retired agent answers nowhere, listed or not; the
+				// start already said so, or says so here.
+				if p.AgentRetired(tenant, n) {
+					retiredNameSkipped(log, tenant, n, l.path)
+					continue
+				}
 				return fmt.Errorf("platform %q: %s: there is no agent called %q", tenant, l.path, n)
 			}
 		}
 	}
 	for i, a := range doc.Spec.Agents {
 		if a.Spec == nil || a.Project == "" || a.Project == spec.RootParent {
+			continue
+		}
+		if p.AgentRetired(tenant, a.Spec.Name) {
 			continue
 		}
 		if err := p.SetAgentHome(ctx, tenant, wire.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {

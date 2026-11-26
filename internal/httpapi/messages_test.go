@@ -17,7 +17,9 @@ func TestMessagesFindOrStartThePlacesRoot(t *testing.T) {
 	admin := f.machine(t, "acme", everything...)
 	ana := f.person(t, "acme", "ana", "Ana", "humagen-operators")
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
-	pr := `"ref":{"type":"github","repo":"acme/web","kind":"pull","number":5}`
+	// A pull request's root is started only by its surface.
+	c.call(ana, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"user","content":"review the change"}],"ref":{"type":"github","repo":"acme/web","kind":"pull","number":5}}`, http.StatusNotFound)
+	pr := `"ref":{"type":"url","url":"https://example.com/acme/web/pull/5"}`
 	first := c.call(ana, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"user","content":"review the change"}],`+pr+`}`, http.StatusCreated)
 	root := first.field("root").(string)
 	id := first.field("id").(string)
@@ -33,7 +35,7 @@ func TestMessagesFindOrStartThePlacesRoot(t *testing.T) {
 		t.Fatalf("a follow-up landed in %v", under.field("root"))
 	}
 	read := c.call(ana, "GET", "/api/messages/{id}", "/api/messages/"+id, "", http.StatusOK)
-	if read.field("id") != root || read.field("parent") != "github://acme/web/pull/5" {
+	if read.field("id") != root || read.field("parent") != "https://example.com/acme/web/pull/5" {
 		t.Fatalf("the message reads as %s", read.raw)
 	}
 	c.call(ana, "POST", "/api/messages", "/api/messages", `{"messages":[{"role":"assistant","content":"hi"}]}`, http.StatusBadRequest)

@@ -1,6 +1,7 @@
 import {
   type FileEdit,
   fileEdits,
+  recoveredCalls,
   type Task,
   type ToolKind,
   toolFailed,
@@ -77,8 +78,10 @@ export function callLine(task: Task, edit?: FileEdit, copy: Copy = defaultCopy):
 export interface ToolsLine {
   /** "Read 3 files, ran 2 commands"; "Running npm test" while a call runs. */
   text: string;
-  /** Calls that failed, said after the line without alarm. Zero when the line itself says all failed. */
+  /** Calls that failed and that no later call recovered. Zero when the line itself says all failed. */
   failed: number;
+  /** Calls that failed and that a later call in the turn recovered (`recoveredCalls`), said quietly. */
+  retried: number;
   /** A call is waiting on a person. */
   waiting: boolean;
   /** A call is running now. */
@@ -103,13 +106,16 @@ export function toolsLine(
   copy: Copy = defaultCopy,
   /** Files written across the whole turn (`fileEdits(turn.tasks)`), so a later write counts against an earlier one. */
   turnEdits?: Map<string, FileEdit>,
+  /** Failed calls a later call recovered, across the whole turn (`recoveredCalls(turn.tasks)`), so a retry in a later run counts. */
+  recovered: ReadonlySet<string> = recoveredCalls(tasks),
 ): ToolsLine {
   const w = copy.conversation.toolLine;
   const all = turnEdits ?? fileEdits(tasks);
   const edits = new Map(
     tasks.flatMap((t) => (all.has(t.id) ? [[t.id, all.get(t.id) as FileEdit]] : [])),
   );
-  const failed = tasks.filter(toolFailed).length;
+  const retried = tasks.filter((t) => toolFailed(t) && recovered.has(t.id)).length;
+  const failed = tasks.filter((t) => toolFailed(t) && !recovered.has(t.id)).length;
   const waiting = tasks.some((t) => t.status === "waiting");
   const running = [...tasks].reverse().find(live);
   const fileList = [...edits.values()];
@@ -122,10 +128,11 @@ export function toolsLine(
         change: fileList.some((e) => e.change === "updated") ? "updated" : "created",
       })
     : undefined;
-  const base = { failed, waiting, running: running !== undefined, counts };
+  const base = { failed, retried, waiting, running: running !== undefined, counts };
   if (waiting) {
     const pending = tasks.find((task) => task.status === "waiting");
-    return { ...base, text: `Awaiting approval: ${pending?.title || "tool call"}` };
+    // The line names the call; "waiting for you" beside it says whose move it is.
+    return { ...base, text: pending?.title || w.waitingCall };
   }
   if (running) {
     const edit = edits.get(running.id);
@@ -139,6 +146,7 @@ export function toolsLine(
   }
   // Nothing was done, so nothing is named as done; the count is the whole line.
   if (failed === tasks.length) return { ...base, failed: 0, text: w.allFailed(failed) };
+  // A failure a later call recovered still counts as a step of its kind.
   // Calls by kind, in the order each kind first came. Files written count as one kind.
   const order: string[] = [];
   const count = new Map<string, number>();

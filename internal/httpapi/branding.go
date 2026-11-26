@@ -48,6 +48,8 @@ type brandingView struct {
 	Copy     map[string]string `json:"copy"`
 	// EntryAgent is the entry agent's agent name, which people see as Name.
 	EntryAgent string `json:"entry_agent"`
+	// TermsURL is null when the branding names no page of terms.
+	TermsURL *string `json:"terms_url"`
 }
 
 func (s *Server) getBranding(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
@@ -68,6 +70,9 @@ func (s *Server) getBranding(w http.ResponseWriter, _ *http.Request, who auth.Pr
 	if b.CSS != "" {
 		u := "/api/branding/style.css"
 		v.Style = &u
+	}
+	if u := b.Spec.TermsURL; u != "" {
+		v.TermsURL = &u
 	}
 	ok(w, http.StatusOK, v)
 }

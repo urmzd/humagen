@@ -112,6 +112,25 @@ func SetAgent(e *event.Envelope, agent string) {
 	})
 }
 
+// ReviewerOf is the agent a review request was resolved to, "" for any
+// other event.
+func ReviewerOf(e event.Envelope) string {
+	if b, ok := e.Data.(event.GitHubReviewRequested); ok {
+		return b.Reviewer
+	}
+	return ""
+}
+
+// ClearReviewer makes a review request name no agent, so its host chooses
+// who reviews, as for a request that names none.
+func ClearReviewer(e *event.Envelope) {
+	if b, ok := e.Data.(event.GitHubReviewRequested); ok {
+		b.Reviewer = ""
+		e.Data = b
+	}
+	SetAgent(e, "")
+}
+
 // RequestOf is the request an event carries, zero for one that asks nothing.
 func RequestOf(e event.Envelope) event.Request {
 	if e.Data == nil {
@@ -221,14 +240,20 @@ func ContextOf(e event.Envelope) map[string]string {
 
 // The meta keys a connector's typed fields read as.
 const (
-	MetaSlackEvent     = "slack_event"
-	MetaSlackChannel   = "slack_channel"
-	MetaSlackCommand   = "slack_command"
-	MetaGitHubEvent    = "github_event"
-	MetaGitHubOwner    = "github_owner"
-	MetaGitHubRepo     = "github_repo"
-	MetaGitHubLabels   = "github_labels"
-	MetaGitHubAuthor   = "github_author"
+	MetaSlackEvent   = "slack_event"
+	MetaSlackChannel = "slack_channel"
+	MetaSlackCommand = "slack_command"
+	MetaGitHubEvent  = "github_event"
+	MetaGitHubOwner  = "github_owner"
+	MetaGitHubRepo   = "github_repo"
+	MetaGitHubLabels = "github_labels"
+	MetaGitHubAuthor = "github_author"
+	// MetaGitHubAuthorID is the GitHub user ID of the pull request's
+	// author, where the host read it from a signed payload.
+	MetaGitHubAuthorID = "github_author_id"
+	// MetaGitHubSenderID is the GitHub user ID of who sent a GitHub event:
+	// the commenter, or who requested a review.
+	MetaGitHubSenderID = "github_sender_id"
 	MetaGitHubHeadSHA  = "github_head_sha"
 	MetaCronSchedule   = "cron_schedule"
 	MetaCronExpression = "cron_expression"
@@ -304,6 +329,35 @@ func SetGitHubHeadSHA(e *event.Envelope, sha string) {
 	}
 }
 
+// GitHubTitleOf is the title of the issue or pull request a GitHub event is
+// about, as the connector read it from the webhook. It is "" for any other
+// event.
+func GitHubTitleOf(e event.Envelope) string {
+	switch b := e.Data.(type) {
+	case event.GitHubIssueCommentCreated:
+		return b.Title
+	case event.GitHubReviewCommentCreated:
+		return b.Title
+	case event.GitHubReviewSubmitted:
+		return b.Title
+	case event.GitHubIssueOpened:
+		return b.Title
+	case event.GitHubIssueLabeled:
+		return b.Title
+	case event.GitHubPullOpened:
+		return b.Title
+	case event.GitHubPullReadyForReview:
+		return b.Title
+	case event.GitHubReviewRequested:
+		return b.Title
+	case event.GitHubPullSynchronize:
+		return b.Title
+	case event.GitHubPullLabeled:
+		return b.Title
+	}
+	return ""
+}
+
 // PrivateMetaPrefix starts a context key that is kept with the event and
 // never shown to a model.
 const PrivateMetaPrefix = "_"
@@ -329,9 +383,49 @@ func Clone(e event.Envelope) event.Envelope {
 	return e
 }
 
+// MetaTriggered marks a surface's request that holds the trigger
+// ("@humagen", pkg/trigger) and names no agent after it. Its host asks the
+// default where it is filed, not whichever agent answered there before.
+const MetaTriggered = "_humagen.triggered"
+
+// MetaSlackSenderTeam is the Slack team a message's sender belongs to, as
+// the delivery named it (a Slack Connect user's own team, else the
+// delivery's). The Slack connector writes it on what it raises; it is kept
+// with the event and never shown to a model.
+const MetaSlackSenderTeam = "_humagen.slack_sender_team"
+
 // MetaSession is pinned by platform admission, never accepted from ingress.
 const MetaSession = "_humagen.session"
 
 // MetaSourceAlert links a run to the authorized alert that initiated its session.
 // Ingress copies are stripped; only immutable session identity may pin it.
 const MetaSourceAlert = "_humagen.source_alert"
+
+// MetaAnswerShape is what a run on a surface answers with, as its host
+// chose it when the run started: ShapeReview or ShapeReply. It is saved on
+// the run's tag, so a retry answers with the shape first chosen, and the
+// model reads it in its trigger context. A run without it is from before
+// the host chose, or from a surface that does not.
+const MetaAnswerShape = "answer_shape"
+
+// The shapes an answer takes.
+const (
+	// ShapeReview is a requested review: the agent returns the fields of a
+	// review report and the host renders and posts it.
+	ShapeReview = "review"
+	// ShapeReply is anything else: plain Markdown prose, not checked
+	// against a format.
+	ShapeReply = "reply"
+)
+
+// ShapeOf is the answer shape the host saved on an event, "" when none.
+func ShapeOf(e event.Envelope) string {
+	switch shape := Meta(e)[MetaAnswerShape]; shape {
+	case ShapeReview, ShapeReply:
+		return shape
+	}
+	return ""
+}
+
+// SetShape saves the answer shape the host chose on an event.
+func SetShape(e *event.Envelope, shape string) { SetMeta(e, MetaAnswerShape, shape) }

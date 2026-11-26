@@ -3,10 +3,12 @@ package spec
 import (
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 // ConnectionAuthorization enables OAuth for personal service connections.
 // The encryption key is a reference to 32 random bytes encoded as base64.
+// RedirectURL defaults to server.public_url's /connections/callback.
 type ConnectionAuthorization struct {
 	EncryptionKey *Ref                             `json:"encryption_key"`
 	RedirectURL   string                           `json:"redirect_url"`
@@ -29,7 +31,22 @@ type ConnectionOAuthClient struct {
 	Scopes        []string `json:"scopes,omitempty"`
 }
 
-func (c *ConnectionAuthorization) check() error {
+// DefaultPublicURL is server.public_url when nothing sets it.
+const DefaultPublicURL = "http://localhost:8080"
+
+// Redirect is where every connection's consent returns: redirect_url, else
+// publicURL's /connections/callback.
+func (c *ConnectionAuthorization) Redirect(publicURL string) string {
+	if c != nil && c.RedirectURL != "" {
+		return c.RedirectURL
+	}
+	if publicURL == "" {
+		publicURL = DefaultPublicURL
+	}
+	return strings.TrimRight(publicURL, "/") + "/connections/callback"
+}
+
+func (c *ConnectionAuthorization) check(publicURL string) error {
 	if c == nil {
 		return nil
 	}
@@ -51,9 +68,11 @@ func (c *ConnectionAuthorization) check() error {
 			}
 		}
 	}
-	u, err := url.Parse(c.RedirectURL)
+	// An empty redirect_url is server.public_url's /connections/callback,
+	// held to the same rule.
+	u, err := url.Parse(c.Redirect(publicURL))
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && (u.Scheme != "http" || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1"))) {
-		return fmt.Errorf("connections: redirect_url must be HTTPS or loopback HTTP")
+		return fmt.Errorf("connections: redirect_url (or server.public_url, when it is not set) must be HTTPS or loopback HTTP")
 	}
 	for name, client := range c.Clients {
 		if name != "notion" && name != "linear" && name != "granola" && name != "atlassian" && name != "google" && name != "drive" && name != "onedrive" && name != "slack" && name != "bigquery" {

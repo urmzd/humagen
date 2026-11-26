@@ -236,10 +236,26 @@ type GitHubAutomation struct {
 	Conclusion   string `json:"conclusion,omitempty"`
 	Agent        string `json:"agent"`
 	Instructions string `json:"instructions"`
-	Paused       bool   `json:"paused"`
+	// Shape is what the rule's runs answer with: "review", a review the
+	// host renders and posts, or "reply", plain prose. Left out, a rule on
+	// pull_request reviews and any other replies (AnswerShape).
+	Shape  string `json:"shape,omitempty"`
+	Paused bool   `json:"paused"`
 	// Note is read-only: what of a rule stored earlier is ignored now. It is
 	// dropped when the rule is saved.
 	Note string `json:"note,omitempty"`
+}
+
+// AnswerShape is what a rule's runs answer with: its Shape, else
+// "review" for a rule on pull_request and "reply" for any other.
+func (a GitHubAutomation) AnswerShape() string {
+	if a.Shape != "" {
+		return a.Shape
+	}
+	if a.Event == "pull_request" {
+		return "review"
+	}
+	return "reply"
 }
 
 // labelAction reports an action that a label change sends. Labels start
@@ -282,7 +298,10 @@ func (c *Client) dropNotes() {
 // AutoReview is a GitHub connection's automatic review switch, with an
 // override per repository.
 type AutoReview struct {
-	// Enabled is the connection's switch. Left out, it is on.
+	// Enabled is the connection's switch. Left out, it is off: a mention
+	// starts work, and a pull request is reviewed on its own only where
+	// this switch, a repository override or the repository's settings in
+	// the console turn it on.
 	Enabled *bool `json:"enabled,omitempty"`
 	// Repositories turn it on or off for exact "owner/repo" names, whatever
 	// Enabled says.
@@ -290,17 +309,17 @@ type AutoReview struct {
 }
 
 // Reviews reports whether a pull request in repo is reviewed automatically:
-// the repository's override, else the connection's switch, else on.
+// the repository's override, else the connection's switch, else off.
 func (a *AutoReview) Reviews(repo string) bool {
 	if a == nil {
-		return true
+		return false
 	}
 	for name, on := range a.Repositories {
 		if strings.EqualFold(name, repo) {
 			return on
 		}
 	}
-	return a.Enabled == nil || *a.Enabled
+	return a.Enabled != nil && *a.Enabled
 }
 
 type GitHubOptions struct {
@@ -315,8 +334,9 @@ type GitHubOptions struct {
 	// people with write access to the repository and people it maps.
 	Askers []string `json:"askers,omitempty"`
 	// AutoReview reviews a pull request when it opens ready for review, leaves
-	// draft, or gets a push. Left out, it is on. Labels start
-	// nothing.
+	// draft, or gets a push. Left out, it is off. Labels start
+	// nothing. A repository's settings in the console (pkg/reposettings)
+	// override it there.
 	AutoReview *AutoReview `json:"auto_review,omitempty"`
 	Checks     bool        `json:"checks,omitempty"`
 	Guides     bool        `json:"guides,omitempty"`
@@ -324,11 +344,10 @@ type GitHubOptions struct {
 	// ReadRepositories are "owner/repo" names a run from another surface may
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
-	// Login is the app's own GitHub login, such as "humagen[bot]", mentioned as
-	// @humagen. A comment that mentions it and names no agent is addressed to
-	// the client and answered by its default, as an untagged Slack message is
-	// (see docs/reference/github.md). While it is empty, a comment that names no agent
-	// starts nothing.
+	// Login is the app's own GitHub login, such as "humagen[bot]". Without
+	// "[bot]" it is a trigger beside "@humagen" (Client.Triggers), so an app
+	// called humagen-acme is asked as "@humagen-acme" too. Empty, "@humagen"
+	// alone asks (see docs/reference/github.md#who-a-comment-asks).
 	Login string `json:"login,omitempty"`
 }
 
@@ -632,6 +651,9 @@ func (c Client) validateGitHub() error {
 		names[a.Name] = true
 		if a.Event != "check_run" && a.Event != "issues" && a.Event != "pull_request" && a.Event != "push" {
 			return bad("unsupported automation event")
+		}
+		if a.Shape != "" && a.Shape != "review" && a.Shape != "reply" {
+			return bad("an automation's shape is review or reply")
 		}
 		if a.Action == "" && a.Event != "push" {
 			return bad("an automation needs an action")

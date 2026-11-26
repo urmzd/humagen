@@ -146,7 +146,7 @@ export function PersonalPreferences({
     }
   };
   return (
-    <Page title={copy[section]} lede={copy.descriptions[section]} narrow>
+    <Page title={copy[section]} narrow>
       {section === "agents" ? (
         <PersonalAgents />
       ) : (

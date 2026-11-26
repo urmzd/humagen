@@ -61,16 +61,18 @@ test("each step sits where it happened, as one line that opens to its input and 
   const after = text.indexOf("The launch brief is ready.");
   assert.ok(before >= 0 && before < step && step < after, `${before} ${step} ${after}`);
   // Folded, the line says what was done; open, each step shows its input and output.
-  assert.equal(screen.queryByText("Arguments"), null);
+  assert.equal(screen.queryByText("Input"), null);
   fireEvent.click(screen.getByRole("button", { name: "Read plan.md" }));
   fireEvent.click(screen.getByRole("button", { name: /Read the plan/ }));
-  assert.ok(screen.getByText("Arguments"));
-  assert.match(document.body.textContent ?? "", /"path": "plan.md"/);
+  // Its input reads as a table of names and values, not JSON.
+  const input = screen.getByTestId("input-table");
+  assert.equal(input.querySelector("dt")?.textContent, "Path");
+  assert.equal(input.querySelector("dd")?.textContent, "plan.md");
   assert.ok(screen.getByText("Result"));
   assert.match(document.body.textContent ?? "", /The embargo stays on November 12/);
-  // The trace folds under "Worked", leaving the answer.
-  fireEvent.click(screen.getByRole("button", { name: /^Worked/ }));
-  assert.equal(screen.queryByText("Read plan.md"), null);
+  // No line folds the whole turn: the step stays where it happened.
+  assert.equal(screen.queryByRole("button", { name: /^Worked/ }), null);
+  assert.ok(screen.getByRole("button", { name: "Read plan.md" }));
   assert.ok(screen.getByText(/The launch brief is ready\./));
 });
 

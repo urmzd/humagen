@@ -19,9 +19,10 @@ import {
 import { Inspector } from "@humagen/web";
 import { type ReactNode, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
+import { SessionBackground } from "./Background.tsx";
+import { agentShown } from "./branding.ts";
 import { Reference } from "./cards.tsx";
-import { took } from "./format.ts";
-import { ActivityLanes, AgentCallLane, outcomeOf } from "./ResponseActivity.tsx";
+import { AgentCallLane } from "./ResponseActivity.tsx";
 import { OriginMark } from "./refChips.tsx";
 import {
   defaultTraceLoader,
@@ -29,6 +30,14 @@ import {
   followTraces,
   type TraceLoader,
 } from "./responseSource.ts";
+import {
+  type PanelOpen,
+  Row,
+  Section,
+  type SessionChoice,
+  SessionSections,
+  ShowMoreList,
+} from "./SessionSections.tsx";
 import {
   type Output,
   type SavedFile,
@@ -39,7 +48,7 @@ import {
   type UsedKey,
 } from "./sessionSummary.ts";
 import type { Reference as Ref } from "./trace.ts";
-import { AgentMark, menuRow, SkeletonRows } from "./ui.tsx";
+import { AgentMark, SkeletonRows } from "./ui.tsx";
 import type { WorkbenchTabProps } from "./workbench.ts";
 import { workspaceFiles } from "./workspace-files.ts";
 
@@ -84,73 +93,8 @@ const ENDED_RUN = new Set(["completed", "failed", "stopped"]);
 
 type View =
   | { kind: "summary" }
-  | { kind: "progress" }
   | { kind: "agent"; name: string }
   | { kind: "used"; key: UsedKey | "origin" };
-
-const row = `${menuRow()} justify-between`;
-
-/** One row of the panel: a mark, what it is, a short value, and where it leads. */
-function Row({
-  mark,
-  label,
-  value,
-  onOpen,
-  href,
-  testId,
-}: {
-  mark: ReactNode;
-  label: ReactNode;
-  value?: ReactNode;
-  onOpen?: () => void;
-  href?: string;
-  testId?: string;
-}) {
-  const body = (
-    <>
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="flex size-5 shrink-0 items-center justify-center text-aui-muted">
-          {mark}
-        </span>
-        <span className="min-w-0 truncate">{label}</span>
-      </span>
-      <span className="flex min-w-0 shrink items-center gap-1 text-aui-muted text-aui-xs">
-        {value !== undefined && <span className="min-w-0 truncate">{value}</span>}
-        {(onOpen || href) && <ChevronRightIcon size={12} aria-hidden className="shrink-0" />}
-      </span>
-    </>
-  );
-  if (href)
-    return (
-      <li>
-        <a href={href} target="_blank" rel="noreferrer" className={row} data-testid={testId}>
-          {body}
-        </a>
-      </li>
-    );
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={!onOpen}
-        className={row}
-        data-testid={testId}
-      >
-        {body}
-      </button>
-    </li>
-  );
-}
-
-function Section({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section aria-label={label} className="flex flex-col gap-0.5" data-testid="details-section">
-      <h3 className="px-2.5 pb-1 text-aui-muted text-aui-xs">{label}</h3>
-      <ul className="flex flex-col">{children}</ul>
-    </section>
-  );
-}
 
 const outputMark: Record<Output["kind"], ReactNode> = {
   spreadsheet: <FileIcon size={16} />,
@@ -188,20 +132,10 @@ function memoryValue(items: UsedItem[]): string {
     .join("; ");
 }
 
-/** The progress line: what the current response is doing, or how it ended. */
-export function progressWords(summary: SessionSummary, current?: ResponseState): string {
-  const p = summary.progress;
-  if (!p || !current) return "";
-  if (p.status === "running") return p.waiting ? words.waiting : words.working(p.agents, p.tools);
-  // A stopped or failed response says how it ended; a finished session says what it took.
-  if (p.status !== "done") return outcomeOf(current);
-  return defaultCopy.trace.worked(took(p.ms), p.agents, p.tools);
-}
-
 /**
- * The session's Details: its progress, the agents it brought in, what it
- * produced, where it ran, and what it used. Each row opens what it names:
- * the activity, an agent's calls, a file or link, or the list behind a value.
+ * The session's Details: the agents it brought in, what it produced, where
+ * it ran, and what it used. The thread itself is the progress. Each row
+ * opens what it names: an agent's calls, a file or link, or the list behind a value.
  * Empty sections are left out.
  */
 export function SessionPanel({
@@ -241,20 +175,28 @@ export function SessionPanel({
 function titleOf(view: View): string {
   return view.kind === "summary"
     ? words.title
-    : view.kind === "progress"
-      ? words.progress
-      : view.kind === "agent"
-        ? view.name
-        : view.key === "origin"
-          ? words.used.origin
-          : words.used[view.key];
+    : view.kind === "agent"
+      ? view.name
+      : view.key === "origin"
+        ? words.used.origin
+        : words.used[view.key];
 }
 
 /**
  * Details as the workbench's first tab: the same rows, with what a row
  * opened named above its Back, since the pane's header names the tab.
  */
-export function DetailsTab({ responses, summary, origin, openFile }: WorkbenchTabProps) {
+export function DetailsTab({
+  responses,
+  summary,
+  origin,
+  openFile,
+  openTab,
+  openWorkspace,
+  runs,
+  thread,
+  chosen,
+}: WorkbenchTabProps) {
   const [view, setView] = useState<View>({ kind: "summary" });
   return (
     <SessionDetailsBody
@@ -265,6 +207,7 @@ export function DetailsTab({ responses, summary, origin, openFile }: WorkbenchTa
       summary={summary}
       origin={origin}
       onOpenFile={openFile}
+      panel={{ thread, runs, chosen, open: { tab: openTab, workspace: openWorkspace } }}
     />
   );
 }
@@ -279,9 +222,12 @@ function SessionDetailsBody({
   origin,
   onOpenFile,
   messageId,
+  panel,
 }: {
   view: View;
   onView: (view: View) => void;
+  /** The workbench's own: the sections that need the session's runs and its other views. */
+  panel?: { thread: string; runs: Run[]; open: PanelOpen; chosen?: SessionChoice };
   heading?: string;
   responses: ResponseState[] | undefined;
   summary: SessionSummary | undefined;
@@ -289,7 +235,6 @@ function SessionDetailsBody({
   onOpenFile?: (artifactId: string) => void;
   messageId?: string;
 }) {
-  const current = responses?.[responses.length - 1];
   const back = () => setView({ kind: "summary" });
   return (
     <div className="flex flex-col gap-4" data-testid="session-panel" data-view={view.kind}>
@@ -306,8 +251,6 @@ function SessionDetailsBody({
       )}
       {!summary || !responses ? (
         <SkeletonRows count={4} />
-      ) : view.kind === "progress" && current ? (
-        <ActivityLanes state={current} messageId={messageId} />
       ) : view.kind === "agent" ? (
         <div className="flex flex-col gap-4">
           {responses.flatMap((r) =>
@@ -351,10 +294,11 @@ function SessionDetailsBody({
       ) : (
         <Summary
           summary={summary}
-          current={current}
+          responses={responses}
           origin={origin}
           onView={setView}
           onOpenFile={onOpenFile}
+          panel={panel}
         />
       )}
     </div>
@@ -363,39 +307,26 @@ function SessionDetailsBody({
 
 function Summary({
   summary,
-  current,
+  responses,
   origin,
   onView,
   onOpenFile,
+  panel,
 }: {
   summary: SessionSummary;
-  current?: ResponseState;
+  responses: ResponseState[];
+  panel?: { thread: string; runs: Run[]; open: PanelOpen; chosen?: SessionChoice };
   origin?: Ref;
   onView: (v: View) => void;
   onOpenFile?: (artifactId: string) => void;
 }) {
-  const progress = progressWords(summary, current);
-  const used = (Object.keys(summary.used) as UsedKey[]).filter((k) => summary.used[k].length > 0);
-  const tone =
-    summary.progress?.status === "running"
-      ? summary.progress.waiting
-        ? "bg-aui-warn"
-        : "bg-aui-accent"
-      : summary.progress?.status === "done"
-        ? "bg-aui-ok"
-        : "bg-aui-bad";
+  // In the workbench, connections have a section of their own, and pull requests are changes.
+  const used = (Object.keys(summary.used) as UsedKey[]).filter(
+    (k) => summary.used[k].length > 0 && !(panel && k === "connections"),
+  );
+  const outputs = panel ? summary.outputs.filter((o) => o.kind !== "pr") : summary.outputs;
   return (
     <>
-      {progress && (
-        <Section label={words.progress}>
-          <Row
-            testId="details-progress"
-            mark={<span aria-hidden className={`size-2 rounded-full ${tone}`} />}
-            label={progress}
-            onOpen={() => onView({ kind: "progress" })}
-          />
-        </Section>
-      )}
       {summary.agents.length > 0 && (
         <Section label={words.agents}>
           {summary.agents.map((a) => (
@@ -403,16 +334,51 @@ function Summary({
               key={a.name}
               testId="details-agent"
               mark={<AgentMark name={a.name} size={18} />}
-              label={a.name}
+              label={agentShown(a.name)}
               value={words.calls(a.calls)}
               onOpen={() => onView({ kind: "agent", name: a.name })}
             />
           ))}
         </Section>
       )}
-      {summary.outputs.length > 0 && (
+      {panel && <SessionBackground session={panel.thread} version={panel.runs.length} />}
+      {panel && (
+        <SessionSections
+          thread={panel.thread}
+          runs={panel.runs}
+          responses={responses}
+          summary={summary}
+          open={panel.open}
+          chosen={panel.chosen}
+          origin={origin}
+          outputs={
+            outputs.length > 0 ? (
+              <Section label={words.outputs} testId="outputs">
+                <ShowMoreList items={outputs}>
+                  {(o) => (
+                    <Row
+                      key={o.key}
+                      testId="details-output"
+                      mark={outputMark[o.kind]}
+                      label={o.title}
+                      value={o.type}
+                      href={o.url}
+                      onOpen={
+                        o.artifactId && onOpenFile
+                          ? () => onOpenFile(o.artifactId as string)
+                          : undefined
+                      }
+                    />
+                  )}
+                </ShowMoreList>
+              </Section>
+            ) : null
+          }
+        />
+      )}
+      {!panel && outputs.length > 0 && (
         <Section label={words.outputs}>
-          {summary.outputs.map((o) => (
+          {outputs.map((o) => (
             <Row
               key={o.key}
               testId="details-output"
@@ -427,7 +393,7 @@ function Summary({
           ))}
         </Section>
       )}
-      {summary.environment.length > 0 && (
+      {!panel && summary.environment.length > 0 && (
         <Section label={words.environment}>
           {summary.environment.map((e) => (
             <Row

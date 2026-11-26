@@ -23,7 +23,14 @@ export * from "./connections";
 export * from "./feedback";
 export * from "./forms";
 export * from "./lifecycle";
-export { escapeAnnouncement, escapeSlackText, plainDate, toMrkdwn, toPlain } from "./mrkdwn";
+export {
+  escapeAnnouncement,
+  escapeSlackText,
+  inertName,
+  plainDate,
+  toMrkdwn,
+  toPlain,
+} from "./mrkdwn";
 export * from "./native";
 export * from "./reply";
 export { breakMarkdown, nextBreak } from "./split";

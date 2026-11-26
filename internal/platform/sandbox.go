@@ -337,6 +337,12 @@ type Publication struct {
 	Title       string
 	Kind        string
 	Description string
+	// After, when set, is the version this one follows: the publish is
+	// refused with artifacts.ErrStale unless it is still its file's latest.
+	After string
+	// To, when set, is the one person the inbox notice is addressed to.
+	// It changes who is told, never who may read the file.
+	To string
 	// saveIdentity is set only by SaveArtifact after source authorization.
 	saveIdentity string
 }
@@ -423,9 +429,12 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 		}
 	}
 	var saved artifacts.Artifact
-	if pub.saveIdentity != "" {
+	switch {
+	case pub.saveIdentity != "":
 		saved, err = p.Artifacts.PublishOnce(pub.Tenant, a, pub.saveIdentity)
-	} else {
+	case pub.After != "":
+		saved, err = p.Artifacts.PublishAfter(pub.Tenant, a, pub.After)
+	default:
 		saved, err = p.Artifacts.Publish(pub.Tenant, a)
 	}
 	if err != nil {
@@ -438,7 +447,7 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 	}
 	p.log.Info("platform: artifact published", "tenant", pub.Tenant, "artifact", saved.ID, "title", saved.Title, "version", saved.Version,
 		"size", saved.Size, "sha256", saved.SHA256, "run", saved.Run, "agent", saved.Agent, "by", saved.CreatedBy)
-	p.inboxArtifact(pub.Tenant, saved)
+	p.inboxArtifact(pub.Tenant, saved, pub.To)
 	return saved, nil
 }
 
@@ -764,23 +773,31 @@ func (p *Platform) fileTool(name string, req runtime.Request, action func(event.
 			})
 	case ToolPublish:
 		return tool(ToolPublish,
-			"Publish a file from the working directory so the person can open and download it. Publishing a title again in the same conversation makes a new version.",
-			schema([]string{"path"}, map[string]string{
-				"path":        "Relative path of the file to publish",
+			"Publish a file from the working directory so the person can open and download it. Publish work someone will open or keep; answer in the conversation otherwise. Publishing a title again in the same conversation makes a new version. To revise an artifact, set to=artifact:<id> with the id of its latest version: a publish that names an older version is refused and names the latest, so read that one with artifact_read first. With to=artifact:<id> you may give edits in place of path. To address the inbox notice to one person who can read this conversation, set to=person:<name>. A published file stays in this conversation: no target shares it more widely.",
+			schema(nil, map[string]string{
+				"path":        "Relative path of the file to publish. Leave out only when giving edits",
 				"title":       "File name to show and save it under. Defaults to the file's own name",
 				"kind":        "One of document, spreadsheet, presentation, image, pdf, html, code, data, archive. Leave out to have it worked out",
 				"description": "One line on what is in it",
+				"to":          "What the publish is aimed at: conversation (the default), artifact:<id> for the next version of that artifact, or person:<name> to address the notice to one person",
+				"edits":       fmt.Sprintf("With to=artifact:<id>, a JSON array of up to %d {\"old\": text, \"new\": text} replacements applied in order to that version's text. Each old text must be in it exactly once. All apply or nothing is published", MaxArtifactEdits),
 			}),
 			func(ctx context.Context, args map[string]any) (string, error) {
+				// The run's reach is read before the working directory is
+				// held, as where reads the run before it takes its lock.
+				reach, err := p.artifactReach(req)
+				if err != nil {
+					return "", err
+				}
 				thread, project, area, err := where(ctx)
 				if err != nil {
 					return "", err
 				}
 				defer func() { _ = area.close() }()
-				a, err := p.publishFrom(ctx, area, Publication{
+				a, err := p.publishTo(ctx, area, reach, Publication{
 					Tenant: req.Tenant, Thread: thread, Run: req.RunID, Agent: req.Agent(), Project: project, By: "agent:" + req.Agent(),
 					Path: arg(args, "path"), Title: arg(args, "title"), Kind: arg(args, "kind"), Description: arg(args, "description"),
-				})
+				}, arg(args, "to"), arg(args, "edits"))
 				if err != nil {
 					// The failure goes on the run's stream as well as back to
 					// the model, so the conversation shows a file that failed.
@@ -789,7 +806,13 @@ func (p *Platform) fileTool(name string, req runtime.Request, action func(event.
 				}
 				data, _ := json.Marshal(a)
 				_ = action(event.Action{Name: ToolPublish, Summary: fmt.Sprintf("Published %s, version %d", a.Title, a.Version), Data: data})
-				return fmt.Sprintf("Published %s as version %d (%d bytes). The person can open it now.", a.Title, a.Version, a.Size), nil
+				// The id is for the tools. A model handed one alone makes up
+				// an address for it, so the result says not to.
+				out := fmt.Sprintf("Published %s as version %d (%d bytes). The person can open it now from its card in this conversation. Its id is %s, for %s and to=artifact:<id>. Name the file by its title and write no link to it.", a.Title, a.Version, a.Size, a.ID, ToolArtifactRead)
+				if person := strings.TrimPrefix(strings.TrimSpace(arg(args, "to")), targetPerson); person != strings.TrimSpace(arg(args, "to")) {
+					out += " The notice is addressed to " + strings.TrimSpace(person) + "."
+				}
+				return out, nil
 			})
 	}
 	return nil

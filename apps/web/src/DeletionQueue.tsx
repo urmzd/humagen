@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { coworking, type Deletion } from "./api.ts";
-import { card, Problem, pageLede, pageTitle, SkeletonRows } from "./ui.tsx";
+import { card, Problem, pageTitle, SkeletonRows } from "./ui.tsx";
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -75,7 +75,6 @@ export function DeletionQueue() {
     <>
       <header className="pb-2">
         <h1 className={pageTitle}>{words.title}</h1>
-        <p className={pageLede}>{words.hint}</p>
       </header>
       <Problem message={problem} />
       {rows === null ? (

@@ -6,7 +6,17 @@ import { test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { DEFAULT_BRANDING, parseBranding } from "./branding.ts";
 import { readConfig } from "./config.ts";
-import { DM, interactive, mention, settle, TEAM, USER, type World, world } from "./harness.ts";
+import {
+  DM,
+  interactive,
+  mappedWorld,
+  mention,
+  settle,
+  TEAM,
+  USER,
+  type World,
+  world,
+} from "./harness.ts";
 import { words } from "./host.ts";
 
 const BRAND = {
@@ -50,7 +60,7 @@ test("branding: no file keeps today's words, and nothing is suggested", async ()
   const cfg = readConfig(ENV);
   assert.deepEqual(cfg.slack.branding, DEFAULT_BRANDING);
 
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, messagesOpened());
   assert.equal(w.slack.of("assistant.threads.setSuggestedPrompts").length, 0);
   await deliver(w, interactive({ type: "shortcut", callback_id: "aui_ask", trigger_id: "tr-1" }));
@@ -121,7 +131,7 @@ test("branding: the prompts are suggested in the app's messages and in a new ass
 });
 
 test("branding: the ask form and every answer carry the brand", async () => {
-  const w = world({ branding: parseBranding(BRAND) });
+  const w = mappedWorld({ branding: parseBranding(BRAND) });
   await deliver(w, interactive({ type: "shortcut", callback_id: "aui_ask", trigger_id: "tr-2" }));
   const view = w.slack.of("views.open")[0]?.view as { title: { text: string } };
   assert.equal(view.title.text, "Ask Acme Help");
@@ -137,8 +147,8 @@ test("branding: the ask form and every answer carry the brand", async () => {
   assert.ok(!final.includes(defaultCopy.disclaimer("lead")), "the default disclaimer is replaced");
 });
 
-test("branding: a name alone puts the brand in the default disclaimer", async () => {
-  const w = world({ branding: parseBranding({ name: "Acme Help" }) });
+test("branding: a name alone adds no disclaimer, as Slack marks the app's messages", async () => {
+  const w = mappedWorld({ branding: parseBranding({ name: "Acme Help" }) });
   await deliver(w, mention("ping", "1700000000.000200"));
   w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
   await settle();
@@ -146,5 +156,5 @@ test("branding: a name alone puts the brand in the default disclaimer", async ()
   await settle();
   await w.app.idle();
   const final = JSON.stringify(w.slack.of("chat.stopStream").at(-1)?.blocks ?? []);
-  assert.match(final, /Acme Help is AI/);
+  assert.doesNotMatch(final, /is AI and can make mistakes/);
 });

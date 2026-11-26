@@ -43,6 +43,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -68,6 +69,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/prompts"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/settings"
@@ -649,6 +651,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
+		"ModelProvider": {typ: platform.ModelProvider{}},
 		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
 		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
 		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true}, "SpokenCorrection": {typ: correction{}, written: true}, "SpokenAnswer": {typ: platform.SpokenAnswer{}},
@@ -711,6 +714,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
+		"GitHubRepoAutoReview": {typ: reposettings.AutoReview{}}, "GitHubRepoSettings": {typ: reposettings.Settings{}},
+		"GitHubRepository": {typ: platform.GitHubRepository{}}, "GitHubRepositories": {typ: platform.GitHubRepositories{}},
+		"GitHubRepositoryDefaults": {typ: platform.GitHubRepositoryDefaults{}}, "GitHubRepositoryInput": {typ: githubRepoBody{}, written: true},
 		"Provenance": {typ: event.Provenance{}}, "Question": {typ: event.Question{}}, "Answer": {typ: struct {
 			event.Answer
 			// What a route hands out beside the subject (shownEvent).
@@ -1029,7 +1035,19 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		return time.Now()
 	}
 	contractBrowser := newBrowserFake(t)
-	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	// Slack's Web API as linking an agent's own app asks it who a bot token is.
+	slackWeb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth.test":
+			_, _ = w.Write([]byte(`{"ok":true,"team_id":"T0CONTRACT","user_id":"U0HELPER","bot_id":"B0HELPER"}`))
+		case "/bots.info":
+			_, _ = w.Write([]byte(`{"ok":true,"bot":{"app_id":"A0HELPER"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(slackWeb.Close)
+	f := newFixtureWith(t, platform.Config{SlackWebAPI: slackWeb.URL, Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1072,6 +1090,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseConnectionHealthContract(t, c)
 	exerciseBackgroundContract(t, c)
 	exerciseBigQueryContract(t, c)
+	exerciseImagesContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	exerciseBrowserContract(t, c, sessionContract["token"])
 	contractSource(t, f, c, sourceFake)
@@ -1372,6 +1391,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":999}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":"bad"}`, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/ghost/reset", `{"expected_rev":0}`, http.StatusNotFound)
+	c.call(acme, "GET", "/api/agent-templates", "/api/agent-templates", "", http.StatusOK)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"retiree","model":"offline","provider":"offline","system_prompt":"Leave."}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"retiree-nightly","expression":"0 3 * * *","agent":"retiree","text":"Nightly."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/retiree?rev=x", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/retiree?rev=9", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/retiree?rev=1", "", http.StatusNoContent)
+	// Its schedule waits until it asks another agent, and its name stays taken.
+	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/retiree-nightly/run", "", http.StatusConflict)
+	c.call(acme, "POST", "/api/schedules/{name}/resume", "/api/schedules/retiree-nightly/resume", "", http.StatusConflict)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"retiree","model":"offline","provider":"offline","system_prompt":"Again."}`, http.StatusConflict)
+	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/retiree-nightly", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/ghost", "", http.StatusNotFound)
 
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
 	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)
@@ -1709,6 +1740,26 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
+	look := "/api/agents/{name}/look"
+	c.call(acme, "GET", look, "/api/agents/helper/look", "", http.StatusOK)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"display_name":"Helpy","shape":"ghost","hat":"crown"}}`, http.StatusOK)
+	c.call(acme, "PUT", look, "/api/agents/fieldbot/look", `{"look":{"display_name":"helpy"}}`, http.StatusConflict)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"shape":"dragon"}}`, http.StatusBadRequest)
+	c.call(acme, "PUT", look, "/api/agents/ghost/look", `{"look":{}}`, http.StatusNotFound)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"greeting":"Hi.","starters":[{"title":"Help","prompt":"Help me."}]}}`, http.StatusOK)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{}}`, http.StatusOK)
+	slackApp := "/api/agents/{name}/slack-app"
+	c.call(acme, "GET", slackApp, "/api/agents/helper/slack-app", "", http.StatusOK)
+	c.call(acme, "GET", slackApp, "/api/agents/ghost/slack-app", "", http.StatusNotFound)
+	c.call(acme, "POST", slackApp, "/api/agents/helper/slack-app", `{"token":{"ref":"env:SLACK_BOT"}}`, http.StatusBadRequest)
+	c.call(acme, "POST", slackApp, "/api/agents/helper/slack-app", `{"token":{"value":"xoxb-helper"},"signing_secret":{"value":"s"}}`, http.StatusCreated)
+	c.call(acme, "POST", slackApp, "/api/agents/helper/slack-app", `{"token":{"value":"xoxb-helper"},"signing_secret":{"value":"s"}}`, http.StatusConflict)
+	mark := "/api/agents/{name}/mark"
+	pngType := []string{"Content-Type", "image/png"}
+	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "\x89PNG\r\n\x1a\nIHDR", http.StatusOK, pngType...)
+	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "GIF89a", http.StatusBadRequest, pngType...)
+	c.call(acme, "PUT", mark, "/api/agents/ghost/mark", "\x89PNG\r\n\x1a\n", http.StatusNotFound, pngType...)
+	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "\x89PNG\r\n\x1a\n"+strings.Repeat("x", MaxMarkBytes), http.StatusRequestEntityTooLarge, pngType...)
 
 	// The directory.
 	if _, err := f.p.Prefs.SetPhoto("acme", "okta|dana", []byte("\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32))); err != nil {
@@ -2110,51 +2161,84 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/clients", "/api/clients", slackBody("support", "A01CONTRACT", "helper"), http.StatusConflict)
 	c.call(acme, "POST", "/api/clients", "/api/clients", `{"id":"odd","surface":"fax"}`, http.StatusBadRequest)
 	// A GitHub installation names the login its app is mentioned by.
-	gh := `{"id":"gh","name":"GitHub","surface":"github","identity":{"owners":["acme"]},"default_agent":"helper","github":{"login":"humagen[bot]"},` +
+	gh := `{"id":"gh","name":"GitHub","surface":"github","identity":{"owners":["acme"]},"default_agent":"helper","github":{"login":"humagen[bot]","read_repositories":["acme/site"]},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
 	if got := c.call(acme, "POST", "/api/clients", "/api/clients", gh, http.StatusCreated); obj(got.field("github"))["login"] != "humagen[bot]" {
 		t.Errorf("the GitHub client's login is %s", got.raw)
 	}
 	c.call(acme, "POST", "/api/clients", "/api/clients", strings.Replace(strings.Replace(gh, `"id":"gh"`, `"id":"gh-two"`, 1), "humagen[bot]", "@humagen", 1), http.StatusBadRequest)
+	// A GitHub client's repositories follow it until one is given settings
+	// of its own; a write names the version it read.
+	const repoRoute = "/api/clients/{id}/repositories/{owner}/{repo}"
+	if got := c.call(acme, "GET", "/api/clients/{id}/repositories", "/api/clients/gh/repositories", "", http.StatusOK); obj(got.field("defaults"))["agent"] != "helper" {
+		t.Errorf("the GitHub client's repository defaults are %s", got.raw)
+	}
+	c.call(acme, "GET", "/api/clients/{id}/repositories", "/api/clients/support/repositories", "", http.StatusNotFound)
+	c.call(acme, "GET", repoRoute, "/api/clients/gh/repositories/acme/site", "", http.StatusOK)
+	c.call(acme, "GET", repoRoute, "/api/clients/gh/repositories/globex/site", "", http.StatusNotFound)
+	setRepo := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":0,"auto_review":{"opened":true,"pushes":false},"agent":"helper","instructions":"Run make check.","reads":["pull_diff"]}`, http.StatusOK)
+	c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":0,"agent":"helper"}`, http.StatusConflict)
+	c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":1,"reads":["everything"]}`, http.StatusBadRequest)
+	c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":1,"agent":"nobody-here"}`, http.StatusBadRequest)
+	c.call(acme, "DELETE", repoRoute, "/api/clients/gh/repositories/acme/site", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", repoRoute, fmt.Sprintf("/api/clients/gh/repositories/acme/site?version=%v", setRepo.field("version")), "", http.StatusOK)
+	c.call(acme, "DELETE", repoRoute, "/api/clients/gh/repositories/acme/site?version=1", "", http.StatusNotFound)
+	keptRepo := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", `{"version":0,"instructions":"Kept for the contract."}`, http.StatusOK)
+	// A save that leaves approve out keeps it; an empty approve removes it.
+	never := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", fmt.Sprintf(`{"version":%v,"instructions":"Kept for the contract.","approve":"never"}`, keptRepo.field("version")), http.StatusOK)
+	keptNever := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", fmt.Sprintf(`{"version":%v,"instructions":"Saved without approve."}`, never.field("version")), http.StatusOK)
+	if obj(keptNever.field("settings"))["approve"] != "never" {
+		t.Errorf("a save without approve: %s", keptNever.raw)
+	}
+	cleared := c.call(acme, "PUT", repoRoute, "/api/clients/gh/repositories/acme/site", fmt.Sprintf(`{"version":%v,"instructions":"Kept for the contract.","approve":""}`, keptNever.field("version")), http.StatusOK)
+	if _, has := obj(cleared.field("settings"))["approve"]; has {
+		t.Errorf("an empty approve: %s", cleared.raw)
+	}
+	c.call(acme, "DELETE", repoRoute, "/api/clients/gh/repositories/acme/site?version=9", "", http.StatusConflict)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"client","name":"support"},"period":"day","max_runs":3}`, http.StatusOK)
 	c.call(acme, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusOK)
 	c.call(globex, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
-	// A Slack app's machine records where it posted a message; nobody else can.
-	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme"},` +
+	// Asked before the client below names acme's credential as a Slack
+	// app's machine, which starts no run as itself.
+	bridgeDeliveryRunFixture := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Delivery check","project":"Launch"}`, http.StatusAccepted)
+	// A Slack app's machine records where it posted a message; nobody else
+	// can. It is a credential of its own: a Slack app's starts no run as
+	// itself, and acme's starts many below.
+	appMachine := f.machineAs(t, "svc-acme-app", "acme", everything...)
+	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme-app"},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
 	c.call(acme, "POST", "/api/clients", "/api/clients", app, http.StatusCreated)
 	installationCapsFixture := c.call(acme, "GET", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", "", http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", fmt.Sprintf(`{"version":%v,"events":["app_mention","message","slash_command"],"actions":["slack_post_message","slack_add_reaction"],"deliver_outcomes":true}`, installationCapsFixture.field("version")), http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":0,"events":[],"actions":[],"deliver_outcomes":false}`, http.StatusConflict)
 	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":2,"events":["not_an_event"],"actions":[],"deliver_outcomes":false}`, http.StatusBadRequest)
-	bridgeDeliveryRunFixture := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Delivery check","project":"Launch"}`, http.StatusAccepted)
-	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run="+bridgeDeliveryRunFixture.str("id")+"&channel=C01DELIVERY", "", http.StatusOK)
-	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery", "", http.StatusBadRequest)
-	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run=missing&channel=C01DELIVERY", "", http.StatusNotFound)
+	c.call(appMachine, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run="+bridgeDeliveryRunFixture.str("id")+"&channel=C01DELIVERY", "", http.StatusOK)
+	c.call(appMachine, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery", "", http.StatusBadRequest)
+	c.call(appMachine, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run=missing&channel=C01DELIVERY", "", http.StatusNotFound)
 
 	deliveries := "/api/inbox/{id}/deliveries/{client}"
-	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
-	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
+	c.call(appMachine, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
+	c.call(appMachine, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/support", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNotFound)
-	if got := c.call(acme, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK); obj(obj(obj(got.field("message"))["deliveries"])["app"])["ts"] != "1700000000.000100" {
+	if got := c.call(appMachine, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK); obj(obj(obj(got.field("message"))["deliveries"])["app"])["ts"] != "1700000000.000100" {
 		t.Errorf("the machine does not see its own receipt: %s", got.raw)
 	}
 	// Where the app files the threads it starts outside a bound channel.
-	homed := strings.Replace(strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1), `"machine":"svc-acme"`, `"machine":"svc-acme","people":{"U01ANA":"00u-ana"}`, 1)
+	homed := strings.Replace(strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1), `"machine":"svc-acme-app"`, `"machine":"svc-acme-app","people":{"U01ANA":"00u-ana"}`, 1)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", homed, http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, "Launch", "Ghost", 1), http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, `"project":"Launch"`, `"project":"Launch","channel":"nowhere"`, 1), http.StatusBadRequest)
 	// The machine reads a mapped person's inbox for them, and nobody else's.
 	// Here the policy grants ana nothing by subject, so she reads nothing
 	// through Slack; platform tests cover a person who may.
-	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
-	c.call(acme, "GET", "/api/inbox", "/api/inbox?act_as_client=app&act_as_user=U01NOBODY", "", http.StatusForbidden)
-	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app", "", http.StatusBadRequest)
-	c.call(acme, "GET", "/api/inbox/{id}", inboxPath+"?act_as_client=app", "", http.StatusBadRequest)
+	c.call(appMachine, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
+	c.call(appMachine, "GET", "/api/inbox", "/api/inbox?act_as_client=app&act_as_user=U01NOBODY", "", http.StatusForbidden)
+	c.call(appMachine, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app", "", http.StatusBadRequest)
+	c.call(appMachine, "GET", "/api/inbox/{id}", inboxPath+"?act_as_client=app", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
 	// And lists her projects the same way: acting_projects_test.go covers a
 	// person who may.
-	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
+	c.call(appMachine, "GET", "/api/projects", "/api/projects?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
 	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_user=U01ANA", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/support", `{"name":"Support","surface":"slack","identity":{"app_id":"A01CONTRACT","team":"T01ABCDEF"},"default_agent":"helper","agents":["*"],"slack":{"sessions":true},"enabled":false}`, http.StatusOK)
@@ -2187,6 +2271,28 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the app's bindings are %s, each saying when it was bound", bindings.raw)
 	}
 	c.call(globex, "GET", "/api/clients/{id}/bindings", "/api/clients/app/bindings", "", http.StatusNotFound)
+	// Who linked a Slack account in the app's team, for its administrators.
+	if _, err := f.p.Accounts.Link("acme", accounts.Account{Surface: accounts.Slack, ID: "U01ANA", Team: "T01ABCDEF", Login: "Ana", Subject: "00u-ana", At: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Accounts.Link("acme", accounts.Account{Surface: accounts.Slack, ID: "U01ELSE", Team: "T09OTHER", Login: "Else", Subject: "00u-bo", At: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	// A tab that began no link ends a consent by its state; the answer is
+	// the same whether one was ended.
+	c.call(acme, "POST", "/api/connections/consents/end", "/api/connections/consents/end", `{"state":"unknown"}`, http.StatusNoContent)
+	linked := c.call(acme, "GET", "/api/clients/{id}/accounts", "/api/clients/app/accounts", "", http.StatusOK)
+	if a := sliceOf(linked.field("accounts")); len(a) != 1 || obj(a[0])["id"] != "U01ANA" || obj(a[0])["subject"] != "00u-ana" {
+		t.Errorf("the app's linked accounts are %s, only its own team's", linked.raw)
+	}
+	c.call(globex, "GET", "/api/clients/{id}/accounts", "/api/clients/app/accounts", "", http.StatusNotFound)
+	// An administrator unlinks one; a viewer may not, and another tenant
+	// finds no such client.
+	unlink := "/api/clients/{id}/accounts/{account}"
+	c.call(vic, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusForbidden)
+	c.call(globex, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusNotFound)
+	c.call(acme, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusNoContent)
+	c.call(acme, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Crowded"}`, http.StatusCreated)
 	for i := range projects.MaxChannels - 1 {
 		c.call(acme, "POST", channels, "/api/projects/Crowded/channels", fmt.Sprintf(`{"name":"c%d"}`, i), http.StatusCreated)
@@ -2351,13 +2457,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// as that person, who must hold runs:write themselves: here the policy
 	// grants ana nothing by subject (platform tests post as one who may).
 	surface := `{"text":"<@UAPP> who has the PO?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000200","app_user":"UAPP"}}`
-	c.call(acme, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", surface, http.StatusNotFound)
-	c.call(acme, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
+	// A message that addressed nobody, sent where no thread is listening,
+	// starts nothing and is not kept.
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", `{"text":"anyone around?","listen":true,"act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000900","message":"1700000000.000950","app_user":"UAPP"}}`, http.StatusConflict)
 	// A reply under the post of an announcement since withdrawn starts
 	// nothing, in a Slack channel bound to the announcement's project.
-	c.call(acme, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01RENEW","ts":"1700000000.000300"}`, http.StatusNoContent)
-	c.call(acme, "POST", "/api/threads", "/api/threads", `{"text":"<@UAPP> still on?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000300","message":"1700000000.000400","app_user":"UAPP"}}`, http.StatusGone)
+	c.call(appMachine, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01RENEW","ts":"1700000000.000300"}`, http.StatusNoContent)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", `{"text":"<@UAPP> still on?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000300","message":"1700000000.000400","app_user":"UAPP"}}`, http.StatusGone)
 	started := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","channel":"renewals","visibility":"shared","title":"Globex renewal","text":"@helper when does Globex renew? @vic @sme:billing"}`, http.StatusCreated)
 	tid, _ := obj(started.field("thread"))["id"].(string)
 	if started.str("rule") != "tagged" || len(sliceOf(started.field("runs"))) != 1 || len(sliceOf(started.field("notified"))) != 1 {
@@ -2733,8 +2842,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
 	exerciseSandboxCommandContract(t, c)
+	exerciseBangCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
+	c.call(auditAdmin, "GET", "/api/threads/{id}/usage", "/api/threads/"+workspaceID+"/usage", "", http.StatusOK)
+	c.call(globex, "GET", "/api/threads/{id}/usage", "/api/threads/"+workspaceID+"/usage", "", http.StatusNotFound)
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -2750,25 +2862,27 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
-		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
-		"/api/messages/{id}":                         {"id": sessionContract["id"]},
-		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
-		"/api/messages/{id}/answer":                  {"id": sessionContract["id"]},
-		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
-		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
-		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},
-		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
-		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
-		"/api/sessions/{id}/voice/transcriptions":    {"id": sessionContract["id"]},
-		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
-		"/api/sessions/{id}/messages/{mid}":          {"id": sessionContract["id"], "mid": "m-1"},
-		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
-		"/api/sessions/{id}/browser":                 {"id": sessionContract["id"]},
-		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
-		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
-		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
-		"/api/alerts/{id}":                           {"id": sessionContract["alert"]},
-		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
+		"/api/sessions/{id}":                                {"id": sessionContract["id"]},
+		"/api/messages/{id}":                                {"id": sessionContract["id"]},
+		"/api/messages/{id}/trace":                          {"id": sessionContract["id"]},
+		"/api/messages/{id}/answer":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/feedback":                       {"id": sessionContract["id"]},
+		"/api/messages/{id}/stop":                           {"id": sessionContract["id"]},
+		"/api/messages/{id}/context":                        {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages":                       {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stream":                         {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/transcriptions":           {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/speech":                   {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages/{mid}":                 {"id": sessionContract["id"], "mid": "m-1"},
+		"/api/sessions/{id}/stop":                           {"id": sessionContract["id"]},
+		"/api/sessions/{id}/browser":                        {"id": sessionContract["id"]},
+		"/api/sessions/{id}/people":                         {"id": sessionContract["id"]},
+		"/api/sessions/{id}/links":                          {"id": sessionContract["id"]},
+		"/api/sessions/{id}/alerts":                         {"id": sessionContract["id"]},
+		"/api/alerts/{id}":                                  {"id": sessionContract["alert"]},
+		"/api/alerts/{id}/review":                           {"id": sessionContract["alert"]},
+		"/api/sessions/{id}/messages/{mid}/attachments/{n}": {"id": sessionContract["review"], "mid": "m-1", "n": "0"},
+		"/api/sessions/{id}/messages/{mid}/feedback":        {"id": sessionContract["id"], "mid": sessionContract["run"]},
 
 		"/api/threads/{id}/files":                             {"id": workspaceID},
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
@@ -2777,6 +2891,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/sandboxes/commands":                {"id": workspaceID},
 		"/api/threads/{id}/memory":                            {"id": workspaceID},
 		"/api/threads/{id}/artifacts":                         {"id": workspaceID},
+		"/api/threads/{id}/usage":                             {"id": workspaceID},
 		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},
 		"/api/threads/{id}/scratchpads/{pad}":                 {"id": workspaceID, "pad": padID},
 		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},
@@ -2787,6 +2902,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/agent-setups/{name}":                            {"name": "amended-setup"},
 		"/api/agent-setups/{name}/test":                       {"name": "amended-setup"},
 		"/api/clients/{id}/capabilities":                      {"id": "support"},
+		"/api/clients/{id}/repositories":                      {"id": "gh"},
+		"/api/clients/{id}/repositories/{owner}/{repo}":       {"id": "gh", "owner": "acme", "repo": "site"},
 		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
 		"/api/me/memory/{id}":                                 {"id": freshPersonalNote.str("id")},
 		"/api/library/skills/{id}":                            {"id": libraryID},
@@ -2849,8 +2966,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
 		"/api/runs/{id}/feedback":               `{"rating":"up"}`,
 		"/api/agents/{name}":                    revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
-		"/api/projects/{name}/fork": `{"name":"ForkedGhost"}`,
-		"/api/clients/{id}":         `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
+		"/api/projects/{name}/fork":                     `{"name":"ForkedGhost"}`,
+		"/api/clients/{id}/repositories/{owner}/{repo}": `{"version":1,"agent":"helper"}`,
+		"/api/clients/{id}":                             `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
@@ -2861,7 +2979,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}":                          `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
-		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
+		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`, "/api/agents/{name}/look": `{"look":{}}`, "/api/agents/{name}/slack-app": `{"token":{"value":"xoxb-x"}}`, "/api/agents/{name}/mark": "\x89PNG\r\n\x1a\n",
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
@@ -2880,6 +2998,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
 		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
 		"/api/graph/nodes/{id}/owner":          `{"action":"confirm"}`,
+		"/api/images/{id}":                     `{"warm":true}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -2899,7 +3018,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" || op.path == "/api/catalog/connectors/{name}/reconnect" {
 				foreign = foreignPerson
 			}
-			c.call(foreign, op.method, op.path, path, valid[op.path], http.StatusNotFound)
+			body := valid[op.path]
+			if op.path == "/api/model-providers/{name}" && op.method == http.MethodPatch {
+				body = `{"enabled":false}`
+			}
+			c.call(foreign, op.method, op.path, path, body, http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
@@ -2915,14 +3038,28 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
-	// A workspace's own model provider: set up, checked, in use, removed.
+	// A workspace's own model provider: set up, checked, in use, paused and removed.
 	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
 	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
 	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
 	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "PATCH", "/api/model-providers/{name}", "/api/model-providers/house", `{"enabled":false}`, http.StatusConflict)
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	const providerPath = "/api/model-providers/{name}"
+	const spare = "/api/model-providers/spare"
+	c.call(acme, "PATCH", providerPath, spare, `{}`, http.StatusBadRequest)
+	c.call(globex, "PATCH", providerPath, spare, `{"enabled":false}`, http.StatusNotFound)
+	off := c.call(acme, "PATCH", providerPath, spare, `{"enabled":false}`, http.StatusOK)
+	if off.field("disabled") != true || off.str("base_url") != "http://127.0.0.1:9/v1" {
+		t.Fatalf("turning off spare did not keep its setup: %s", off.raw)
+	}
+	c.call(acme, "POST", "/api/model-providers/{name}/check", spare+"/check", "", http.StatusBadRequest)
+	on := c.call(acme, "PATCH", providerPath, spare, `{"enabled":true}`, http.StatusOK)
+	if on.field("disabled") == true {
+		t.Fatalf("spare was not turned back on: %s", on.raw)
+	}
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
@@ -3013,16 +3150,22 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
-	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
-	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
-	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
-	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
-	"POST /api/messages/{id}/feedback 409":               "rating an unfinished run, the same putFeedback path the legacy feedback route exercises",
-	"POST /api/messages 409":                             "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
-	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
-	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
-	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
-	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
+	"PUT /api/clients/{id}/repositories/{owner}/{repo} 429": "a client's settings past its 1000th repository, covered by TestSettingsAreBounded in pkg/reposettings",
+	"POST /api/agents/{name}/slack-app 404":                 "an agent that does not exist, the same seenAgent and catalog read the GET covers",
+	"PUT /api/agents/{name}/home 409":                       "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
+	"POST /api/sessions/{id}/messages 503":                  "a sandbox that cannot start an instance for a command, the same postCommand path POST /api/sessions answers 503 from (exerciseBangCommandContract)",
+	"POST /api/threads/{id}/messages 503":                   "a sandbox that cannot start an instance for a command, the same postCommand path POST /api/sessions answers 503 from (exerciseBangCommandContract)",
+	"POST /api/sessions 409":                                "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions 200":                                "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
+	"POST /api/messages/{id} 409":                           "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
+	"POST /api/messages/{id}/feedback 409":                  "rating an unfinished run, the same putFeedback path the legacy feedback route exercises",
+	"POST /api/messages 409":                                "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
+	"POST /api/sessions/{id}/messages 409":                  "deleted-project admission uses the same PostMessage path tested by thread/run responses",
+	"POST /api/sessions/{id}/people 409":                    "concurrent participant changes fail thread version CAS covered by participant race tests",
+	"POST /api/sessions/{id}/alerts 409":                    "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
+	"POST /api/alerts/{id}/review 400":                      "a review session whose key another source alert holds, the same StartSession check POST /api/sessions makes",
+	"POST /api/alerts/{id}/review 409":                      "deleted-project admission, the same StartSession path POST /api/sessions takes",
+	"PUT /api/sessions/{id}/messages/{mid}/feedback 409":    "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
 
 	// Voice mode's refusals, each covered by its own test in voice_session_test.go.
 	"POST /api/sessions/{id}/voice/transcriptions 402": "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
@@ -3272,4 +3415,22 @@ func (contractSpeech) Transcribe(_ context.Context, audio io.Reader, _ string) (
 		return "", "", speech.ErrUnavailable
 	}
 	return "Ship it on Friday.", "english", nil
+}
+
+// exerciseImagesContract adds, changes and removes a workspace's own image
+// on a deployment that allows them, recording what it saw with c's, and
+// asks for one on c's own deployment, which allows none.
+func exerciseImagesContract(t *testing.T, c *contract) {
+	t.Helper()
+	c.call(c.f.person(t, "acme", "ivy", "Ivy", "humagen-admins"), "POST", "/api/images", "/api/images", `{"name":"Agent","ref":"ghcr.io/acme/agent:1"}`, http.StatusConflict)
+	f, owner, _ := imagesFixture(t)
+	on := &contract{t: t, f: f, spec: c.spec, seen: c.seen}
+	img := on.call(owner, "POST", "/api/images", "/api/images", `{"name":"Agent","ref":"ghcr.io/acme/agent:1","credential":"bot:token"}`, http.StatusCreated)
+	body, _ := img.body.(map[string]any)
+	id, _ := body["id"].(string)
+	settled(t, f, owner, id)
+	on.call(owner, "POST", "/api/images", "/api/images", `{"name":"agent","ref":"ghcr.io/acme/other:1"}`, http.StatusConflict)
+	on.call(owner, "GET", "/api/images", "/api/images", "", http.StatusOK)
+	on.call(owner, "PATCH", "/api/images/{id}", "/api/images/"+id, `{"warm":true}`, http.StatusOK)
+	on.call(owner, "DELETE", "/api/images/{id}", "/api/images/"+id, "", http.StatusNoContent)
 }

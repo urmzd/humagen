@@ -105,6 +105,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"background", func() error { return p.settleBackgroundRun(ctx, run) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
+		{"listening", func() error { return p.listenOnAnswer(run) }},
 		{"followups", func() error {
 			if run.Parent != "" {
 				return nil
@@ -119,6 +120,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			case run.Origin == runs.OriginSystem:
 				return p.fileHook(run)
 			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed && wire.Meta(run.Tag())[metaBackground] == "":
+				p.nameSessionAfterAnswer(ctx, run)
 				return p.afterTurn(ctx, run)
 			}
 			return nil
@@ -180,6 +182,19 @@ func (p *Platform) free(run runs.Run) {
 }
 
 // afterTurn starts the housekeeping a finished turn calls for.
+// privateTurn reports that what a turn said is its conversation's
+// participants' alone, for what memory learns from it. A GitHub session is
+// private only so the console shows it to the people who asked; what was
+// said there is on GitHub, and is remembered as it was before such runs
+// were filed: never as anyone's personal memory.
+func (p *Platform) privateTurn(run runs.Run) (bool, error) {
+	thread, err := p.Threads.Get(run.Tenant, run.Thread)
+	if err != nil && !errors.Is(err, threads.ErrNotFound) {
+		return false, err
+	}
+	return err == nil && thread.Visibility == threads.Private && !p.onItsGitHubSession(run), nil
+}
+
 func (p *Platform) afterTurn(ctx context.Context, run runs.Run) error {
 	cfg, err := p.settings.get(run.Tenant)
 	if err != nil {
@@ -188,11 +203,9 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) error {
 	cfg = cfg.withDefaults()
 	private := false
 	if cfg.MemoryAgent != "" {
-		thread, err := p.Threads.Get(run.Tenant, run.Thread)
-		if err != nil && !errors.Is(err, threads.ErrNotFound) {
+		if private, err = p.privateTurn(run); err != nil {
 			return err
 		}
-		private = err == nil && thread.Visibility == threads.Private
 	}
 	remember := false
 	if cfg.MemoryAgent != "" && private && run.Actor.User != "" && !run.Actor.Bot {

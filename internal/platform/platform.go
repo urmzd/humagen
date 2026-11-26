@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -53,7 +54,9 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/agentcolors"
+	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -74,6 +77,7 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -93,6 +97,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
@@ -190,8 +195,11 @@ type Config struct {
 	MentionKinds map[string][]MentionKind
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
-	SlackAPI  func(token string) slack.API
-	GitHubAPI func(token string) github.API
+	SlackAPI func(token string) slack.API
+	// SlackWebAPI is the root of Slack's Web API that linking an agent's own
+	// Slack app asks who a bot token is. Empty means https://slack.com/api.
+	SlackWebAPI string
+	GitHubAPI   func(token string) github.API
 	// PersonalHTTP is the client a person's own tool servers are reached
 	// through. Nil means the default client over HTTP.
 	PersonalHTTP *http.Client
@@ -219,6 +227,9 @@ type Config struct {
 	// run a command of their own in a conversation's sandbox
 	// (person_command.go). The zero value refuses.
 	SandboxContained bool
+	// SandboxImages lets workspaces add images of their own for sessions
+	// to run in (images.go). Nil: every session runs Sandbox's own image.
+	SandboxImages *ImageConfig
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
@@ -301,6 +312,10 @@ type Config struct {
 	// that names none (pkg/join), in place of the model the workspace's
 	// settings name. A nil Asker for a workspace asks nobody there.
 	Router func(tenant string) join.Asker
+	// Titler, when set, names a workspace's sessions in place of the small
+	// model of the session agent's provider (session_titles.go). A nil
+	// Titler for a session leaves its placeholder title.
+	Titler func(tenant, agent string) Titler
 	// Ext is what a program built on humagen adds: model providers, tool
 	// sources and MCP tool providers. The zero value adds nothing.
 	Ext Extensions
@@ -315,6 +330,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// fileAgents is the agents the platform file (or an -agent flag)
+	// declares in this process, by workspace and name (DeclareFileAgent).
+	fileAgents sync.Map
 	// systemTools is the registry's own tools and how its API operations
 	// reach the routes (systemtools.go).
 	systemTools systemRegistry
@@ -331,7 +349,10 @@ type Platform struct {
 	memoryFailures   *egressguard.MemoryFailures
 	// pullReviews keeps automatic review's count and pause per pull request.
 	pullReviews *state.Table[PullReview]
-	Sessions    session.Store
+	// approvalClaims is where one approval of each commit is claimed, in
+	// the store every replica shares (pkg/integrations/github).
+	approvalClaims state.Store
+	Sessions       session.Store
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
@@ -356,6 +377,9 @@ type Platform struct {
 	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.
 	health healthBook
+	// imageChecks are the image checks under way in this process
+	// (images.go).
+	imageChecks imageChecks
 
 	cfg                    Config
 	log                    *slog.Logger
@@ -417,6 +441,13 @@ type Platform struct {
 	emailPreferenceLocks [64]sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
+	// AgentLooks keeps how each agent is drawn and the name people see.
+	AgentLooks *agentlooks.Store
+	// RepoSettings keeps what the workspace set for each repository a
+	// GitHub client covers (github_repo_settings.go).
+	RepoSettings *reposettings.Store
+	// Images keeps the sandbox images each workspace added.
+	Images *images.Store
 	// Scratchpads keeps each conversation's named scratchpads.
 	Scratchpads *scratchpads.Store
 	// Projects is each tenant's tree of projects.
@@ -451,6 +482,9 @@ type Platform struct {
 	// Credentials is each person's own credentials for person-scoped tool
 	// providers. Values are kept in the store client secrets are kept in.
 	Credentials *credentials.Store
+	// Accounts is the GitHub and Slack accounts people linked to
+	// themselves. Nothing resolves a surface's user through it yet.
+	Accounts *accounts.Store
 	// Blobs holds the bytes of published files.
 	Blobs blob.Store
 	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
@@ -505,6 +539,8 @@ type Platform struct {
 	publicationGuards []ConversationPublicationGuard
 	// moves serialize starting a thread's runs with moving the thread.
 	moves threadLocks
+	// reviews serialize opening and starting one alert's review session.
+	reviews threadLocks
 	// projectForkLocks serialize destination copies independently of the
 	// conversation placement locks acquired while capturing archives.
 	projectForkLocks threadLocks
@@ -540,6 +576,8 @@ type Platform struct {
 	// admission serializes letting a run in. It is taken inside calls, never
 	// the other way round.
 	admission sync.Mutex
+	// titling counts the session titles being generated (nameSession).
+	titling sync.WaitGroup
 
 	// calls serializes Call, so two calls from one run cannot both pass a
 	// fan-out or budget check that only one of them fits under.
@@ -872,6 +910,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err != nil {
 		return runs.Run{}, err
 	}
+	// The one other way a child is told a skill: the host's own use_skill
+	// call (use_skill.go).
+	if tag, err = p.pinLoadedSkill(ctx, tag, edge); err != nil {
+		return runs.Run{}, err
+	}
 	if tag, err = p.pinRunContext(tag, edge, project, within); err != nil {
 		return runs.Run{}, err
 	}
@@ -882,6 +925,20 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	// the run is admitted.
 	if edge.Parent == "" && scheduledOrigin(tag) {
 		tag = p.fileInScheduleSession(ctx, tag, project)
+	}
+	// A GitHub run is filed in its issue's or pull request's session.
+	if wire.Origin(tag) == runs.OriginGitHub {
+		if edge.Parent == "" {
+			tag = p.fileInGitHubSession(ctx, tag, project, client)
+			// Admission read no thread, so the session's own state is
+			// checked here, now that it is known.
+			if th, err := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); err == nil && th.ReadOnly {
+				p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+				return runs.Run{}, ErrForbidden
+			}
+		} else {
+			wire.DeleteMeta(&tag, runs.MetaThread)
+		}
 	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
@@ -1053,7 +1110,15 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if why := p.NotInstalled(ctx, tenant, req.Agent); why != "" {
 		return runs.Run{}, fmt.Errorf("%w: %s", ErrNotAvailable, why)
 	}
-	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
+	// A skill the host loads (use_skill.go) is the caller's spec's
+	// skills.loadable to allow, not its spawn allowlist: the call is to
+	// skill-runner, keyed as the load said, for a skill the pinned spec
+	// still names.
+	if l, loads := loadingOf(ctx); loads {
+		if req.Agent != BuiltinSkillRunner || l.tag != call.TagID(parent.Tag().ID, req.Key) || !rev.Spec.Loads(l.loaded.Name) {
+			return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not load %q", ErrForbidden, parent.Agent, l.loaded.Name)
+		}
+	} else if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
 	if err := p.entryMayCall(tenant, rev, parent, req.Agent); err != nil {
@@ -1067,6 +1132,12 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 		return runs.Run{}, err
 	}
 
+	// A brief from a run asked on a GitHub issue or pull request names it,
+	// so the agent called never has to ask where it is.
+	brief := req.Text
+	if line := placeLine(parent.Tag().Channel); line != "" && req.Input == nil && req.Text != "" && !strings.Contains(req.Text, line) {
+		req.Text = strings.TrimRight(req.Text, " \t\n") + "\n\n" + line
+	}
 	input := req.Input
 	if input == nil {
 		input = &call.Input{Messages: []call.Message{{Role: "user", Content: []call.Part{call.TextPart{Text: req.Text}}}}, ResponseFormat: call.TextFormat{}}
@@ -1080,7 +1151,14 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 			if grant && compare.Lease == 0 {
 				compare.Lease = existing.Lease
 			}
-			if !sameCallInput(existing, compare, *input) || !p.sameHandoffTerms(existing, req.Contract) {
+			same := sameCallInput(existing, compare, *input)
+			if !same && brief != req.Text {
+				// A call made before briefs named their place joins its run.
+				before := compare
+				before.Text = brief
+				same = sameCallInput(existing, before, call.Input{Messages: []call.Message{{Role: "user", Content: []call.Part{call.TextPart{Text: brief}}}}, ResponseFormat: call.TextFormat{}})
+			}
+			if !same || !p.sameHandoffTerms(existing, req.Contract) {
 				return runs.Run{}, fmt.Errorf("%w: call key already identifies a different call", call.ErrInvalid)
 			}
 			return existing, nil
@@ -1428,6 +1506,8 @@ func (p *Platform) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer p.stopWakers()
+	// An image check started while the platform ran ends with it.
+	defer p.imageChecks.stop()
 	p.Knowledge.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 	p.CatalogStore.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 
@@ -1538,6 +1618,11 @@ func (p *Platform) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+	// Every process checks images and looks for the checks a dead one left:
+	// whichever finds one first starts it again.
+	if c := p.cfg.SandboxImages; c != nil && c.Puller != nil {
+		loop("images", func() error { return p.sweepImages(ctx) })
 	}
 	// The work done once per deployment runs on the elected leader only,
 	// and moves to another process when this one stops leading.
@@ -1814,4 +1899,21 @@ func commentID(id int64) string {
 		return ""
 	}
 	return strconv.FormatInt(id, 10)
+}
+
+// MarkURL is where Slack, or anyone, reads an agent's drawn picture: the
+// console's canonical address, then the tenant and the picture's token. It
+// is empty when no canonical address is configured, since a picture Slack
+// cannot reach is no use to it.
+func (p *Platform) MarkURL(tenant, token string) string {
+	if p.cfg.PublicURL == "" || token == "" {
+		return ""
+	}
+	base, err := url.Parse(p.cfg.PublicURL)
+	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" {
+		return ""
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + "/agent-marks/" + url.PathEscape(tenant) + "/" + token + ".png"
+	base.RawQuery, base.Fragment = "", ""
+	return base.String()
 }

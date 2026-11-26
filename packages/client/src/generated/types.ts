@@ -20,6 +20,11 @@ export interface ArtifactSave {
   title?: string;
 }
 
+export interface RunConnectionNeed {
+  provider: string;
+  name?: string;
+}
+
 /** A memory tree a run's instance was given, and what the run kept of its changes. */
 export interface RunMemoryUse {
   kind: "person" | "project" | "agent";
@@ -99,6 +104,24 @@ export interface ScratchpadList {
   writable: boolean;
   reason?: string;
   limit: 50;
+}
+
+/** What a conversation has used so far, read from its run index. A run
+called by another counted run is already in its caller's total and is
+not added again. When `truncated` is true the index read hit its cap and
+every figure is a lower bound.
+ */
+export interface ThreadUsage {
+  /** How many runs were counted. */
+  runs: number;
+  usage: Usage;
+  /** Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20. */
+  agents: ThreadUsageAgentsItem[];
+  /** The context fill of the most recent run that reported one. */
+  context?: ThreadUsageContext;
+  /** How many counted runs have not ended. */
+  working: number;
+  truncated: boolean;
 }
 
 export interface ScratchpadInput {
@@ -554,6 +577,8 @@ export interface AgentNetwork {
 export interface ErrorBody {
   /** What went wrong, in words a person can be shown. */
   error: string;
+  /** Which failure it is, for a program to act on, where the status alone does not say. `thread_before_sessions` is the conflict of `POST /api/sessions` for a chat surface's thread that started as a conversation, which the chat service posts to `POST /api/threads` instead. A failure without one is told by its status. */
+  code?: string;
 }
 
 /** Why a limit refused a run. */
@@ -801,6 +826,36 @@ anyone in the workspace approve, except the person who asked.
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
   output?: AgentOutput;
+  skills?: AgentSkills;
+  review?: AgentReview;
+}
+
+/** How the agent's pull request reviews decide. The host chooses the
+event from the report and this policy, never from the model's words.
+It approves only with `approve: when_clean`, a verdict that approves,
+no finding at or above `block_on`, CI on the reviewed commit that
+passed, an author other than the app, and a run that was an automatic
+review or asked by a mapped person who did not write the change. A verdict of
+`request_changes`, or any finding at or above `block_on`, requests
+changes. Anything else is a comment.
+ */
+export interface AgentReview {
+  /** `never` (the default) or `when_clean`. A repository's settings may set `never` for it. */
+  approve?: "never" | "when_clean";
+  /** The least severity whose findings request changes. Absent is `error`. */
+  block_on?: "error" | "warning" | "info";
+}
+
+/** What the agent may do with the skill library beyond the skills a
+person names. Left out, it loads none.
+ */
+export interface AgentSkills {
+  /** The library skills the agent may load with `use_skill`, each run
+as a subagent of its own (`skill-runner`): skill names, or `*`
+alone for any published skill of the run's project chain. A
+personal skill never loads. Empty loads none.
+ */
+  loadable?: string[];
 }
 
 /** The shape of the agent's answer. The model is asked for structured
@@ -867,6 +922,8 @@ export interface ModelProvider {
   key_ref?: string;
   /** A value is kept for it in the secret store. */
   key_stored?: boolean;
+  /** The provider is off and its configuration and key are retained. */
+  disabled?: boolean;
   added_by?: string;
   added_at?: string;
 }
@@ -1404,6 +1461,11 @@ as `m-3`. Runs that answer one message answer it side by side and
 are not branches.
  */
   message?: string;
+  /** The person, by subject, who asked through a surface's credential
+for a run that acts for nobody (`asked_by`). The run uses nobody's
+credentials; this only records who asked.
+ */
+  requested_by?: string;
   /** The run's budget in micro-USD. Zero means unmetered. */
   lease: number;
   /** The budget the run has leased to calls that have not ended, in
@@ -1437,6 +1499,13 @@ the schema.
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
+  /** Connections the run needed and the person it acts for had not
+made: a tool group it was granted could not be opened without
+that person's own credential. A run that called another agent
+carries what that agent's run needed as well. `provider` is the
+provider's name as Connections names it.
+ */
+  needs_connection?: RunConnectionNeed[];
   citations: RunCitation[];
   error?: string;
   /** What a parked run is waiting for. */
@@ -1479,6 +1548,7 @@ branch from that point.
   /** Files a new conversation under a project. A follow-up keeps its conversation's project. */
   project?: string;
   act_as?: ActAs;
+  asked_by?: ActAs;
 }
 
 /** A person a surface authenticated itself, named by the surface's client and the surface's own user id. */
@@ -1531,6 +1601,8 @@ export interface ThreadSummary {
   title: string;
   /** The title is a name, not just the first message. */
   named: boolean;
+  /** Who gave the title, as the thread's record says. `placeholder` is the start of the first message, shown until a generated title replaces it; `generated` is a short name a model gave it; `person` is a person's rename, which is never replaced. Absent when nobody named it, or for a record from before sources were kept. */
+  title_source?: "placeholder" | "generated" | "person";
   origin: string;
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
@@ -1542,6 +1614,20 @@ export interface ThreadSummary {
   visibility: ThreadVisibility;
   /** How many messages people have posted in it. */
   messages: number;
+  /** Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API. */
+  source?: "slack" | "slack_dm" | "github" | "scheduled";
+  /** On a session listing, the caller takes part in the session without having started it. They posted in it, were mentioned or were added. */
+  joined?: boolean;
+  /** On a session listing, what waits on a person. It is the question waiting on the caller when there is one, else the latest run parked on a person. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters. */
+  waiting_for?: string;
+  /** What `waiting_for` is. */
+  waiting_kind?: "approval" | "question";
+  /** On a session listing, an open question one of the session's runs waits on is the caller's to answer, by the rule answering holds them to. The question is addressed to them as it was raised, with whoever asked for the work excluded; the caller may write runs; and for a run held at a spend limit the caller holds `billing:write`. It reports the run, not the caller's notifications, so it stays true when they hid, snoozed or deleted the inbox message. A question a called agent raised counts for the session that called it. Read in one statement against the inbox for the whole page, of the workspace's newest 1000 live inbox messages; no inbox is read when nothing on the page waits. Always sent; false otherwise, so a client never assumes it. */
+  waiting_on_you: boolean;
+  /** On a session listing, the session waits on a person and whether that is the caller could not be told. The workspace holds more than 1000 live inbox messages and no question of the caller's about this session was among the newest 1000, or the inbox could not be read. `waiting_on_you` is then false, which does not mean it waits on someone else. Absent when it is known. */
+  waiting_unknown?: boolean;
+  /** On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown. */
+  failure?: string;
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */
@@ -1613,6 +1699,8 @@ export interface Thread {
   project: string;
   channel: string;
   title?: string;
+  /** Who gave the title. `placeholder` is the start of the first message, cut on a word, which a short generated name replaces once a model gives one; `generated` is that name; `person` is a person's rename. The platform replaces only a placeholder, so a rename is never overwritten. Absent for a record from before sources were kept, or one started with a title of its own. A title changed through this API is a person's. */
+  title_source?: "placeholder" | "generated" | "person";
   visibility: ThreadVisibility;
   /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100. */
   participants: ThreadParticipant[];
@@ -1627,10 +1715,16 @@ not selected. Absent when none is selected.
   agents?: string[];
   mode?: ThreadMode;
   surface?: ThreadSurface;
+  /** The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message. It is listened to once the app has answered there. Absent for a thread a later mention started, where each mention is answered once, and for a direct message. */
+  addressed?: boolean;
+  /** An addressed thread the app has answered in. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening. */
+  listening?: boolean;
+  /** Whose later messages there that address nobody are read, when the thread is `listening`, and the agent decides of each whether it calls for it. It is the person whose mention of the app or an agent the app answered most recently; only an answer to a newer mention changes it, and the listener's own unmentioned follow-ups never do. Anyone else mentions the app or an agent to ask. */
+  listener?: ThreadListener;
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
-  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it. */
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person (Ask). `auto` (Auto) lets the approval agent approve for that person what they may approve themselves, within policy, and answer for them a question an agent asks a person when the session already settles it; a budget request, an action the agent or the policy always asks about, and anything it is unsure of still go to a person. A conversation stored as `decide` (Run and Answer, before it became part of Auto) reads as `auto`. */
   approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -1896,9 +1990,26 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Said in voice mode and transcribed. */
   spoken?: boolean;
+  /** A message on a surface that addressed nobody, read because the thread listens to its poster, such as a Slack reply with no mention of the app. Unless it tags an agent its answer does not change the thread's `listener`. */
+  heard?: boolean;
   /** When its author last corrected a spoken message's words. */
   edited_at?: string;
+  command?: ThreadCommand;
   at: string;
+}
+
+/** A command the message's author ran in the session's sandbox, typed as `!` and the command, which is the message's text, and how it came out. The message started no run; the agent that answers the next message is sent the command and the end of its output. */
+export interface ThreadCommand {
+  command: string;
+  /** The command's exit status, or -1 when it was stopped at the time limit. */
+  exit_code: number;
+  /** Stopped at the time limit (15 seconds). */
+  timed_out?: boolean;
+  /** The end of stdout and stderr, as one stream, in at most 16384 bytes. Line endings are LF, and other control characters but tabs are removed. */
+  output: string;
+  /** Earlier output was cut. */
+  truncated?: boolean;
+  duration_ms: number;
 }
 
 /** The announcement a thread was started from, as it stands when the
@@ -2014,6 +2125,8 @@ export interface ThreadInput {
   post_only?: boolean;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** With `surface`, posts a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no thread. In a thread that is `listening` the agent is asked whether the message calls for it, and either answers it or the message is kept and starts nothing (`rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 export interface HelpSuggestion {
@@ -2070,6 +2183,8 @@ export interface ThreadMessageInput {
   surface?: SurfaceRef;
   /** The person said it in voice mode and the words were transcribed. It only marks the message. */
   spoken?: boolean;
+  /** The text is `!` and a command to run at once, as the caller, in the session's sandbox, under the rules and limits of runSandboxCommand: only where GET /api/sessions/options says `terminal`, only for someone who may post in the session, and only while no work is under way there (409). The message is posted with how the command came out (ThreadMessage.command) and starts no run; the agent reads it with the next message. Refused with uploads, answers, act_as or surface. */
+  command?: boolean;
 }
 
 /** How a thread's selected agents answer an untagged message a person
@@ -2853,6 +2968,83 @@ export interface AgentPlace {
   enabled_in: string[];
 }
 
+/** How an agent is drawn and what people call it. Every field is
+optional, and an empty one is the default: the shape its handle
+hashes to, eyes, a fabric finish, nothing worn, and its handle as its
+name.
+ */
+export interface AgentLook {
+  /** What people call the agent. Its handle, which people tag, does not change. */
+  display_name?: string;
+  /** The mascot the agent is drawn as. Empty is the one its handle suggests. */
+  character?: "detective" | "writer" | "engineer" | "scientist" | "inspector" | "spy" | "plain";
+  shape?: "clover" | "flower" | "triangle" | "square" | "blob" | "ghost" | "circle" | "drop" | "star" | "droid" | "mech" | "alien" | "hexagon" | "cat" | "cloud" | "pill" | "pebble" | "puddle";
+  face?: "eyes" | "mouth";
+  finish?: "fabric" | "plastic" | "smooth" | "flat";
+  hat?: "none" | "beret" | "beanie" | "party" | "crown";
+  glasses?: "none" | "round" | "square" | "shades";
+  headphones?: boolean;
+  bow_tie?: boolean;
+  /** A sentence or two in the agent's voice, shown where people meet it. */
+  greeting?: string;
+  /** Up to three jobs people can hand the agent in one click. */
+  starters?: AgentLookStartersItem[];
+  /** Where the agent's drawn picture is served, to anyone with the
+address (Slack fetches it as the agent's icon). Set by the server
+once the console has drawn one and a canonical console URL is
+configured; never taken from a request.
+ */
+  image_url?: string;
+}
+
+/** The goals a new agent can start from, and the model chain it starts on. */
+export interface AgentTemplateCatalog {
+  templates: AgentTemplate[];
+  /** The entry agent's model chain. Empty when the workspace has no entry agent. */
+  model: AgentTemplateCatalogModel;
+}
+
+/** One goal a new agent can start from. */
+export interface AgentTemplate {
+  /** The template's address in the console: /agents/new/{id}. */
+  id: string;
+  /** What the agent is. */
+  title: string;
+  /** What a person gets from it, in a few words. */
+  outcome: string;
+  /** The new agent's description. */
+  description: string;
+  /** What it says about itself, in its own voice. */
+  greeting: string;
+  /** The bot it is drawn as, one of the look's shapes. */
+  shape: string;
+  system_prompt: string;
+  tools: string[];
+  starters: AgentTemplateStartersItem[];
+}
+
+/** An agent's look, its hue, and what a picker offers. */
+export interface AgentLookView {
+  agent: string;
+  look: AgentLook;
+  hue: number;
+  /** The hues other agents in the workspace hold, sorted, without their names. */
+  taken: number[];
+  choices: AgentLookViewChoices;
+}
+
+/** An agent's own Slack app. */
+export interface AgentSlackApp {
+  /** The Slack app manifest, as Slack's create-from-manifest page takes it. */
+  manifest: Record<string, unknown>;
+  /** Slack's create-from-manifest page, with the manifest filled in. */
+  create_url: string;
+  /** The client the app is linked as. Absent until it is linked. */
+  client?: string;
+  /** The linked app's bot user, which names the agent in any of the team's Slack apps. */
+  bot_user?: string;
+}
+
 /** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
@@ -3071,6 +3263,8 @@ export interface PersonalPreferences {
 export interface Branding {
   /** The product's name. */
   name: string;
+  /** The https address of the page of terms the console links to beside its notice that the product is AI. Null shows the notice without a link. */
+  terms_url: string | null;
   /** The entry agent's agent name. People see it as name, never as this. */
   entry_agent: string;
   /** The text beside the logo in the sidebar. Empty shows the logo alone. */
@@ -3780,9 +3974,10 @@ export interface Span {
 }
 
 /** `budget` is raised by a billing policy, never by a rule, and a rule
-cannot be created with it.
+cannot be created with it. `eval` is raised when an answer fails its
+online checks, on that answer, and never by a rule.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "eval" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3836,7 +4031,17 @@ lists every alert to them. At most 20 entries.
   updated_at?: string;
 }
 
+export interface MessageAttachmentText {
+  name: string;
+  media_type: string;
+  text: string;
+  /** The file is longer than the text returned. */
+  truncated?: boolean;
+}
+
 export interface Alert {
+  /** The session where a person reviews the alert with an agent, once someone has opened it. */
+  review?: string;
   who?: string[];
   resolve_when?: string;
   action?: string;
@@ -3977,7 +4182,7 @@ export interface EvalRun {
 }
 
 /** A suite with its most recent runs, newest first. */
-export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[] };
+export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[]; created_by_name?: string; next_run_at?: string; schedule_busy?: boolean };
 
 /** A saved view of a source, which leaves some documents out. */
 export interface KnowledgeVariant {
@@ -4664,9 +4869,81 @@ export interface GitHubAutomation {
   conclusion?: string;
   agent: string;
   instructions: string;
+  /** What the rule's sessions answer with: `review`, a review the host renders and posts on the pull request, or `reply`, plain prose. Left out, a rule on `pull_request` reviews and any other replies. */
+  shape?: "review" | "reply";
   paused: boolean;
   /** Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved. */
   note?: string;
+}
+
+/** When a pull request is reviewed automatically. Both false reviews nothing. */
+export interface GitHubRepoAutoReview {
+  /** Review a pull request when it opens or reopens ready for review, or leaves draft. */
+  opened: boolean;
+  /** Review the commits each push adds. */
+  pushes: boolean;
+}
+
+/** What the workspace set for one repository. A field left out follows the client. */
+export interface GitHubRepoSettings {
+  /** "owner/name". */
+  repository: string;
+  auto_review?: GitHubRepoAutoReview;
+  /** Answers a mention that names no agent, and reviews pull requests, in place of the client's default agent. */
+  agent?: string;
+  /** Given to every run on the repository, after the workspace's and the project's instructions. */
+  instructions?: string;
+  /** What the platform reads before a run here starts. */
+  reads?: ("pull_diff" | "linked_issues")[];
+  /** False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable. */
+  cross_surface_reads?: boolean;
+  /** `never`, its one value, keeps every agent's reviews here from approving. Left out, each agent's review policy applies, and a save that leaves it out keeps what was set. */
+  approve?: string;
+  updated_at: string;
+  updated_by?: string;
+}
+
+export interface GitHubRepository {
+  repository: string;
+  settings?: GitHubRepoSettings;
+  /** The settings' version; 0 while the repository follows its client. */
+  version: number;
+  /** The client's GitHub App installation covers it. */
+  installed: boolean;
+  auto_review: GitHubRepoAutoReview;
+  /** The agent that answers here, the repository's or the client's default. */
+  agent?: string;
+  /** Runs other than the repository's own, and the console, may read it, in the whole workspace: false when any GitHub client keeps it to its own runs. */
+  cross_surface_reads: boolean;
+  /** The names of the GitHub clients that keep the repository to its own runs, this one among them when it does. */
+  kept_by?: string[];
+}
+
+/** What a repository with no settings follows, from the client (and so from the environment for a client the environment configures). */
+export interface GitHubRepositoryDefaults {
+  auto_review: GitHubRepoAutoReview;
+  agent?: string;
+}
+
+export interface GitHubRepositories {
+  repositories: GitHubRepository[];
+  defaults: GitHubRepositoryDefaults;
+  /** The installation's list was read. Without it, only the repositories the client names or keeps settings for are shown. */
+  listed: boolean;
+  truncated?: boolean;
+}
+
+export interface GitHubRepositoryInput {
+  /** Absent or null follows the client. */
+  auto_review?: GitHubRepoAutoReview | null;
+  agent?: string;
+  instructions?: string;
+  reads?: ("pull_diff" | "linked_issues")[];
+  /** False keeps the repository to its own runs. Absent or true leaves it readable. */
+  cross_surface_reads?: boolean;
+  /** `never` keeps reviews here from approving, and empty removes it so each agent's review policy applies. Absent keeps what was set. */
+  approve?: "" | "never";
+  version: number;
 }
 
 export interface GitHubOptions {
@@ -4676,7 +4953,8 @@ export interface GitHubOptions {
   people?: Record<string, string>;
   /** Reviews a pull request when it opens or reopens ready for review,
 leaves draft, or gets a push, by the client's default agent.
-Left out, it is on. Labels start nothing.
+Left out, it is off. Labels start nothing. A repository's
+settings (`/api/clients/{id}/repositories`) override it there.
  */
   auto_review?: GitHubOptionsAutoReview;
   /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
@@ -4684,6 +4962,7 @@ Left out, it is on. Labels start nothing.
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
+  /** Optional. Exact owner/repo names a run from another surface may read through this client, besides the repositories its GitHub App installation covers. Empty means the installation's repositories alone. */
   read_repositories?: string[];
   /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md). */
   login?: string;
@@ -5129,7 +5408,7 @@ export interface CompactRequestPayload {
 
 /** What an ingress event asks of an agent. Every ingress body that can start a run carries it. */
 export interface EventRequest {
-  /** The request, with any agent mention taken out. */
+  /** The request as the person wrote it, whole. The mentions that open it are its address and are taken out; one inside a sentence stays where it was written. `mentions` says who was named. */
   text: string;
   actor?: Actor;
   /** The agents the request names, in order. */
@@ -5198,6 +5477,14 @@ export interface GitHubRef {
   labels?: string[];
   draft?: boolean;
   installation_id?: number;
+  /** The GitHub user ID of `sender`; a login can be renamed, an ID cannot. Left out when the payload has none. */
+  sender_id?: number;
+  /** The GitHub user ID of `author`. Left out when the payload has none. */
+  author_id?: number;
+  /** On a review request, the login the review was requested from. */
+  requested_reviewer?: string;
+  /** On a review request, the GitHub user ID of `requested_reviewer`. */
+  requested_reviewer_id?: number;
 }
 
 /** The body of a GitHub issue or pull request event that carries nothing of its own. */
@@ -5430,6 +5717,10 @@ export interface SessionIdentity {
   label?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  /** The id of the image the session's tools run in. "" and "default" are the deployment's own. */
+  image?: string;
+  /** Repositories ("owner/name") the session works on. */
+  repos?: string[];
 }
 
 export interface MessageFeedbackInput {
@@ -5456,6 +5747,8 @@ export interface MessagesInput {
   act_as?: ActAs;
   /** With act_as, record the message and start nothing, for what people said in the thread before the app was asked. */
   post_only?: boolean;
+  /** With act_as, post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In a thread that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing (`posted.rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 /** One person's message. role is user; the platform writes the agents' messages. */
@@ -5503,10 +5796,17 @@ session, keyed slack://team/channel/thread_ts,
 github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
 the normalized URL. client is the Humagen client the origin is
 reached through: it files the root where the client's channel is
-bound and maps a Slack conversation's members to people.
+bound and maps a Slack conversation's members to people. client and
+audience are read only from that client's own machine posting for a
+person (act_as); from any other caller they are ignored, and a root
+the message starts is the caller's own. A place that already has a
+root takes a message only from someone who reads that root; anyone
+else is answered 404. A slack or github place's root is started only
+by its surface: until then a message to it is answered 404.
  */
 export interface ExternalRef {
   type: "slack" | "github" | "schedule" | "url" | "web";
+  /** The Humagen client the origin is reached through. Read only from that client's own machine posting for a person (act_as). */
   client?: string;
   team?: string;
   channel?: string;
@@ -5752,6 +6052,14 @@ export interface SessionInput {
   surface_kind?: string;
   /** With surface: post the message without starting anything. */
   post_only?: boolean;
+  /** With surface: post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In one that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing. Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
+  /** The id of a ready image from GET /api/sessions/options. "" and "default" are the deployment's own. Refused with surface. */
+  image?: string;
+  /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
+  repos?: string[];
+  /** Start the session with a command in place of a message to its agent: the text is `!` and the command, run in the new session's sandbox as for SessionPostInput.command. The session's first message is the command and how it came out, and no run starts. Refused with surface, act_as, post_only, listen, parent, source_alert and uploads, and where GET /api/sessions/options does not say `terminal` (409, and no session is made). */
+  command?: boolean;
 }
 
 /** What a person asks of a session's browser. */
@@ -5792,6 +6100,89 @@ export interface BrowserElement {
   box?: number[];
 }
 
+/** An image a session may run in. */
+export interface SessionImage {
+  /** "default" for the deployment's own, else the workspace image's id. */
+  id: string;
+  name: string;
+  /** The reference as it was added. */
+  ref: string;
+  /** The reference pinned, repo@sha256:..., once its check resolved it. */
+  digest?: string;
+  status: "checking" | "ready" | "failed";
+  /** Why its check failed. */
+  problem?: string;
+  /** An instance is kept started, so a session does not wait for one. */
+  warm: boolean;
+  default: boolean;
+}
+
+/** What a session may be started with. */
+export interface SessionOptions {
+  images: SessionImage[];
+  /** Where the workspace may add images from; empty when it may add none. */
+  imageRegistries: string[];
+  /** Where images run, as the deployment names its sandbox ("docker/runsc"). */
+  sandbox: string;
+  /** Each run has an instance of its own. */
+  isolated: boolean;
+  /** A person may run commands in a session's sandbox. */
+  terminal: boolean;
+  repos: string[];
+}
+
+/** An image a workspace added for its sessions to run in. */
+export interface WorkspaceImage {
+  id: string;
+  name: string;
+  ref: string;
+  /** The reference pinned, repo@sha256:..., by the last check that passed. Sessions run it. */
+  digest?: string;
+  /** A ready image stays ready while it is checked again and when that check fails. */
+  status: "checking" | "ready" | "failed";
+  /** Why its latest check failed. A ready image with one still runs the digest it had. */
+  problem?: string;
+  /** A ready image is being checked again. */
+  rechecking?: boolean;
+  warm?: boolean;
+  /** A pull credential is kept for it. The credential is never shown. */
+  credential?: boolean;
+  createdBy: string;
+  createdAt: string;
+  checkedAt?: string;
+}
+
+/** A workspace's own images and where it may add them from. */
+export interface WorkspaceImages {
+  images: WorkspaceImage[];
+  registries: string[];
+}
+
+/** An image to add. */
+export interface ImageInput {
+  name: string;
+  /** A reference on a registry the deployment allows, "ghcr.io/acme/agent:1.4". */
+  ref: string;
+  /** The registry's pull secret, "user:token". Kept apart and never returned. */
+  credential?: string;
+  warm?: boolean;
+}
+
+/** A change to an image. */
+export interface ImageChange {
+  warm?: boolean;
+  /** Pull and check it again. */
+  check?: boolean;
+}
+
+/** Whether a session has a browser. */
+export interface BrowserAvailability {
+  available: boolean;
+  providers: string[];
+  /** Why there is no browser; empty when there is one. */
+  reason: string;
+}
+
 /** A session's browser after an action. */
 export interface BrowserView {
   /** The tool provider the browser is reached through. */
@@ -5819,6 +6210,8 @@ export interface SessionPostInput {
   surface?: SurfaceRef;
   /** The person said it in voice mode and the words were transcribed. It only marks the message. */
   spoken?: boolean;
+  /** The text is `!` and a command to run at once, as the caller, in the session's sandbox, under the rules and limits of runSandboxCommand: only where GET /api/sessions/options says `terminal`, only for someone who may post in the session, and only while no work is under way there (409). The message is posted with how the command came out (ThreadMessage.command) and starts no run; the agent reads it with the next message. Refused with uploads, answers, act_as or surface. */
+  command?: boolean;
   /** The @agent in text whose child receives this request. */
   agent?: string;
   /** Start an independent child instead of continuing its existing session. */
@@ -5985,6 +6378,7 @@ export interface OnlineEvaluation {
   signals: EvaluationSignals;
 }
 
+/** What the checks on an agent's recent runs say, from the runs the caller reads in their own right (as owner, participant or project member, or because the run is public). Health never uses break-glass; a run the caller could read only by exception is left out of results, samples, passed, pass_rate and flagged alike, and no run or thread is recorded as read. An agent homed in a project the caller reaches only by exception is still recorded once, as the read of that agent it is. */
 export interface AgentEvaluationHealth {
   agent: string;
   status: "untested" | "healthy" | "needs_review";
@@ -5992,6 +6386,10 @@ export interface AgentEvaluationHealth {
   passed: number;
   pass_rate: number;
   results: OnlineEvaluation[];
+  /** Distinct runs rated down with a reason that wait in the review queue, of those the caller reads in their own right, up to 50. Present, 0 when there are none, for a caller with evals:read; absent only for a caller without it. It is counted from the candidates the review queue reads (the first 1,000 of the agent), so it agrees with what the queue shows a caller who reads by no exception (the queue shows a governor more, since it uses break-glass and records it) and, like the queue, can be fewer than every such run when the agent has more candidates than that. Nothing in the answer says whether it has, since that would tell of candidates the caller cannot see. */
+  flagged?: number;
+  /** The caller reads more than 50 flagged runs, so flagged (50) is a lower bound. Decided only from runs the caller reads in their own right; true only with flagged at 50. */
+  flagged_more?: boolean;
 }
 
 export interface AgentChangeScore {
@@ -6074,6 +6472,24 @@ export interface ConnectionPreset {
   /** A confirmed provider rejection requires renewed consent. */
   reconnect_required?: boolean;
   health?: ConnectionHealth;
+  account?: LinkedAccount;
+}
+
+/** One GitHub or Slack user linked to one person in a workspace. The
+id is the surface's stable id for the user (GitHub's numeric user
+id, Slack's user id); the login is for display only.
+ */
+export interface LinkedAccount {
+  surface: "github" | "slack";
+  id: string;
+  /** The Slack team the user signed in from. Empty on GitHub. */
+  team?: string;
+  /** The GitHub login or Slack name at the last sign-in. */
+  login: string;
+  avatar_url?: string;
+  /** The person the account is linked to. */
+  subject: string;
+  linked_at: string;
 }
 
 export interface ConnectionRegistration {
@@ -6099,6 +6515,10 @@ export interface ConnectionCallback {
   installation_id?: string;
   state: string;
   code: string;
+}
+
+export interface ConsentEnd {
+  state: string;
 }
 
 export interface BigQuerySetupCredential {
@@ -6133,6 +6553,20 @@ export interface BigQuerySetupView {
   oauth_connectors: string[];
   adc: BigQueryAdcScope[];
   credential_refs: string[];
+}
+
+export interface ThreadUsageAgentsItem {
+  agent: string;
+  runs: number;
+  usage: Usage;
+}
+
+export interface ThreadUsageContext {
+  run: string;
+  agent: string;
+  model?: string;
+  window?: number;
+  tokens?: number;
 }
 
 export interface GitHubSubjectPullRequest {
@@ -6201,8 +6635,13 @@ export interface PreparedCallInputMessagesItem {
   text: string;
 }
 
+export interface ThreadListener {
+  person: string;
+  message?: string;
+}
+
 export interface ThreadApproval {
-  mode: "auto" | "decide";
+  mode: "auto";
   by: string;
   roles?: string[];
   at: string;
@@ -6261,6 +6700,31 @@ export interface ProjectContext2 {
 export interface ProjectChangeChannel {
   before?: Channel;
   after?: Channel;
+}
+
+export interface AgentLookStartersItem {
+  title: string;
+  prompt: string;
+}
+
+export interface AgentTemplateCatalogModel {
+  provider: string;
+  model: string;
+  fallbacks?: ModelRef[];
+  fallback_on?: string[];
+}
+
+export interface AgentTemplateStartersItem {
+  title: string;
+  prompt: string;
+}
+
+export interface AgentLookViewChoices {
+  shapes: string[];
+  faces: string[];
+  finishes: string[];
+  hats: string[];
+  glasses: string[];
 }
 
 export interface InboxPartSource {
@@ -6416,10 +6880,12 @@ export interface ListReadAuditResponse {
 
 export interface GetAgentHuesResponse {
   hues: Record<string, number>;
+  looks?: Record<string, AgentLook>;
 }
 
 export interface GetProjectAgentHuesResponse {
   hues: Record<string, number>;
+  looks?: Record<string, AgentLook>;
 }
 
 export interface AmendAgentSetupBody {
@@ -6448,10 +6914,15 @@ export interface SetModelProviderBody {
   key?: string;
 }
 
+export interface SetModelProviderEnabledBody {
+  enabled: boolean;
+}
+
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];
   hues: Record<string, number>;
+  looks?: Record<string, AgentLook>;
   homes: Record<string, string>;
   enabled_in: Record<string, string[]>;
 }
@@ -6471,6 +6942,16 @@ export interface ListStorePackagesResponse {
 
 export interface SetAgentHomeBody {
   project?: string;
+}
+
+export interface SetAgentLookBody {
+  look: AgentLook;
+  hue?: number;
+}
+
+export interface LinkAgentSlackAppBody {
+  token: SecretInput;
+  signing_secret?: SecretInput;
 }
 
 export interface ListAgentRevisionsResponse {
@@ -6874,6 +7355,10 @@ export interface ListClientsResponse {
 
 export interface ListClientBindingsResponse {
   bindings: ClientBinding[];
+}
+
+export interface ListClientLinkedAccountsResponse {
+  accounts: LinkedAccount[];
 }
 
 export interface GetAgentRosterResponse {

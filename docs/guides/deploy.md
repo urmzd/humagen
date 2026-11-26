@@ -218,7 +218,8 @@ make image                      # docker build -t humagen:local .
 docker build --build-arg VERSION=0.9.0 --build-arg COMMIT=$(git rev-parse --short HEAD) -t humagen .
 ```
 
-Releases do not publish an image yet: build it and push it to your registry.
+Releases push the image only to the project's own private registry (see
+[CI and release](ci-and-release.md)): build it and push it to your registry.
 The image carries only `humagen`. An MCP server run over stdio needs its own
 runtime (node, python), so build an image on top of this one for it, or run
 the server over HTTP.
@@ -250,6 +251,10 @@ matching `blobs` block in `humagen.yaml` as well.
 Humagen is published on `127.0.0.1:8080` by default. To reach it from other
 machines, set `HUMAGEN_BIND=0.0.0.0` behind TLS, and `public_url` to the address
 browsers use.
+
+A browser for agents is a second file beside `compose.yaml`, not for the
+development overlay: `docker compose -f compose.yaml -f compose.browser.yaml up -d --build`.
+See [the bundled browser image](browser.md#run-the-bundled-browser-image).
 
 ### Without an identity provider
 
@@ -437,6 +442,10 @@ while still connecting to the local port forwards. Without it, each request
 uses its URL's host. `HUMAGEN_E2E_LOGIN` supplies `Tailscale-User-Login` for a
 pod's trusted loopback connection. The check starts a real model run and
 compares both replicas' live and stored events; it does not stop either pod.
+
+`browser.enabled` adds a browser for agents as one more pod, reached only by
+the release's own pods: see
+[the bundled browser image](browser.md#run-the-bundled-browser-image).
 
 ## Flux
 

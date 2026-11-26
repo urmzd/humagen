@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -40,6 +41,7 @@ import (
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/graph"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -54,6 +56,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
@@ -87,6 +90,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", s.readyz)
+	// An agent's drawn picture, which Slack fetches without a credential: its
+	// unguessable address is what authorizes it (agentMark).
+	mux.HandleFunc("GET /agent-marks/{tenant}/{file}", s.agentMark)
 	// A client's own secret authorizes these routes, not a browser role. The
 	// request goes to the client whose secret verifies it, and takes its
 	// tenant from that client.
@@ -156,6 +162,7 @@ func (s *Server) Handler() http.Handler {
 	// A workspace's own providers: an administrator sets each up with its key,
 	// as a client is, and agents and routing run on them by name.
 	mux.HandleFunc("PUT /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.putModelProvider))
+	mux.HandleFunc("PATCH /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.patchModelProvider))
 	mux.HandleFunc("DELETE /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.deleteModelProvider))
 	mux.HandleFunc("POST /api/model-providers/{name}/check", s.authed(auth.ClientsWrite, s.checkModelProvider))
 
@@ -176,14 +183,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/clients/{id}/check", s.authed(auth.ClientsWrite, s.checkClientConnection))
 	mux.HandleFunc("POST /api/connections/{provider}/authorize", s.authed(auth.RunsWrite, s.authorizeConnection))
 	mux.HandleFunc("POST /api/connections/{provider}/callback", s.authed(auth.RunsWrite, s.completeConnection))
+	mux.HandleFunc("POST /api/connections/consents/end", s.authed(auth.RunsRead, s.endConsent))
 	mux.HandleFunc("DELETE /api/connections/{provider}", s.authed(auth.RunsWrite, s.disconnectConnection))
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("POST /api/agents/{name}/reset", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.resetAgent))))
+	mux.HandleFunc("DELETE /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.retireAgent))))
+	mux.HandleFunc("GET /api/agent-templates", s.authed(auth.AgentsRead, s.listAgentTemplates))
 	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
+	mux.HandleFunc("GET /api/agents/{name}/look", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentLook))))
+	mux.HandleFunc("PUT /api/agents/{name}/look", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentLook))))
+	mux.HandleFunc("PUT /api/agents/{name}/mark", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentMark))))
+	mux.HandleFunc("GET /api/agents/{name}/slack-app", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSlackApp))))
+	mux.HandleFunc("POST /api/agents/{name}/slack-app", s.authed(auth.ClientsWrite, agentNamed(s.seenAgent(s.linkAgentSlackApp))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
 	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
 	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))
@@ -267,6 +282,7 @@ func (s *Server) Handler() http.Handler {
 	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
+	s.githubRepoRoutes(mux)
 	s.brandingRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
 
@@ -515,6 +531,11 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
+	looks, err := s.looksFor(who.Tenant, names)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	homes, enabled := map[string]string{}, map[string][]string{}
 	for name, place := range s.P.AgentPlaces(who.Tenant, names) {
 		if place.Home != "" {
@@ -522,7 +543,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		}
 		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
-	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues})
+	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues, "looks": looks})
 }
 
 // revisionView is an agent's revision and what the person who saved it is
@@ -795,6 +816,12 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		// ActAs is the person a surface asks for: a Slack user its client
 		// maps. The run is theirs, so they do not approve its calls.
 		ActAs *platform.ActAs `json:"act_as"`
+		// AskedBy is the person a surface's credential starts a run for
+		// nobody at the asking of: a Slack user its client maps, asking
+		// about someone else's message or asking again a turn that acted
+		// for nobody. The run acts for nobody; a Slack app's credential
+		// starts none without act_as or asked_by.
+		AskedBy *platform.ActAs `json:"asked_by"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -802,6 +829,28 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if strings.TrimSpace(body.Text) == "" {
 		fail(w, http.StatusBadRequest, "a run needs a request")
 		return
+	}
+	if body.ActAs != nil && body.AskedBy != nil {
+		fail(w, http.StatusBadRequest, "a run acts for a person (act_as) or for nobody at a person's asking (asked_by), not both")
+		return
+	}
+	// A Slack app answers anyone who can message it, so its credential
+	// starts a run only for a person its client maps: as them, or for
+	// nobody at their asking. Without either it is refused here, whatever
+	// the app that called says, so an old or forged app starts nothing.
+	requested := ""
+	if body.ActAs == nil {
+		if body.AskedBy != nil {
+			person, err := s.P.AskedBy(who, *body.AskedBy)
+			if err != nil {
+				s.problem(w, err)
+				return
+			}
+			requested = person.Subject
+		} else if err := s.P.MayAskForNobody(who); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	// The run acts for the caller, or for the person a surface asks for:
 	// their credentials are the ones its person-scoped tools use, and their
@@ -864,6 +913,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	keeps := project != "" && s.P.MayChangeNotes(asks, project) == nil
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
 		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
+		RequestedBy: requested,
 		// An agent the person may not read is one that is not there.
 		Sees: s.P.Seer(asks).Agent,
 		// The text is the person's own, so a skill it names is used.
@@ -911,8 +961,12 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	page, next, err := s.P.ThreadPageAs(who, query)
-	if err != nil {
+	if errors.Is(err, runs.ErrCursor) {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
+		return
+	}
+	if err != nil {
+		s.problem(w, err)
 		return
 	}
 	var cursor *string
@@ -1019,6 +1073,11 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 		Contract *call.Contract `json:"contract,omitempty"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	// A call names no person, so a Slack app's credential makes none.
+	if err := s.P.MayAskForNobody(who); err != nil {
+		s.problem(w, err)
 		return
 	}
 	// A call is a turn of the run's conversation, filed where it lives, so
@@ -1286,6 +1345,12 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, accounts.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, accounts.ErrClaimed):
+		fail(w, http.StatusConflict, detail(err, accounts.ErrClaimed))
+	case errors.Is(err, platform.ErrAccountRefused):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAccountRefused))
 	case errors.Is(err, connectionauth.ErrUnavailable):
 		fail(w, 503, "connection authentication is unavailable")
 	case errors.Is(err, connectionauth.ErrInvalid):
@@ -1307,6 +1372,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, notifications.ErrInvalid):
 		fail(w, http.StatusBadRequest, "invalid native notification request")
 
+	case errors.Is(err, images.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, images.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, images.ErrInvalid))
+	case errors.Is(err, images.ErrNameTaken):
+		fail(w, http.StatusConflict, detail(err, images.ErrNameTaken))
+	case errors.Is(err, platform.ErrImages):
+		fail(w, http.StatusConflict, detail(err, platform.ErrImages))
 	case errors.Is(err, library.ErrNotFound):
 		notFound(w)
 	case errors.Is(err, library.ErrInvalid):
@@ -1376,6 +1449,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, reposettings.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, reposettings.ErrInvalid))
+	case errors.Is(err, reposettings.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, reposettings.ErrVersion):
+		fail(w, http.StatusConflict, "these settings changed since they were read; reload and try again")
+	case errors.Is(err, reposettings.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, reposettings.ErrLimit))
 	case errors.Is(err, projectforks.ErrInvalid), errors.Is(err, projects.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, projects.ErrInvalid))
 	case errors.Is(err, projectforks.ErrLimit), errors.Is(err, projects.ErrLimit):
@@ -1424,6 +1505,12 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
+	case errors.Is(err, platform.ErrAgentProtected):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAgentProtected))
+	case errors.Is(err, platform.ErrAgentRetired):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAgentRetired))
+	case errors.Is(err, wire.ErrRetired):
+		fail(w, http.StatusConflict, detail(err, wire.ErrRetired))
 	case errors.Is(err, platform.ErrStoreConflict):
 		fail(w, http.StatusConflict, detail(err, platform.ErrStoreConflict))
 	case errors.Is(err, wire.ErrConflict):
@@ -1441,6 +1528,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrUnisolated):
 		fail(w, http.StatusConflict, "this deployment has no isolated sandbox to run a command in")
+	case errors.Is(err, platform.ErrImageGone):
+		fail(w, http.StatusConflict, "this session's image was removed or is no longer allowed here; start a new session")
 	case errors.Is(err, platform.ErrSandboxUnavailable):
 		w.Header().Set("Retry-After", "5")
 		fail(w, http.StatusServiceUnavailable, "the sandbox could not run the command; try again")
@@ -1530,6 +1619,17 @@ func fail(w http.ResponseWriter, status int, msg string) {
 	ok(w, status, map[string]string{"error": msg})
 }
 
+// codeThreadBeforeSessions is the code of the conflict POST /api/sessions
+// answers for a surface thread that started as a conversation: the chat
+// service posts the message to POST /api/threads instead.
+const codeThreadBeforeSessions = "thread_before_sessions"
+
+// failCode is fail with a code a program acts on, where the status alone
+// does not say which failure it is. The words are for a person and may change.
+func failCode(w http.ResponseWriter, status int, code, msg string) {
+	ok(w, status, map[string]string{"error": msg, "code": code})
+}
+
 func orEmpty[T any](s []T) []T {
 	if s == nil {
 		return []T{}
@@ -1601,6 +1701,29 @@ func (s *Server) putModelProvider(w http.ResponseWriter, r *http.Request, who au
 		return
 	}
 	m, err := s.P.SetModelProvider(r.Context(), who, r.PathValue("name"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, m)
+}
+
+func (s *Server) patchModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Enabled == nil {
+		fail(w, http.StatusBadRequest, "enabled is required")
+		return
+	}
+	m, err := s.P.SetModelProviderEnabled(r.Context(), who, r.PathValue("name"), *in.Enabled)
+	if errors.Is(err, platform.ErrModelProviderInUse) {
+		fail(w, http.StatusConflict, detail(err, platform.ErrModelProviderInUse))
+		return
+	}
 	if err != nil {
 		s.problem(w, err)
 		return

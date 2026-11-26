@@ -147,6 +147,7 @@ spec:
       insecure_development_runtime: false   # true accepts runc; without it runc is refused
       image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
       connectors_image: node:22-alpine    # stdio MCP servers; empty is image
+      image_registries: [ghcr.io]   # where a workspace may add images of its own; empty allows none
       work_root: ""         # empty is humagen/sandbox in the user cache directory
       host: ""              # a sandbox host's daemon: tcp://, ssh:// or unix://. Empty is the local daemon
       tls_dir: ""           # with a tcp:// host: ca.pem, cert.pem and key.pem
@@ -189,6 +190,7 @@ spec:
       heading: "Georgia, serif"
       files: [{family: Inter, path: ./brand/InterVariable.woff2, weight: "100 900"}]   # served for the lists to name
     email: {subject: "{name} updates", multiple: "{count} updates wait for you in {name}."}
+    terms_url: https://acme.example/terms   # the Terms link under the composer. Left out: no link
 
   notifications:            # optional outbound delivery; people must also opt in
     email:
@@ -200,6 +202,11 @@ spec:
       recipients:
         default:
           "issuer|person-subject": person@example.test
+
+  connections:              # consent for services people connect, and the accounts they link. Left out: both are off
+    encryption_key: {ref: env:HUMAGEN_CONNECTION_KEY}   # 32 random bytes in base64, kept outside the state database
+    redirect_url: http://localhost:8080/connections/callback   # left out: server.public_url, then /connections/callback
+    # clients, github: the registered applications; see Service connection authorization below
 
   extensions: []            # process-wide parts a binary registered, each a slot
 
@@ -273,10 +280,71 @@ sandbox host needs Docker with `runsc` registered and nothing else worth
 taking. An instance has no network at all unless the
 `egress` slot is `gate` ([Egress](#egress)).
 
+`image` is every session's default. With `image_registries`, a workspace's
+administrators may also add images of their own from those registries
+(Settings, Images), and a person starting a session chooses one. Each image is
+checked when it is added: pulled through this daemon with the workspace's pull
+credential, pinned to the digest it resolved to, and started once to prove it
+has `sh` and `sleep`. Sessions run the digest, so every sandbox host runs the
+same bytes, and the server pulls every ready image again when it starts.
+
+Taking a registry out of `image_registries` stops every image from it, from
+the next start: it is not pulled, so the workspace's credential is sent
+nowhere, it is not kept warm, and it shows as failed with the reason in
+Settings and beside the composer. A new session in it is refused, and a
+session already in it is refused its next sandbox (409). Nothing kept of the
+image changes, so putting the registry back brings back, unchecked, an image
+that was ready. One an administrator checked again while its registry was
+not allowed is kept as failed, and needs a check that passes.
+
+The pulls the server makes (an image's check, and a ready image when the
+server starts) are given the workspace's credential or none: never a
+registry login of the machine the server runs on (its Docker configuration,
+credential helpers and `DOCKER_AUTH_CONFIG` are kept from them). Starting an
+instance is different. When a sandbox host does not hold the digest a
+session runs (another replica's daemon, images pruned from the host, a pull
+at start that failed), the `docker run` that starts the instance fetches it,
+and that uses the machine's Docker configuration, its logins included. It
+can fetch only a digest the workspace's own pull already resolved and its
+check passed, never an image the workspace could not read; and where the
+machine has no login for the registry, a private image does not start on
+such a host. The follow-up is in saige: start instances with `--pull=never`,
+or with a configuration of their own. A registry mirror with
+credentials of its own in the daemon's configuration is the daemon's, and
+serves every workspace. At most three pulls run at once, two of one
+workspace, and a check has ten minutes from when its pull starts. A check
+that fails shows the workspace one of a few reasons; what Docker printed is
+in the server's log only.
+
+Checking a ready image again never takes it away: sessions run the digest
+its last good check pinned until a check passes and moves it, and a check
+again that fails says why beside the image. A check whose process died is
+started again by another within a few minutes, and one a server was stopped
+in the middle of (a deploy) is not failed: the next process to look, within a
+minute, starts it again. A check says it is alive every 20 seconds and
+counts as dead after 90, by the clocks of the servers, so they must agree to
+within about a minute. Past that a check still running on one server is
+started once more on another; the later one's result is the one kept. The
+look across workspaces reads at most 10,000 that have added an image, and
+logs a warning past that.
+
+A workspace keeps at most three of its images warm. Only those have idle
+instances: `warm` of them (one by default) for each shape of instance the
+image is leased in, with and without the compartment for a person's tool
+servers. Unmarking an image, removing it, or a check moving it to another
+digest destroys them, on every server process within a minute. Any other
+image starts when a session's tool first needs it, and checking an image
+leaves nothing started. Instances of workspaces' images leased at once are
+bounded by `max`, apart from the default image's own `max`. Idle warm
+instances are outside both, and nothing caps them across the deployment:
+they grow with the number of workspaces, up to three warm images times
+`warm` times the two shapes for each. Size a sandbox host for twice `max`
+plus those.
+
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
-`-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
-`-sandbox-tls-dir`. A binary can register
+`-sandbox-image-registries`, `-sandbox-connectors-image`,
+`-sandbox-work-root`, `-sandbox-host` and `-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`saige/flow/isolation`).
 
@@ -667,7 +735,15 @@ spec:
         fallbacks: [{provider: openai, model: gpt-5.1}]
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
+        tools: [use_skill]
+        skills: {loadable: [secure-review]}   # library skills it may load mid-run, or [*]; none when left out
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
+    - spec:
+        name: pr-reviewer
+        provider: anthropic
+        model: claude-sonnet-5-5
+        system_prompt: You review pull requests.
+        review: {approve: when_clean, block_on: warning}   # see Review policy
     - project: Globex       # its home: only Globex's readers see it, and it answers only where they alone read
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
     - file: agents/reviewer.agent.md   # saige's own format; a .json or .yaml file holds a spec instead
@@ -736,6 +812,7 @@ the workspace signs in.
 | `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
 | `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |
 | `email` | What notification emails say: `subject`, `single` (one update), `multiple` (with `{count}`) and `footer`. `{name}` is the product's name in each. Left out, Humagen's under the product's name | both |
+| `terms_url` | The `https` address of your page of terms, in plain ASCII: `https` in lower case, a host name, an optional port and a path. Write a name in another script in its encoded form. The console shows "{name} is AI and can make mistakes." under the composer, with `name` for {name}, and adds a Terms link to this address when it is set. Left out, the line has no link. The copy key `dock.aiNotice` rewords the sentence; `{name}` is the one placeholder it takes | both |
 
 Colors are hex, `#rgb` or `#rrggbb`. Text must reach 4.5:1 on its surface and
 the accent 3:1 in each theme (WCAG AA), against Humagen's own for a side left
@@ -860,6 +937,18 @@ answer, checked against the whole schema, is kept on the run as `output`. An
 `.agent.md` file sets it in metadata, `humagen_output_schema`, as the schema in
 a JSON string.
 
+An agent may load library skills mid-run: `skills: {loadable: [<name>, ...]}`,
+or `[*]` for any published skill of the run's project chain, with `use_skill`
+in its `tools`. Left out, it loads none. Each load runs the skill as a
+subagent, `skill-runner` from the Review package, under the same depth,
+fan-out and budget limits as the agent tool. The host pins that one skill on
+it and narrows its tools as the skill says; the model only names the skill.
+Its place is its caller's, so it reads the caller's repository as its own. It
+answers with findings in the review report's shape, each with
+`found_by: skill-runner#<skill>`. A personal skill never loads. An
+`.agent.md` file sets the list in metadata, `humagen_skills_loadable`, as one
+comma-separated string.
+
 The approval agent ships with a schema of `decision` (allow, ask or deny),
 `reason` and `references`. A workspace may give it its own, which must keep
 `decision`, a required string whose enum is drawn from allow, ask and deny, and
@@ -869,14 +958,14 @@ shown on the approval card. `humagen config check` refuses a schema without
 that core. An answer that is missing or does not hold to the schema leaves the
 call for a person.
 
-The schema as it ships also has an optional `answer`: in a session set to Run
-and Answer (approval mode `decide`), the approval agent is shown a question an
-agent asks a person, and answers it with `decision: allow` and `answer` (one of
+The schema as it ships also has an optional `answer`: in a session set to Auto
+(approval mode `auto`), the approval agent is shown a question an agent asks a
+person, and answers it with `decision: allow` and `answer` (one of
 the options for a choice, words for a reply) only when the session already
 settles it. A workspace schema without `answer` keeps working and decides calls
-only: every question goes to a person. Run and Answer is a person's choice for
-one session, made in the console, not a spec field; a session asks until
-someone chooses it.
+only: every question goes to a person. Auto is a person's choice for one
+session, made in the console or in Slack, not a spec field; a session asks
+until someone chooses it.
 
 A `choices` block
 from an older policy or agent spec is not read: a file that has one still
@@ -885,6 +974,46 @@ what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it
 started with.
+
+### Review policy
+
+An agent's `review` says how its pull request reviews decide. The host
+chooses the review's event from the report and this policy. The model never
+chooses it, and text in a pull request cannot change it.
+
+| Field | Values | Left out | What it does |
+| :--- | :--- | :--- | :--- |
+| `approve` | `never`, `when_clean` | `never` | `when_clean` approves a review the host finds clean. `never` posts it as a comment. |
+| `block_on` | `error`, `warning`, `info` | `error` | A finding at or above this severity requests changes, whatever the verdict. |
+
+A review approves only when all of these hold:
+
+1. `approve` is `when_clean`, in the revision the run started with and in
+   the agent's current one, and the repository's settings do not say
+   `approve: never`.
+2. The verdict is `approve`, and no finding is at or above `block_on`.
+3. The host read every check on the reviewed commit itself, fewer than
+   1,000. Leaving out the app's own checks, none is pending or failed, and
+   at least one concluded success (saige's `ChecksAllow`).
+4. The pull request is open, not a draft and still on the reviewed commit,
+   and its author is not the app.
+5. The run was an automatic review, or asked (by a comment or a review
+   request) or resumed by a person the GitHub client maps (`github.people`
+   or `github.askers`) who is known by GitHub user ID and wrote neither the
+   pull request nor any of its commits, as author, committer or co-author.
+   The app has not approved the commit already, and no change request it
+   posted for another agent is outstanding
+   ([GitHub](github.md#native-reviews-and-feedback) says which runs approve
+   today).
+
+A verdict of `request_changes`, or any finding at or above `block_on`,
+requests changes. Anything else is a comment. The example above has
+`pr-reviewer` approve clean reviews and request changes on a finding that
+should be fixed. An `.agent.md` file sets the policy in its metadata:
+`metadata: {humagen_review_approve: when_clean, humagen_review_block_on: warning}`.
+A repository's settings may set `approve: never`, which only makes the policy
+stricter ([GitHub](github.md#repository-settings)). How the event is posted
+is in [GitHub](github.md#native-reviews-and-feedback).
 
 ### The Slack app
 
@@ -933,17 +1062,18 @@ file does not give.
 
 #### Whom the Slack app acts for
 
-By default the app acts for nobody: it answers, and every run it asks for is
-the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
+By default the app answers nobody: only a person its client maps starts
+anything ([who can start a run](slack.md#who-can-start-a-run)). `people` names who is who, a Slack user id (`U...` or `W...`)
 in `team` to the subject that person signs in to Humagen with. With it the
 server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
 and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
 person's message, runs, Home tab and answers to a run's questions are theirs.
-A Slack user the map does not name stays nobody.
+A Slack user the map does not name is told their account is not connected,
+and nothing starts for them.
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `people` | none: the app acts for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `people` | none: the app answers nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
 | `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
 
 The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
@@ -1165,7 +1295,7 @@ it:
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the Humagen thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
 | asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request. Under a dev sign-in, where the app's own credential is the person `dev`, asking as itself acts for `dev`. In a channel bound to a project the app refuses it, since only a person's own words are posted there |
-| raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. In a channel bound to a project it is not started for nobody |
+| raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. On Slack nothing is started for nobody, in any channel ([who can start and stop a run](slack.md#who-can-start-and-stop-a-run-on-the-webhook-connector)) |
 | started by a message in a shared thread (a tagged agent, an agent that joined, or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
 | Run Now on a schedule | whoever pressed it, when they wrote what it runs (whoever last changed its text, or its creator while nobody has, unless someone else has since chosen its agent or its project, whose instructions and notes go ahead of the text); anyone else's press acts for nobody. When the answer may hold what their own credentials reached, `deliver` does not post it in the project, hold it for the owners or send it to someone else who created the schedule: it goes to them alone, saying why |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused, except a turn the Slack app asked as itself, which it asks again the same way, by the person who asked or an operator: under a dev sign-in, one that acted for `dev`. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |
@@ -1499,10 +1629,31 @@ for fields, deterministic checks, and approved regression overrides.
 
 ### Service connection authorization
 
-`System.spec.connections` defaults to disabled. It accepts an `encryption_key`
-secret reference, a `redirect_url`, optional registered `clients`, and optional
-GitHub App installation configuration under `github`. The key resolves to a
-base64-encoded 32-byte value. Registered clients bind an issuer, client ID,
-optional secret reference and scopes; native providers use their fixed profiles.
+`System.spec.connections` defaults to disabled: left out, nobody connects a
+service or links an account, and the server reads none of the settings below.
 Configuration does not grant host access, tools or agent routing. See
 [connection authorization](connections.md).
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `encryption_key` | required | A reference to 32 random bytes in base64. Pending consents and kept credentials are encrypted with it. Keep it outside the state database and across restarts. A key that cannot be read, or is not 32 bytes, stops the server |
+| `redirect_url` | `server.public_url` followed by `/connections/callback` | The one address every consent returns to, registered with each application. HTTPS, or plain HTTP only on a loopback address; anything else stops the server. It is never read from a request |
+| `clients` | none | Registered applications by name: `notion`, `linear`, `granola`, `atlassian` (an `issuer`, a `client_id`, an optional `client_secret` reference and `scopes`), and `google`, `drive`, `onedrive`, `bigquery`, `slack` (a `client_id` and a `client_secret` reference; `slack` also a `signing_secret`), whose issuer and scopes are fixed |
+| `github` | none | The GitHub App the console installs: `app_id`, `app_slug`, `client_id`, and references for `client_secret`, `private_key` and `webhook_secret` |
+
+People [link their own GitHub and Slack accounts](connections.md#accounts-a-person-links)
+through the same block. Each surface is on only when its OAuth client is
+known, and off otherwise:
+
+| Surface | Client id and secret | Else, from the environment |
+|---------|----------------------|----------------------------|
+| GitHub | `connections.github` (`client_id`, `client_secret`) | `HUMAGEN_GITHUB_CLIENT_ID` and `HUMAGEN_GITHUB_CLIENT_SECRET` |
+| Slack | `connections.clients.slack` (`client_id`, `client_secret`) | `HUMAGEN_SLACK_OAUTH_CLIENT_ID` and `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET` |
+
+The environment's pair is read only with a `connections` block, and the
+secret through `env:`, never stored. A client id set with no secret, or a
+secret that cannot be read, stops the server; a secret set with no id, or a
+variable the spec's app replaces, is not read, with a warning at start. `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET`
+is the Slack app's own client secret, from Slack; it is not
+`HUMAGEN_SLACK_CLIENT_SECRET`, which the example above uses for the secret the
+Slack app signs in to Humagen with (`surfaces.slack.humagen_client`).

@@ -1,9 +1,9 @@
 import { defaultCopy } from "@humagen/components";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type BackgroundTask } from "./api.ts";
-import { AgentTag, ItemCard, itemGrid, Pill, Tag, type Tone } from "./cards.tsx";
-import { age, ago } from "./format.ts";
-import { Empty, Problem, SkeletonRows } from "./ui.tsx";
+import type { Tone } from "./cards.tsx";
+import { ago } from "./format.ts";
+import { Section } from "./SessionSections.tsx";
 
 const words = defaultCopy.background;
 
@@ -15,10 +15,14 @@ const stateTone: Record<BackgroundTask["state"], Tone> = {
   failed: "bad",
 };
 
-function firstLine(text?: string): string | undefined {
-  const line = text?.split("\n").find((l) => l.trim() !== "");
-  return line?.trim() || undefined;
-}
+/** A state's word takes its tone: a failure reads as one, the rest stay quiet. */
+const stateWords: Record<Tone, string> = {
+  ok: "text-aui-muted",
+  neutral: "text-aui-muted",
+  bad: "text-aui-bad",
+  warn: "text-aui-warn",
+  accent: "text-aui-muted",
+};
 
 /** When the next run starts, in words, or soon when it is due. */
 function nextIn(iso: string): string {
@@ -40,28 +44,37 @@ function progress(t: BackgroundTask): string | undefined {
 }
 
 /**
- * Your background work: the watches, goals and tasks agents keep at for you,
- * what is still running first. A card opens the conversation its runs are in;
- * its menu stops one still running.
+ * A session's background work, as a section of its Details: the watches,
+ * goals and tasks its agents keep at for it, what is still running first.
+ * Each session carries its own, so it is listed here and nowhere else. A
+ * running one has Stop on its row. With none, the section is left out.
  */
-export function Background({
-  onConversation,
-  tick = 0,
+export function SessionBackground({
+  session,
+  version,
 }: {
-  onConversation: (id: string) => void;
-  /** Bumped whenever a run starts or ends: the list is read again, as its runs are what change it. */
-  tick?: number;
+  session: string;
+  /** Changes as the session's runs start and end: the list is read again. */
+  version?: unknown;
 }) {
-  const [items, setItems] = useState<BackgroundTask[] | null>(null);
+  const [items, setItems] = useState<BackgroundTask[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setProblem(null);
-    api.background().then(setItems, () => setProblem(words.couldNotLoad));
-  }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the signal to read again.
-  useEffect(load, [load, tick]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: version is the signal to read again.
+  useEffect(() => {
+    let live = true;
+    api.background().then(
+      (all) => {
+        if (live) setItems(all.filter((t) => t.session === session || t.thread === session));
+      },
+      // Background work is extra: Details reads fine without it.
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [session, version]);
 
   const stop = (id: string) => {
     setStopping(id);
@@ -69,79 +82,66 @@ export function Background({
     api
       .stopBackground(id)
       .then(
-        (next) => setItems((now) => (now ?? []).map((t) => (t.id === id ? next : t))),
+        (next) => setItems((now) => now.map((t) => (t.id === id ? next : t))),
         () => setProblem(words.couldNotStop),
       )
       .finally(() => setStopping(null));
   };
 
-  if (items === null) {
-    return problem ? (
-      <div className="flex flex-col items-start gap-3">
-        <Problem message={problem} />
-        <button
-          type="button"
-          className="text-aui-sm text-aui-accent underline-offset-2 hover:underline"
-          onClick={load}
-        >
-          {words.retry}
-        </button>
-      </div>
-    ) : (
-      <SkeletonRows count={4} height="5.5rem" />
-    );
-  }
-  if (items.length === 0) return <Empty title={words.empty} />;
+  if (items.length === 0) return null;
+  const order = [...items].sort(
+    (a, b) => Number(b.state === "active") - Number(a.state === "active"),
+  );
   return (
-    <div className="flex flex-col gap-3">
-      <Problem message={problem} />
-      <ul className={itemGrid} aria-label={words.title}>
-        {items.map((t) => {
-          const running = t.state === "active";
-          const where = t.thread || t.session;
-          return (
-            <li key={t.id} className="min-w-0">
-              <ItemCard
-                title={t.text}
-                onOpen={where ? () => onConversation(where) : undefined}
-                status={
-                  running && t.working ? (
-                    <Pill tone="accent">{words.working}</Pill>
-                  ) : (
-                    <Pill tone={stateTone[t.state] ?? "neutral"}>
-                      {words.state[t.state] ?? t.state}
-                    </Pill>
-                  )
-                }
-                description={firstLine(t.result) ?? firstLine(t.how)}
-                facts={
-                  <>
-                    <Tag>{words.kind[t.kind] ?? t.kind}</Tag>
-                    <AgentTag name={t.agent} />
-                    {progress(t) && <Tag>{progress(t)}</Tag>}
-                    {running && !t.working && t.next && <Tag>{nextIn(t.next)}</Tag>}
-                    {running && <Tag>{words.stopsIn(ago(t.until))}</Tag>}
-                  </>
-                }
-                time={age(running ? t.created_at : (t.ended_at ?? t.created_at))}
-                menuLabel={`More for ${t.text}`}
-                menu={
-                  running
-                    ? [
-                        {
-                          label: words.stop,
-                          destructive: true,
-                          disabled: stopping === t.id,
-                          onSelect: () => stop(t.id),
-                        },
-                      ]
-                    : undefined
-                }
-              />
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <Section label={words.title} testId="background">
+      {order.map((t) => {
+        const running = t.state === "active";
+        const facts = [
+          words.kind[t.kind] ?? t.kind,
+          t.agent,
+          progress(t),
+          running && !t.working && t.next ? nextIn(t.next) : undefined,
+          running ? words.stopsIn(ago(t.until)) : undefined,
+        ].filter(Boolean);
+        return (
+          <li
+            key={t.id}
+            data-testid="details-background"
+            data-state={t.state}
+            className="flex min-h-9 items-center justify-between gap-2 px-2.5 py-1.5 text-aui-sm"
+          >
+            <span className="flex min-w-0 flex-col">
+              <span className="min-w-0 truncate text-aui-fg" title={t.text}>
+                {t.text}
+              </span>
+              <span className="min-w-0 truncate text-aui-muted text-aui-xs">
+                {facts.join(" · ")}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-1 text-aui-xs">
+              <span className={stateWords[stateTone[t.state] ?? "neutral"]}>
+                {running && t.working ? words.working : (words.state[t.state] ?? t.state)}
+              </span>
+              {running && (
+                <button
+                  type="button"
+                  aria-label={words.stopLabel(t.text)}
+                  disabled={stopping === t.id}
+                  onClick={() => stop(t.id)}
+                  className="inline-flex min-h-7 items-center rounded-aui px-1.5 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-60 pointer-coarse:min-h-11"
+                >
+                  {words.stop}
+                </button>
+              )}
+            </span>
+          </li>
+        );
+      })}
+      {problem && (
+        <li role="alert" className="px-2.5 text-aui-bad text-aui-xs">
+          {problem}
+        </li>
+      )}
+    </Section>
   );
 }

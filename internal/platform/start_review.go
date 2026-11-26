@@ -1,0 +1,109 @@
+package platform
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"maps"
+
+	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+
+	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/runs"
+)
+
+// ToolStartReview turns a GitHub run that started as a reply into a review.
+// The host decides a review only on signals that cannot be misread
+// (githubShape); for anything else the agent reads what the person meant,
+// and calls this when they asked for a review in their own words.
+const ToolStartReview = "start_review"
+
+// startReviewDone is what the tool says once the run is a review.
+const startReviewDone = "This run is now a review. Return only the humagen.review.v2 report; Humagen pins the reviewed commit, renders the report and posts it as the pull request review."
+
+// startReviewAlready is what a call says when the run is a review already:
+// the host started it as one, or the run called start_review before.
+const startReviewAlready = "start_review: this run is already a review, and a run becomes one once; return only the humagen.review.v2 report"
+
+// startReviewTool is start_review for one turn. It works only for the run a
+// person started on a pull request: not on an issue, not for a run an agent
+// started for another, and not for one a rule started, whose shape is the
+// rule's. It works once: the switch is saved on the run's own record
+// (runs.Index.StartReview) before the tool answers, so a retry, the native
+// review and the format check read it in every process and after a
+// restart, and any later call is refused. A switch that cannot be saved
+// fails the call. The action on the run's stream is what a person reads in
+// the session; nothing is decided from it.
+func (p *Platform) startReviewTool(req runtime.Request, action func(event.Action) error) saigetypes.Tool {
+	return &saigetypes.ToolFunc{
+		Def: saigetypes.ToolDef{
+			Name:        ToolStartReview,
+			Description: "Turn this answer into a review of the pull request. Call it once, before you review, when the person asks for a review in any words (\"have a look before I merge\", \"check this for security\"). Do not call it when they discuss, dispute or ask about an earlier review. After it, return only the humagen.review.v2 report. Only on a pull request, and only in the run the person started.",
+			Parameters:  saigetypes.ParameterSchema{Type: "object", Properties: map[string]saigetypes.PropertyDef{}},
+		},
+		Fn: func(_ context.Context, _ map[string]any) (string, error) {
+			if req.RunID == "" {
+				return "", fmt.Errorf("start_review: only the run a person started on a pull request may start a review")
+			}
+			run, err := p.Runs.Get(req.Tenant, req.RunID)
+			if err != nil {
+				return "", fmt.Errorf("start_review: this run is not recorded")
+			}
+			if run.Parent != "" {
+				return "", fmt.Errorf("start_review: only the run the person started may start a review; this one answers another agent, so answer in prose")
+			}
+			if run.Actor.ID == "" || run.Actor.Bot {
+				return "", fmt.Errorf("start_review: only a run a person started may start a review; no person asked for this one, so answer in prose")
+			}
+			if _, kind, _, ok := channelRepository(run.Tag().Channel); !ok || kind != "pull" {
+				return "", fmt.Errorf("start_review: a review needs a pull request; answer in prose")
+			}
+			if runShape(run) == wire.ShapeReview {
+				return "", errors.New(startReviewAlready)
+			}
+			started, err := p.Runs.StartReview(run.Tenant, run.ID)
+			if err != nil {
+				return "", fmt.Errorf("start_review: the switch could not be saved, so this run is still a reply; try again")
+			}
+			if !started {
+				return "", errors.New(startReviewAlready)
+			}
+			if action != nil {
+				// Shown in the session. The run is a review whether or
+				// not this reaches the stream.
+				_ = action(event.Action{Name: ToolStartReview, Summary: "Started a review of the pull request"})
+			}
+			return startReviewDone, nil
+		},
+	}
+}
+
+// runShape is the shape a run answers with: the one the host saved on its
+// tag when it started, or a review once the run called start_review, which
+// its record holds. A run from before shapes were saved has none.
+func runShape(run runs.Run) string {
+	shape := wire.ShapeOf(run.Tag())
+	if shape == wire.ShapeReply && run.StartedReview() {
+		return wire.ShapeReview
+	}
+	return shape
+}
+
+// withStartedReview tells a later attempt of a run that became a review
+// that it is one: its trigger context reads answer_shape: review, so the
+// agent returns the report without calling start_review again. The run's
+// tag keeps the shape it started with.
+func (p *Platform) withStartedReview(req runtime.Request) runtime.Request {
+	if req.Attempt <= 1 || req.RunID == "" || req.Meta[wire.MetaAnswerShape] != wire.ShapeReply {
+		return req
+	}
+	run, err := p.Runs.Get(req.Tenant, req.RunID)
+	if err != nil || !run.StartedReview() {
+		return req
+	}
+	req.Meta = maps.Clone(req.Meta)
+	req.Meta[wire.MetaAnswerShape] = wire.ShapeReview
+	return req
+}

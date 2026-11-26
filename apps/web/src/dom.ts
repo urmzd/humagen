@@ -3,6 +3,8 @@
  * Nothing here is used by the app.
  */
 
+import { forgetCompletions } from "./completion.ts";
+
 /** A request a stubbed fetch saw. */
 export interface Seen {
   method: string;
@@ -23,6 +25,8 @@ export function stubFetch(
 ): { seen: Seen[]; restore: () => void } {
   const real = globalThis.fetch;
   const seen: Seen[] = [];
+  // A new server: nothing read from the last one stands for it.
+  forgetCompletions();
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
@@ -41,6 +45,18 @@ export function stubFetch(
       : new Response(JSON.stringify(out), { status: 200 });
   }) as typeof fetch;
   return { seen, restore: () => (globalThis.fetch = real) };
+}
+
+/**
+ * The paragraphs a page draws directly under its title. A page is headed by
+ * its title alone, so this is empty unless the line says why the reader
+ * cannot act on the page.
+ */
+export function underTitle(): string[] {
+  const title = document.querySelector("h1");
+  return [...(title?.parentElement?.children ?? [])]
+    .filter((el) => el.tagName === "P")
+    .map((el) => el.textContent ?? "");
 }
 
 /**

@@ -2,7 +2,8 @@
 // llms.txt say the same thing. Inline code is written in backticks and
 // rendered by src/lib/inline.ts. The repository is the source of truth:
 // README.md, docs/guides/deploy.md, docs/reference/spec.md and the status
-// table in docs/architecture/overview.md.
+// table in docs/architecture/overview.md. The terms page's text is in
+// terms.ts, beside this file, so its history is its own.
 
 export const site = {
   name: "Humagen",
@@ -43,10 +44,20 @@ export const pages = {
       line: "One private Google Cloud VM per team, reached only over Tailscale, with Gemini on Vertex AI.",
     },
   },
+  terms: {
+    path: "/terms",
+    title: "Terms | Humagen",
+    description:
+      "What the Apache License 2.0 gives you, what an AI answer is, and who answers for a Humagen deployment.",
+    card: {
+      title: "Terms",
+      line: "Open source under the Apache License 2.0, self-hosted. AI answers can be wrong.",
+    },
+  },
 } satisfies Record<string, Page>;
 
 /** The published guides, and where questions go. */
-export const docs = { label: "Docs", href: "https://docs.urmzd.com/humagen/" };
+export const docs = { label: "Docs", href: "https://docs.withhumagen.com/" };
 export const help = { label: "Ask on GitHub", href: `${site.repo}/issues` };
 
 /** Button labels are Title Case, as in the console. */

@@ -230,8 +230,26 @@ no permission, grants nothing.
   A run a Slack client's own connector raises is held to the same: it acts
   for the person the team maps the Slack user to only if the policy grants
   their subject `runs:write` and they are a member where it is filed, else
-  it is not started, and in a Slack channel bound to a project someone the
-  team maps to nobody is not answered. Mapping a person is `clients:write`.
+  it is not started, and someone the team maps to nobody, or who writes
+  from another Slack team, is not answered in any channel. A run is stopped
+  from Slack by a mapped person or by the Slack user who asked for it
+  ([reference](../reference/slack.md#who-can-start-and-stop-a-run-on-the-webhook-connector)).
+  Mapping a person is `clients:write`.
+- **A Slack app starts nothing for someone it was not given.** Anyone who
+  can message a Slack app reaches it: a new member, a guest, or someone from
+  another company in a Slack Connect channel. So the app checks the sender of
+  every message, command, shortcut and button against its client's `people`,
+  and the sender's own team against the client's, before it posts, reads or
+  runs anything; anyone else is told privately, at most once in ten minutes,
+  that their account is not connected. The server does not rely on the app:
+  a credential a Slack client names as its `machine`, or the `slack-app:`
+  credential the server makes, starts a run only as a person the client maps
+  (`act_as`) or for nobody at such a person's asking (`asked_by`), and makes
+  no call, skill test or inbox retry, so an old or forged app starts nothing
+  as itself (403). There is no setting that opens a Slack app to everyone
+  ([who can start a run](../reference/slack.md#who-can-start-a-run)). The
+  webhook connector in `humagen serve` still answers an unmapped Slack user
+  for nobody outside a bound channel.
 - **A person posts only as themselves.** A message in a shared thread is
   the caller's, or, for a credential, the person its client maps through
   `act_as`, who must hold `runs:write` themselves; a credential acting for
@@ -815,6 +833,8 @@ that kind.
 - Sign-in has been tested against in-process issuers, not a live Okta org.
 
 ## Recorded break-glass reads
+
+An agent's health (`GET /api/agents/{name}/health`) never reads by exception: it answers from the runs the reader sees in their own right, leaves the rest out, and records no run or thread as read. Reaching the agent itself by exception, when it is homed in a project the reader is no member of, is recorded once as for any read of that agent.
 
 The ordinary project role and private-thread participation rule is evaluated before `projects:govern` bypasses it. Every exceptional read writes who read which project or thread, when, and by which server route. A failed audit write refuses access. A read is what a response shows its reader: a row it returns, or a fact of one it states, such as a count that includes it. A list of sessions records the sessions it returns that the reader sees only by exception, each with the session above it when that one is also seen only by exception, and records nothing for a session the platform examined to order, filter or page the list and did not return. The records of everything one response shows are written together, in one write that is applied whole or not at all, before the first byte of the response is sent. When they cannot be written, or would pass the tenant's cap, none is kept and the response is refused whole, as something that is not there is (404): a list returns no rows and no cursor, and the read history holds nothing for a response nobody was sent. A HEAD is a read as its GET is, recorded before its headers. A stream whose opening read cannot be recorded is told 404 at once and ends; once open, it records each later read as it is granted, before the event that shows it. Internal reads carry route `platform`. HTTP writes do not create read records.
 

@@ -257,7 +257,7 @@ type addressee struct {
 // narrowed to whom the agent asked when that is one of them. to says whom
 // that is, in a way a surface can say it.
 func (p *Platform) addressOf(ctx context.Context, run runs.Run, q event.Question) (audience, excluded []string, to addressee) {
-	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
+	rev, err := p.approvalRevision(ctx, run)
 	if err != nil {
 		p.log.Warn("platform: a question's rules could not be read, so it is addressed to nobody", "run", run.ID, "question", q.ID, "error", err)
 		return []string{nobody}, nil, addressee{kind: ForNobody}
@@ -891,7 +891,7 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 	if err != nil {
 		return false, err
 	}
-	rev, err := p.Catalog().Get(ctx, tenant, run.Agent, run.Rev)
+	rev, err := p.approvalRevision(ctx, run)
 	if err != nil {
 		return false, fmt.Errorf("%w: the rules of this run cannot be read, so nobody approves its calls", ErrForbidden)
 	}
@@ -979,17 +979,26 @@ func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader i
 	if !p.readerSeer(who, reader).Message(m) {
 		return fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
 	}
+	// What the message as it was raised and what the person holds decide,
+	// as a listing and the inbox decide it too (mayAnswer).
+	theirs := func() error {
+		// The person a surface answers for is held to what the policy grants
+		// them, never to what the surface's credential holds; the caller
+		// answering for themselves to what they hold (as readerSeer reads).
+		person := who
+		if reader.Subject != "" && reader.Subject != who.Subject {
+			person = principalOf(who, reader)
+		}
+		why, err := p.mayAnswer(person, reader, m, q)
+		if err != nil && why != "" {
+			refused(why)
+		}
+		return err
+	}
 	if q.Kind == budgetTopic {
 		// Granting a run more than its limit is billing's, and what is said
 		// to it reaches no model: a note is the reason a stop gives.
-		if err := mayGrant(who, reader); err != nil {
-			refused("no billing:write")
-			return err
-		}
-		if !m.For(reader) {
-			return fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
-		}
-		return nil
+		return theirs()
 	}
 	if q.Kind == event.QuestionApproval {
 		// Checked here, from the run as it stands, not only from whom the
@@ -1009,10 +1018,44 @@ func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader i
 		refused("not the person the run acts for")
 		return err
 	}
-	if !m.For(reader) {
-		return fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
+	return theirs()
+}
+
+// mayAnswer reports whether the question q of message m is one a person may
+// answer at all, and if not, why, with what a log says of it: they may
+// write runs, and hold billing:write for a question that grants a run more
+// than its limit (heldToAnswer), and the message is addressed to them
+// (Message.For: its audience as it was raised, less whoever asked for the
+// work). person is who answers, as the workspace's policy knows them, and
+// reader the same person as the inbox does.
+//
+// It reads nothing, and it is the one rule three places share so they
+// cannot drift: every answer is held to it (checkAnswer, which also checks
+// the run as it stands), a session listing says a question waits on its
+// reader by it (openQuestions), and the inbox offers a question's actions
+// by it, to the readers it shows the message to (allows, with heldToAnswer).
+func (p *Platform) mayAnswer(person auth.Principal, reader inbox.Reader, m inbox.Message, q inbox.QuestionPart) (why string, err error) {
+	if why, err := heldToAnswer(person, q); err != nil {
+		return why, err
 	}
-	return nil
+	if !m.For(reader) {
+		return "", fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(person.Tenant, reader.Subject))
+	}
+	return "", nil
+}
+
+// heldToAnswer reports whether a person holds what answering q takes,
+// whoever it is addressed to, and if not, why, with what a log says of it:
+// runs:write, since an answer resumes a run, and billing:write for a budget
+// question, since granting a run more than its limit is billing's.
+func heldToAnswer(person auth.Principal, q inbox.QuestionPart) (why string, err error) {
+	if !person.Can(auth.RunsWrite) {
+		return "no runs:write", fmt.Errorf("%w: answering needs %s", ErrForbidden, auth.RunsWrite)
+	}
+	if q.Kind == budgetTopic && !person.Can(auth.BillingWrite) {
+		return "no billing:write", fmt.Errorf("%w: granting a run more than its limit needs %s", ErrForbidden, auth.BillingWrite)
+	}
+	return "", nil
 }
 
 // answer is AnswerQuestion once the message is known.

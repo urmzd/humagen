@@ -31,7 +31,7 @@ const connection = (id: string, surface: "slack" | "github") => ({
 });
 afterEach(cleanup);
 
-test("Scheduled is schedules only: one New Schedule, no GitHub event rules and no inline links", () => {
+test("Automations lists schedules only: one New Automation, no tabs, no GitHub event rules and no inline links", () => {
   const { restore } = stubFetch({});
   try {
     render(
@@ -44,17 +44,19 @@ test("Scheduled is schedules only: one New Schedule, no GitHub event rules and n
         onSchedule={() => {}}
       />,
     );
-    assert.ok(screen.getByRole("heading", { name: "Scheduled", level: 1 }));
-    assert.ok(screen.getByRole("button", { name: "New Schedule" }));
+    assert.ok(screen.getByRole("heading", { name: "Automations", level: 1 }));
+    assert.ok(screen.getByRole("button", { name: "New Automation" }));
+    // Background work is in its session, so the page has no tab for it.
+    assert.equal(screen.queryByRole("tablist"), null);
     assert.equal(screen.queryByRole("button", { name: /GitHub/ }), null);
     assert.equal(screen.queryByRole("link", { name: "Open Sessions" }), null);
-    assert.ok(screen.getByText("Nothing scheduled yet"));
+    assert.ok(screen.getByText("No automations yet"));
   } finally {
     restore();
   }
 });
 
-test("readers see no New Schedule", () => {
+test("readers see no New Automation", () => {
   const { restore } = stubFetch({});
   try {
     render(
@@ -67,7 +69,7 @@ test("readers see no New Schedule", () => {
         onSchedule={() => {}}
       />,
     );
-    assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
+    assert.equal(screen.queryByRole("button", { name: "New Automation" }), null);
   } finally {
     restore();
   }
@@ -96,7 +98,7 @@ test("a schedule is a session, and picking Slack also posts its answer through t
         onSchedule={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "New Schedule" }));
+    fireEvent.click(screen.getByRole("button", { name: "New Automation" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "nightly" } });
     fireEvent.change(screen.getByLabelText("What to ask"), {
       target: { value: "What failed overnight?" },

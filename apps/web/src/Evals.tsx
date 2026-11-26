@@ -1,4 +1,5 @@
-import { type FormEvent, useState } from "react";
+import { defaultCopy } from "@humagen/components";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import {
   ApiError,
   api,
@@ -9,7 +10,115 @@ import {
   type SuiteView,
 } from "./api.ts";
 import { EvalCandidates } from "./EvalCandidates.tsx";
+import {
+  MAX_EVERY,
+  MIN_EVERY,
+  PRESETS,
+  type Preset,
+  presetOf,
+  scheduleLine,
+  validEvery,
+} from "./evalHealth.ts";
+import { age } from "./format.ts";
 import { ago, button, Chip, card, field, Label, Menu, Problem, primary, took } from "./ui.tsx";
+
+const sched = defaultCopy.evalSchedule;
+
+/**
+ * Setting, changing or turning off how often a suite runs on its own. Saving
+ * makes the schedule act for the person who saves, as every save of a suite
+ * does, so the editor says who it runs as now and that saving changes it.
+ */
+function ScheduleEditor({
+  suite,
+  onClose,
+  onSaved,
+}: {
+  suite: SuiteView;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [preset, setPreset] = useState<Preset>(presetOf(suite.every_seconds));
+  // The saved period shows in hours as it is (5400 s is 1.5), and is kept to
+  // the second unless the person types a new one.
+  const saved = suite.every_seconds || 2 * 3600;
+  const [hours, setHours] = useState(String(Number((saved / 3600).toFixed(4))));
+  const [typed, setTyped] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const seconds =
+    preset !== "custom" ? PRESETS[preset] : typed ? Math.round(Number(hours) * 3600) : saved;
+  const valid = validEvery(seconds) && !(preset === "custom" && seconds === 0);
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    setProblem(null);
+    api
+      .saveSuite({ ...suite, every_seconds: seconds })
+      .then(onSaved)
+      .catch((err) => {
+        setBusy(false);
+        setProblem(err instanceof ApiError ? err.message : sched.failed);
+      });
+  };
+  return (
+    <form
+      id={`schedule-${suite.name}`}
+      aria-label={sched.editFor(suite.name)}
+      onSubmit={save}
+      className="flex flex-col gap-3 rounded-aui border border-aui-border p-3"
+    >
+      {/* The presets wrap rather than scroll, so every one is in view at phone width. */}
+      <fieldset className="flex min-w-0 flex-wrap gap-1">
+        <legend className="sr-only">{sched.label}</legend>
+        {(["off", "hourly", "six", "daily", "weekly", "custom"] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={preset === id}
+            onClick={() => setPreset(id)}
+            className="inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center whitespace-nowrap rounded-aui-sm border border-aui-border px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:border-aui-fg aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
+          >
+            {sched.presets[id]}
+          </button>
+        ))}
+      </fieldset>
+      {preset === "custom" && (
+        <Label text={sched.hours} hint={sched.hoursHint}>
+          <input
+            className={`${field} w-32`}
+            type="number"
+            inputMode="numeric"
+            min={MIN_EVERY / 3600}
+            max={MAX_EVERY / 3600}
+            step="any"
+            value={hours}
+            aria-invalid={!valid}
+            onChange={(e) => {
+              setHours(e.target.value);
+              setTyped(true);
+            }}
+          />
+        </Label>
+      )}
+      {!valid && <p className="text-aui-sm text-aui-bad">{sched.invalid}</p>}
+      <p className="text-aui-xs text-aui-muted">
+        {suite.created_by_name ? `${sched.actsFor(suite.created_by_name)} ` : ""}
+        {sched.actsForYou}
+      </p>
+      <Problem message={problem} />
+      <div className="flex justify-end gap-2">
+        <button type="button" className={button} onClick={onClose}>
+          {sched.cancel}
+        </button>
+        <button type="submit" className={primary} disabled={busy || !valid}>
+          {sched.save}
+        </button>
+      </div>
+    </form>
+  );
+}
 
 const checkLabel: Record<Check["kind"], string> = {
   contains: "Contains",
@@ -35,17 +144,24 @@ function Outcome({ status }: { status: EvalRun["status"] | "pass" | "fail" }) {
     <span className="inline-flex items-center gap-1.5 text-aui-xs text-aui-muted">
       <span
         aria-hidden
-        className={`size-1.5 rounded-full ${running ? "bg-aui-neutral" : good ? "bg-aui-ok" : "bg-aui-bad"}`}
+        className={`size-1.5 rounded-full ${running ? "bg-aui-neutral" : good ? "bg-aui-ok" : status === "failed" ? "bg-aui-warn" : "bg-aui-bad"}`}
       />
       {running ? "Running" : good ? "Passed" : status === "errored" ? "Errored" : "Failed"}
     </span>
   );
 }
 
+/** A run's bar colour: neutral when it reached its threshold, warn below it, bad only when it could not run. */
+export function barTone(run: Pick<EvalRun, "status" | "pass_rate" | "threshold">): string {
+  if (run.status === "errored") return "bg-aui-bad";
+  return run.pass_rate >= run.threshold ? "bg-aui-neutral" : "bg-aui-warn";
+}
+
 /**
- * Pass rate across the last runs, oldest first, each labelled with the agent
- * revision it tested. Bars share one hue: the height is the measure, and the
- * line marks the rate a run has to reach.
+ * Pass rate across the last runs, oldest first, each labelled with how long
+ * ago it ran. The height is the measure and the line marks the rate a run has
+ * to reach; colour says only whether it reached it (neutral), fell short
+ * (warn) or could not run (bad).
  */
 function History({ runs, threshold }: { runs: EvalRun[]; threshold: number }) {
   const ended = runs
@@ -71,20 +187,18 @@ function History({ runs, threshold }: { runs: EvalRun[]; threshold: number }) {
             title={`${Math.round(r.pass_rate)}%${r.rev ? `, revision ${r.rev}` : ""}, ${ago(r.started_at)}`}
           >
             <span
-              className="w-full rounded-t-sm bg-aui-accent"
-              style={{
-                height: `${Math.max(r.pass_rate, 2)}%`,
-                opacity: r.pass_rate >= r.threshold ? 1 : 0.45,
-              }}
+              data-tone={barTone(r)}
+              className={`w-full rounded-t-sm ${barTone(r)}`}
+              style={{ height: `${Math.max(r.pass_rate, 2)}%` }}
             />
           </div>
         ))}
       </div>
       <div className="flex gap-1 text-aui-2xs tabular-nums text-aui-muted">
         {ended.map((r) => (
-          <span key={r.id} className="w-6 text-center">
-            {r.rev ? `r${r.rev}` : Math.round(r.pass_rate)}
-          </span>
+          <time key={r.id} dateTime={r.started_at} className="w-6 text-center">
+            {age(r.started_at)}
+          </time>
         ))}
       </div>
     </figure>
@@ -374,6 +488,7 @@ export function Evals({
   canWrite,
   onChanged,
   onOpenRun,
+  header,
 }: {
   target: Suite["target"];
   subject: string;
@@ -381,29 +496,44 @@ export function Evals({
   canWrite: boolean;
   onChanged: () => void;
   onOpenRun?: (id: string) => void;
+  /** Draws the tab's top row around its New Eval action, as an agent's health does. */
+  header?: (action: ReactNode) => ReactNode;
 }) {
   const mine = suites.filter((s) => s.target === target && s.subject === subject);
   const [editing, setEditing] = useState<Suite | "new" | null>(null);
+  // A link to a suite's schedule (#schedule-<name>, from the agent's health) opens its editor.
+  const [scheduling, setScheduling] = useState<string | null>(() => {
+    const hash = typeof window === "undefined" ? "" : decodeURIComponent(window.location.hash);
+    return hash.startsWith("#schedule-") ? hash.slice("#schedule-".length) : null;
+  });
+  useEffect(() => {
+    const open = () => {
+      const hash = decodeURIComponent(window.location.hash);
+      if (hash.startsWith("#schedule-")) setScheduling(hash.slice("#schedule-".length));
+    };
+    window.addEventListener("popstate", open);
+    return () => window.removeEventListener("popstate", open);
+  }, []);
   const [problem, setProblem] = useState<string | null>(null);
   const act = (p: Promise<unknown>, fallback: string) => {
     setProblem(null);
     p.then(onChanged).catch((e) => setProblem(e instanceof ApiError ? e.message : fallback));
   };
 
+  const newEval =
+    canWrite && !editing ? (
+      <button type="button" className={primary} onClick={() => setEditing("new")}>
+        New Eval
+      </button>
+    ) : null;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-3">
-        <p className="max-w-xl text-aui-sm text-aui-muted">
-          {target === "agent"
-            ? "Each case sends this agent a real request and checks the answer. Checks are exact, so the same answer always gets the same score."
-            : "Each case asks this source a question and checks that the right document comes back near the top."}
-        </p>
-        {canWrite && !editing && (
-          <button type="button" className={primary} onClick={() => setEditing("new")}>
-            New Eval
-          </button>
-        )}
-      </div>
+    <div id="eval-suites" className="flex flex-col gap-4">
+      {header ? (
+        header(newEval)
+      ) : newEval ? (
+        <div className="flex justify-end">{newEval}</div>
+      ) : null}
       <Problem message={problem} />
       {editing && (
         <SuiteForm
@@ -422,16 +552,17 @@ export function Evals({
         <EvalCandidates agent={subject} suites={mine} canWrite={canWrite} onChanged={onChanged} />
       )}
       {mine.length === 0 && !editing && (
-        <p className={`${card} text-aui-sm text-aui-muted`}>
-          No evals yet. Without one, a change to{" "}
-          {target === "agent" ? "the prompt" : "the documents"} is judged by eye.
-        </p>
+        <p className={`${card} text-aui-sm text-aui-muted`}>No evals yet.</p>
       )}
       {mine.map((s) => {
         const last = s.runs[0];
         const { runs: _runs, ...suite } = s;
         return (
-          <section key={s.name} className={`${card} flex flex-col gap-3`}>
+          <section
+            key={s.name}
+            id={`suite-${s.name}`}
+            className={`${card} flex scroll-mt-4 flex-col gap-3`}
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -448,9 +579,15 @@ export function Evals({
                   {s.cases.length} {s.cases.length === 1 ? "case" : "cases"}, passes at{" "}
                   {s.pass_rate || 100}%
                 </p>
+                <p className="text-aui-xs text-aui-muted">
+                  {scheduleLine(s)}
+                  {s.every_seconds && s.created_by_name
+                    ? `, ${sched.runsAs(s.created_by_name)}`
+                    : ""}
+                </p>
               </div>
               {canWrite && (
-                <div className="flex shrink-0 gap-2">
+                <div className="flex min-w-0 flex-wrap gap-2">
                   <button
                     type="button"
                     className={primary}
@@ -458,6 +595,14 @@ export function Evals({
                     onClick={() => act(api.runSuite(s.name), "The eval could not be started.")}
                   >
                     {last?.status === "running" ? "Running" : "Run Eval"}
+                  </button>
+                  <button
+                    type="button"
+                    className={button}
+                    aria-expanded={scheduling === s.name}
+                    onClick={() => setScheduling(scheduling === s.name ? null : s.name)}
+                  >
+                    {sched.edit}
                   </button>
                   <button type="button" className={button} onClick={() => setEditing(suite)}>
                     Edit
@@ -472,6 +617,16 @@ export function Evals({
                 </div>
               )}
             </div>
+            {canWrite && scheduling === s.name && (
+              <ScheduleEditor
+                suite={s}
+                onClose={() => setScheduling(null)}
+                onSaved={() => {
+                  setScheduling(null);
+                  onChanged();
+                }}
+              />
+            )}
             {last?.metrics && (
               <dl className="flex flex-wrap gap-x-6 gap-y-1 text-aui-xs">
                 {Object.entries(metricLabel).map(([k, l]) => (

@@ -1,5 +1,796 @@
 # Changelog
 
+## 0.205.1 (2026-11-26)
+
+### Bug Fixes
+
+- **connections**: let a person approve more than one Google tool list (#572) ([8293058](https://github.com/urmzd/humagen/commit/82930586548cb14bed59005d183b7feef1104d8b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.205.0...v0.205.1)
+
+
+## 0.205.0 (2026-11-25)
+
+### Features
+
+- **web**: divide the fixed sidebar links from the session list ([186dc69](https://github.com/urmzd/humagen/commit/186dc6957e3a7ede30d1bfc58898d2301512edd9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.204.1...v0.205.0)
+
+
+## 0.204.1 (2026-11-25)
+
+### Bug Fixes
+
+- **web**: keep Home within its source budget ([7a61639](https://github.com/urmzd/humagen/commit/7a616392fefa609b28d96f5ae5831aa433ba5a6b))
+- **web**: scroll the whole sidebar nav below 600px of height ([1205a30](https://github.com/urmzd/humagen/commit/1205a30b81b4e8dcfb7a2629e27fd8cc2703eaf0))
+- **web**: keep sidebar sections fixed while recents scroll ([44366d5](https://github.com/urmzd/humagen/commit/44366d51386542d7249f3be22854c5557c448936))
+
+### Misc
+
+- revert gofmt change; CI and go.mod use Go 1.26 gofmt ([ff33f29](https://github.com/urmzd/humagen/commit/ff33f29926e470ba4ce8b837366dfb7db66e9419))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.204.0...v0.204.1)
+
+
+## 0.204.0 (2026-11-24)
+
+### Features
+
+- **web**: set an agent's review approval and loadable skills in its settings ([daf4e11](https://github.com/urmzd/humagen/commit/daf4e11e1e18fdd2670267d2122b0f4d8a2d94bc))
+
+### Bug Fixes
+
+- **web**: keep stored review and skill fields as written in agent settings ([665ab50](https://github.com/urmzd/humagen/commit/665ab501519b89d2bb2a4d4f551c3bab3bd0570a))
+
+### Misc
+
+- **copy**: regenerate copy keys for the review and loadable skills settings ([0b268a3](https://github.com/urmzd/humagen/commit/0b268a3bdce62e590fe3b0735ecdd7534a1e8cc5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.203.0...v0.204.0)
+
+
+## 0.203.0 (2026-11-24)
+
+### Features
+
+- **github**: decide approvals with saige v0.53.0's approval request ([c255da6](https://github.com/urmzd/humagen/commit/c255da6fd050b64313d7109d9151cd599cc11900))
+- **github**: dismiss the app's approvals of earlier commits on a push ([3a3a73d](https://github.com/urmzd/humagen/commit/3a3a73dfef4c3bd8c786c7f30033f8182cf98628))
+- **api**: describe the user IDs and requested reviewer on GitHub events ([5fe6f2d](https://github.com/urmzd/humagen/commit/5fe6f2daf12f3c37c2c8fc8cb2f511ef99397450))
+- **github**: approve asked reviews only for a second person known by user ID ([ac8ec0e](https://github.com/urmzd/humagen/commit/ac8ec0e289edacfb463e52ec955de7387512d2f2))
+- **github**: decide checks on the host and name a review's agent by the host's mark ([bc492ce](https://github.com/urmzd/humagen/commit/bc492ceff79296b02e47937724898ae6a4230657))
+- **github**: dismiss stale reviews and approve a commit once through saige's own-review calls (saige b3f9558) ([0515189](https://github.com/urmzd/humagen/commit/05151896699be5a3784cc30b8316962f38682045))
+- **github**: find the run by the hook's RunID and skip only its own check (saige e1f622e) ([8c2214c](https://github.com/urmzd/humagen/commit/8c2214c5e4ad8cab7c435007b079df9bec668bac))
+- **github**: repin saige at the final approval hook; use AllPassed and GitHub's author and draft state ([8d5e551](https://github.com/urmzd/humagen/commit/8d5e551157affab1fd5cadcd4a57ce7bba6ac433))
+- **github**: choose the review event from the report, policy and host facts ([41b7935](https://github.com/urmzd/humagen/commit/41b79353e16aec9b6796a4773ad0a0b5fe1595c5))
+
+### Bug Fixes
+
+- **github**: approve only as an App client whose login GitHub names ([cffe493](https://github.com/urmzd/humagen/commit/cffe493a3ed0fb923cefc6b985d8c5de538dba4a))
+- **github**: approve only as a GitHub App, and read shared and login-only co-author addresses strictly ([230575f](https://github.com/urmzd/humagen/commit/230575f1802de51f11d11beb884286b49a90644f))
+- **github**: dismiss approvals on a push only while its commit is the head ([e8127c4](https://github.com/urmzd/humagen/commit/e8127c4e643cb963c7f6de6c0e3c3fb52cde926f))
+- **github**: name a review's agent only from reviews the sink posted, and dismiss after posting ([990aa3d](https://github.com/urmzd/humagen/commit/990aa3d53ed59970907730f7d24fe6e62b754b71))
+- **github**: keep a repository's approve setting when a save leaves it out ([9098011](https://github.com/urmzd/humagen/commit/909801167e6b58333ad10db1e7bc8616a37f5f04))
+- **github**: give the dialed connector the approval claim store ([47dfd34](https://github.com/urmzd/humagen/commit/47dfd34fc681f0dac8509c4bf901e842a8fc108f))
+- **github**: durable approval claim, people by user ID, commit writers, same-agent dismissal that never blocks (saige dc9fab8) ([e8161b7](https://github.com/urmzd/humagen/commit/e8161b793cd3f9389c7695de0115efb78f0ec12d))
+- **github**: count only other apps' checks, require a mapped asker who is not the author, approve a commit once, dismiss stale reviews ([ff2f921](https://github.com/urmzd/humagen/commit/ff2f92113a76c848cdc87e5896716f4053621dc8))
+
+### Misc
+
+- **client**: regenerate the client ([23f7edf](https://github.com/urmzd/humagen/commit/23f7edf5146cefa500ebd776a7f35279424a0e52))
+- **github**: neutral names in review policy test data ([d77acc2](https://github.com/urmzd/humagen/commit/d77acc2f5a6496e293d5a754047e4d7f89abf550))
+- **github**: a review request may approve ([baf42df](https://github.com/urmzd/humagen/commit/baf42df17a9d06aea001d555e5185e9e5a2f63f6))
+- **github**: review event through the platform, the approval hook and recovery ([d513ded](https://github.com/urmzd/humagen/commit/d513ded592b328f59d630349efe7a2b74083e5af))
+- gofmt ([9a72a68](https://github.com/urmzd/humagen/commit/9a72a683e746ac346261c9e9c270d18b52e98f01))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.202.0...v0.203.0)
+
+
+## 0.202.0 (2026-11-24)
+
+### Features
+
+- **migrate**: rewrite each journaled request to the request as it was asked ([3474008](https://github.com/urmzd/humagen/commit/3474008dfaae9b3c474a751581d20a9e29530a77))
+
+### Bug Fixes
+
+- **migrate**: replace only journal requests that may hold passages ([b606278](https://github.com/urmzd/humagen/commit/b60627840c2059cc45e671aac704af7006c0f94e))
+- **migrate**: check runs again before each journal write ([b188213](https://github.com/urmzd/humagen/commit/b188213bb910723b99f1c10e05c4ecb0b42521c8))
+
+### Misc
+
+- **deps**: bump github.com/urmzd/saige to v0.52.1 ([f185f5d](https://github.com/urmzd/humagen/commit/f185f5df6d68c8797cc9c5cb8a44205c6eda7930))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.201.0...v0.202.0)
+
+
+## 0.201.0 (2026-11-24)
+
+### Features
+
+- **platform**: use_skill runs a loadable library skill as skill-runner ([8a086c4](https://github.com/urmzd/humagen/commit/8a086c4a0493b404850b262474a6892ff34c2c61))
+- **wire**: skills.loadable on the agent spec ([e019fbe](https://github.com/urmzd/humagen/commit/e019fbe16f4bf6a187f63b9369d6d08bfd3012e1))
+
+### Bug Fixes
+
+- **platform**: a loaded skill waits where its caller would, for its caller's approvers ([e6c836e](https://github.com/urmzd/humagen/commit/e6c836ede69126ede5df7f44eedb25abfb26a8d6))
+- **platform**: a loaded skill is held to its caller's action rules and pause ([c53c71f](https://github.com/urmzd/humagen/commit/c53c71f1451f3641d8219064f00ab1955b5eaaae))
+- **platform**: a loaded skill reads its caller's place as its own ([b2ae890](https://github.com/urmzd/humagen/commit/b2ae890e1a42048e7473c31a0469e382a249897b))
+
+### Misc
+
+- count skill-runner in the review package and bound found_by labels at 64 ([9e3afcc](https://github.com/urmzd/humagen/commit/9e3afcc1921a4a95286b875207082fe64681d915))
+- **platform**: use_skill loads only what the spec and the person allow ([6942a5c](https://github.com/urmzd/humagen/commit/6942a5cd09db3530e5cf15e3eb5182cefe6aa39b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.6...v0.201.0)
+
+
+## 0.200.6 (2026-11-24)
+
+### Bug Fixes
+
+- **github**: match a run's place read to its connector, and name redirects plainly ([0249e61](https://github.com/urmzd/humagen/commit/0249e615ac589933f3f3dedcde975a9db2489e37))
+
+### Misc
+
+- **platform**: pin how a GitHub session record without a conversation is reached ([44c1cd4](https://github.com/urmzd/humagen/commit/44c1cd4ad1cc251513a3b4f7e280c356fce87f37))
+- **skillfiles**: check the modes Write sets, and the OS refusal only where it applies ([5943485](https://github.com/urmzd/humagen/commit/594348592df23201a1c32ccb7b44d3aad090d254))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.5...v0.200.6)
+
+
+## 0.200.5 (2026-11-24)
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.4...v0.200.5)
+
+
+## 0.200.4 (2026-11-24)
+
+### Bug Fixes
+
+- **platform**: name an unread settings read when a run chooses its model ([649d960](https://github.com/urmzd/humagen/commit/649d96042ba9c92f3337cf9ba308ea28177e9c5d))
+- **platform**: retry a run whose settings could not be read ([fd702bb](https://github.com/urmzd/humagen/commit/fd702bb277ca17a88ee145c4274595cf5c6f961c))
+- **platform**: fail a run without a model provider on its first attempt ([87e563c](https://github.com/urmzd/humagen/commit/87e563cb5f185235318a38c81517c59618f790d6))
+
+### Misc
+
+- **slack**: run the retried-failure server tests on an unreachable model ([0a60751](https://github.com/urmzd/humagen/commit/0a6075146dde85bb2840daea332a44d94769cfb0))
+- **deps**: bump github.com/urmzd/saige to v0.52.0 ([5f699b6](https://github.com/urmzd/humagen/commit/5f699b618ff053a592c55d0ffe1fc8fd9dd3ba25))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.3...v0.200.4)
+
+
+## 0.200.3 (2026-11-24)
+
+### Bug Fixes
+
+- **slack**: record the surface of Slack roots a built-in surface starts ([fc0b58a](https://github.com/urmzd/humagen/commit/fc0b58a0126175ff5cea8bc92bd6e0c1576ccf66))
+- **slack**: keep a team's surface root to the client that started it ([b65e954](https://github.com/urmzd/humagen/commit/b65e954579bb0fda616382c729dc64c5b5e60669))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.2...v0.200.3)
+
+
+## 0.200.2 (2026-11-23)
+
+### Bug Fixes
+
+- **migrate**: adopt Slack threads by the machine's own view, and go on past kept records ([8b3b85a](https://github.com/urmzd/humagen/commit/8b3b85a19517e1d701d35f792728b25c63131432))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.1...v0.200.2)
+
+
+## 0.200.1 (2026-11-23)
+
+### Bug Fixes
+
+- **messages**: check that the poster may post before a root's audience is kept ([27464bc](https://github.com/urmzd/humagen/commit/27464bcdf2c68b7238bb571c451d17eb9f2016f2))
+- **messages**: check who may post before a place's root is kept ([44e9967](https://github.com/urmzd/humagen/commit/44e99675114274c9cb80cab38b4adb16b5479679))
+- **surfaces**: start a surface's root beside a root someone named first ([054faa2](https://github.com/urmzd/humagen/commit/054faa273c860c9a84675e1417962bba44dceb1e))
+- **messages**: check who reads a place's root before a message changes it ([5c0cdcc](https://github.com/urmzd/humagen/commit/5c0cdcc81f3d9d01d0262effa15f9d870450928d))
+
+### Misc
+
+- **messages**: a Slack place's root is the surface's, and one named first stays its caller's ([7e7b9fe](https://github.com/urmzd/humagen/commit/7e7b9fe1ce8660206270a3303f211945b96a6e43))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.0...v0.200.1)
+
+
+## 0.200.0 (2026-11-23)
+
+### Features
+
+- **accounts**: a Slack app acts for people who linked their Slack account ([0bf8e9c](https://github.com/urmzd/humagen/commit/0bf8e9cc369b1953e3685eaa9326bb91c378a2aa))
+- **console**: list linked people on the GitHub and Slack app ([cff391c](https://github.com/urmzd/humagen/commit/cff391c84d3ff4c0412db74e78e2926181cc8c1c))
+- **console**: connected accounts, one row per surface ([d742f29](https://github.com/urmzd/humagen/commit/d742f29fbb4645dde9cc6d048d2b5701c8a29346))
+- **accounts**: link GitHub and Slack accounts through OAuth sign-in ([14ffdf3](https://github.com/urmzd/humagen/commit/14ffdf3c93e754ba60b7cc8ba509c2d182acc324))
+
+### Bug Fixes
+
+- **accounts**: a consent's return a tab cannot complete ends its consent ([99f6648](https://github.com/urmzd/humagen/commit/99f664839bfcf00fb96717ee3f8e76d052290338))
+- **connectionauth**: a consent begun again removes only the earlier state index ([4340ab3](https://github.com/urmzd/humagen/commit/4340ab3ee4c156d59eada6f0aa3f2475ed326aa4))
+- **accounts**: a consent is completed only in the browser that began it ([4c778c4](https://github.com/urmzd/humagen/commit/4c778c45b4c8d39c8ed757ae551163c9cc97ef71))
+- **accounts**: linking is configured as a whole and disconnected in the browser ([d01f2f8](https://github.com/urmzd/humagen/commit/d01f2f814df922c6b133ffb819b5637c54f66e29))
+- **console**: give the Set up by hand focus ring room around its text ([d7cc01a](https://github.com/urmzd/humagen/commit/d7cc01a30c84d5f07f3d5596bfdfc038320f7daa))
+- **accounts**: address the security review ([17a3e49](https://github.com/urmzd/humagen/commit/17a3e49fd66ef0a0c792430fb038f766183c590f))
+
+### Misc
+
+- **accounts**: account link routes refuse a request from another site ([b4346fb](https://github.com/urmzd/humagen/commit/b4346fb93059df50f2c96440388fe9f6d1e851d2))
+- **httpapi**: the confinement sweep hides a linked account id ([f29477c](https://github.com/urmzd/humagen/commit/f29477c533cdb54bc3533bb00c808abd09b7b892))
+- **accounts**: cover the link flow, resolution order and the admin list ([e8375ba](https://github.com/urmzd/humagen/commit/e8375badf255d13d1d23212b3d0e980de22ade0d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.199.1...v0.200.0)
+
+
+## 0.199.1 (2026-11-23)
+
+### Bug Fixes
+
+- **trigger**: lower-case text without changing its byte length ([1f0f91c](https://github.com/urmzd/humagen/commit/1f0f91ca59966950788faa8a08bcbc62434ba77f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.199.0...v0.199.1)
+
+
+## 0.199.0 (2026-11-23)
+
+### Features
+
+- **migrate**: adopt conversations for the readers they had, with tests ([df32f92](https://github.com/urmzd/humagen/commit/df32f92065fec25cf0e1554480054d01ae5a7080))
+- **migrate**: adopt th- conversations as sessions under their own ids (wip) ([3e5f8aa](https://github.com/urmzd/humagen/commit/3e5f8aa39609f9584d49baf8dd249c2c15545376))
+
+### Bug Fixes
+
+- **migrate**: decide each session key once and leave changed conversations ([7e9f384](https://github.com/urmzd/humagen/commit/7e9f384c8652fff7321b0c4719e21ccf80aa70fd))
+- **migrate**: keep an adopted place as it was filed on the messages route ([205020f](https://github.com/urmzd/humagen/commit/205020fbda266d350f5417140d22b32d217d92e1))
+
+### Misc
+
+- **platform**: wait for the answer's delivery before an untagged reply ([2e1ba43](https://github.com/urmzd/humagen/commit/2e1ba435cf666d9b31c71401cb70acd0192ac3bc))
+- **migrate**: check the recent sessions list for adopted conversations ([2edb1f2](https://github.com/urmzd/humagen/commit/2edb1f247bb08e5867c1a2aad27310b1708bfe65))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.198.1...v0.199.0)
+
+
+## 0.198.1 (2026-11-23)
+
+### Bug Fixes
+
+- **platform**: leave a session whose first run is in flight when dating ([da405c3](https://github.com/urmzd/humagen/commit/da405c3bbd67e0ddabdeeff156d754d27a28cd8c))
+- **migrate**: leave a deleted session, and date none before its latest message ([31c4662](https://github.com/urmzd/humagen/commit/31c4662c42149fd4d9658dbc2aafcc2c404e6705))
+- **migrate**: date backfilled sessions from their runs ([60f8eec](https://github.com/urmzd/humagen/commit/60f8eec4d1a0392de63ca7b4dc9c1753beaaf008))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.198.0...v0.198.1)
+
+
+## 0.198.0 (2026-11-23)
+
+### Features
+
+- **web**: choose Review or Reply for a GitHub automation rule ([fbeb9b4](https://github.com/urmzd/humagen/commit/fbeb9b42879d7e77f2a484c393f1ed5abb2f2df4))
+
+### Bug Fixes
+
+- **web**: keep a rule's answer across events that offer the choice ([774e499](https://github.com/urmzd/humagen/commit/774e499ca6e0db9458c8e6a96946da760157019b))
+
+### Misc
+
+- **spec**: regenerate copy keys for the rule editor's answer choice ([d2292ac](https://github.com/urmzd/humagen/commit/d2292ace4f7f1ae0bb6c3cc22ac81c2bb5e1affe))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.197.0...v0.198.0)
+
+
+## 0.197.0 (2026-11-23)
+
+### Features
+
+- **slack**: note at start a Slack client whose team maps no people ([7339657](https://github.com/urmzd/humagen/commit/7339657c6021191aab48de3098a01f294d671b6b))
+
+### Bug Fixes
+
+- **slack**: read a delivery's sender as tolerantly as the transport reads the delivery ([1b68a1d](https://github.com/urmzd/humagen/commit/1b68a1dc24543bb5b03b2f84f0d5d5e9616a9ef0))
+- **slack**: confirm a stop only for a run that was asked to stop ([90581f8](https://github.com/urmzd/humagen/commit/90581f8fda0a48e5b86ff4541153af972084078b))
+- **slack**: ask about the sender of every event the connector raises ([e24daf2](https://github.com/urmzd/humagen/commit/e24daf293b6ef7f5aad228ad099324fa88cd2e37))
+- **slack**: stop a run from Slack for a mapped person or whoever asked for it ([de4278e](https://github.com/urmzd/humagen/commit/de4278e0d2531c94785a2b0d673174770502e57f))
+- **slack**: deny unmapped senders on the Slack webhook connector (wip) ([422041a](https://github.com/urmzd/humagen/commit/422041a1b49250a07354f9c4397df1806be3f0cd))
+
+### Misc
+
+- **slack**: every raised event's sender is asked about, and a stop is confirmed only when a run stops ([105a840](https://github.com/urmzd/humagen/commit/105a840695c204e2ede14d9e343bf583cda731c4))
+- **slack**: the webhook connector's entries as mapped people, and who starts and stops a run ([950543f](https://github.com/urmzd/humagen/commit/950543ffc92537b1b9a3aa415d2bec7e7b3fd602))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.196.0...v0.197.0)
+
+
+## 0.195.5 (2026-11-23)
+
+### Bug Fixes
+
+- **web**: show the entry agent's typed name as typed ([d94cb4a](https://github.com/urmzd/humagen/commit/d94cb4a0699cfc9f5a61578cb0cf0c89675ac528))
+- **web**: spell brands their own way in tool titles ([8a7204c](https://github.com/urmzd/humagen/commit/8a7204c3ac75c8dc2fc7ac60d84d00e0a732845a))
+- **web**: keep brand capitals in agent display names ([6e8d872](https://github.com/urmzd/humagen/commit/6e8d872dbcfacdcc35ced06aa5a26bb040663a31))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.4...v0.195.5)
+
+
+## 0.195.3 (2026-11-23)
+
+### Bug Fixes
+
+- **ci**: push the release image when CI was skipped for a tested tree ([cd922b0](https://github.com/urmzd/humagen/commit/cd922b0c071cb8a9cf910dca202d4bfc0b66ff93))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.2...v0.195.3)
+
+
+## 0.195.2 (2026-11-23)
+
+### Bug Fixes
+
+- **core**: compare a call's identifying arguments, keeping paths case-sensitive ([28a5e51](https://github.com/urmzd/humagen/commit/28a5e51fa8000719f6d84f3d12ca4af809d81ff3))
+- **console**: recover a failure only by the same tool at the same target; read address as the transport does ([9d6c324](https://github.com/urmzd/humagen/commit/9d6c324a99f0c434b46ecda77f183e60b79bf7be))
+- **console**: say a recovered tool failure as retried; read repositories with github_read_context ([af8399d](https://github.com/urmzd/humagen/commit/af8399d766e8a537b326bbd418791ff86f142456))
+
+### Misc
+
+- **copy**: regenerate the product copy keys after merging main ([bb07b2e](https://github.com/urmzd/humagen/commit/bb07b2e057c6d33f8c960f3fa6950b18a85d6935))
+- **deps**: saige v0.50.0, repository reads and untrusted-data notice ([571deb4](https://github.com/urmzd/humagen/commit/571deb4c4c9dc8f84fc52b854d4b4769d464c58a))
+- **deps**: tidy go.sum after the saige pin ([6c8b92d](https://github.com/urmzd/humagen/commit/6c8b92d375131887356787fc66db4f136d1a25ef))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.1...v0.195.2)
+
+
+## 0.195.1 (2026-11-23)
+
+### Bug Fixes
+
+- **slack**: stop fails closed, the sender's team on every check, requested_by on runs ([b29a59e](https://github.com/urmzd/humagen/commit/b29a59e697779578a5d5b0e1b2d554048d361579))
+- **slack**: start runs only for people the client maps ([9696d57](https://github.com/urmzd/humagen/commit/9696d57d6dc2265407306fbaa9c7e7023a7f2ddc))
+
+### Misc
+
+- **slack**: the server test signs the app in as its own machine, mapping a person ([155b905](https://github.com/urmzd/humagen/commit/155b9055c1d99f4ee30b7bce0113a61fdc56fdea))
+- **copy**: regenerate copy keys for notConnected ([4a0bc37](https://github.com/urmzd/humagen/commit/4a0bc3783f5da216a6ad60a83d04927f4c27ae39))
+- **platform**: a Slack app's credential is held to asking for a person ([34c7ea0](https://github.com/urmzd/humagen/commit/34c7ea02e168e205c9e358266e301de5f388eb8e))
+- **slack**: deny by default on every entry; api: asked_by on runs ([a7e2ee7](https://github.com/urmzd/humagen/commit/a7e2ee7c918a7abc755a1d119b92b297724052ae))
+- **slack**: every Slack test asks as a person the client maps ([3e1a158](https://github.com/urmzd/humagen/commit/3e1a158a0567d0b136a55d367d41c8db524bec2e))
+- **slack**: move app tests to people the client maps (wip) ([ca6bd67](https://github.com/urmzd/humagen/commit/ca6bd67ad3a0345343eb9462870573348b638510))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.0...v0.195.1)
+
+
+## 0.195.0 (2026-11-23)
+
+### Features
+
+- **web**: show session alerts in the transcript as one line each ([5ad5920](https://github.com/urmzd/humagen/commit/5ad5920218616667a9312c5ae0e435bf471b059c))
+
+### Bug Fixes
+
+- **web**: keep a failed answer's alert reachable and reopenable ([1ad867c](https://github.com/urmzd/humagen/commit/1ad867cb8a6dd289894d6b24a851572b3684ce1e))
+- **web**: align settled alert states and keep the repeat count on a phone ([5f1797d](https://github.com/urmzd/humagen/commit/5f1797d35d589b5b8073e51d95e2edfa0d31e996))
+- **web**: fold a failed answer's alert into its card and steady alert lines ([4b8e24c](https://github.com/urmzd/humagen/commit/4b8e24c2371f2c7a3ca2e571268095b737a5209a))
+- **web**: keep alert lines readable on a phone and Undo beside the composer ([692a429](https://github.com/urmzd/humagen/commit/692a4292ca7a4efbf23f18f4f192eda188a25e42))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.194.0...v0.195.0)
+
+
+## 0.194.0 (2026-11-23)
+
+### Features
+
+- **github**: read the place an answer was asked on, and post only the answer ([d30ae93](https://github.com/urmzd/humagen/commit/d30ae93d3f0682cea991498019ee66e54ca77dcb))
+
+### Bug Fixes
+
+- **github**: treat comments deleted mid-read as a change, and count reads in the e2e test ([038f65e](https://github.com/urmzd/humagen/commit/038f65e266e168b9b1f7a3bbe6d44a58b62ebd90))
+- **github**: read the latest comments through the last page, not every page ([2a0fda1](https://github.com/urmzd/humagen/commit/2a0fda14795beb4cbe9f2d73cc140cf2fcf6c00f))
+- **github**: read the latest comments, skip the client's own login, and read through a client only on its own place ([d9bce74](https://github.com/urmzd/humagen/commit/d9bce744dec5b996ab9da63a32b0e4be83945565))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.193.0...v0.194.0)
+
+
+## 0.193.0 (2026-11-23)
+
+### Breaking
+
+- **github**: only the humagen trigger asks; agents are named after it ([4e51145](https://github.com/urmzd/humagen/commit/4e5114515147df57bc18ed627fb5a45a19498e15))
+
+### Features
+
+- **github**: humagen is the one trigger on GitHub and Slack ([dc4b24d](https://github.com/urmzd/humagen/commit/dc4b24d561254634d0f3eb2e833e621273adc871))
+
+### Bug Fixes
+
+- **trigger**: whole tag names, and list paragraphs are prose ([421f0aa](https://github.com/urmzd/humagen/commit/421f0aa4048b15b1ac011bc3b6e93af356decb56))
+
+### Misc
+
+- **github**: declare the trigger's answer without an unused value ([1292e3c](https://github.com/urmzd/humagen/commit/1292e3c87f19128bef9d271268fbfbf78d6add4d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.192.1...v0.193.0)
+
+
+## 0.192.1 (2026-11-23)
+
+### Bug Fixes
+
+- **migrate**: build the environment's clients as serve does before the backfill ([96d4e5e](https://github.com/urmzd/humagen/commit/96d4e5efc10c820657a531b61f5c61bc76f8b334))
+
+### Misc
+
+- fail the image job when it cannot tell whether a tag exists ([f3efca8](https://github.com/urmzd/humagen/commit/f3efca890bfb1bafe5dee285ed8804c119969f8f))
+- never overwrite either release image tag, report Test failed on a cancelled run ([0699a06](https://github.com/urmzd/humagen/commit/0699a0626268d1a1671e841378f3609b69202383))
+- shard the Go tests, skip a second CI run at release, push the release image ([f6eb74b](https://github.com/urmzd/humagen/commit/f6eb74b36b44b5661fc916dc2139159f00b1f693))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.192.0...v0.192.1)
+
+
+## 0.192.0 (2026-11-23)
+
+### Features
+
+- **migrate**: file past GitHub runs into their sessions ([0bc1fd0](https://github.com/urmzd/humagen/commit/0bc1fd0d4aacd558577abe9c2ab02733d61d3ec3))
+
+### Bug Fixes
+
+- **migrate**: print usage and name the unknown migration in the error (lint ST1005) ([4cba5d3](https://github.com/urmzd/humagen/commit/4cba5d3d9f0909045d62d9e9e79cd7bfa6a5f21a))
+- **sessionstate**: read again when a run is bound between BindRunsInOrder's reads ([a18d0f1](https://github.com/urmzd/humagen/commit/a18d0f10f43e6400981fff829e64bc58d077077e))
+- **migrate**: refuse an empty store, warn of unmapped clients, leave a second client's place, bind in time order ([e027198](https://github.com/urmzd/humagen/commit/e0271981641ba5f1621d369c3bcb5476a8f97b40))
+- **migrate**: show only the platform's errors, and log the dry run's lines in the test ([8a1ead4](https://github.com/urmzd/humagen/commit/8a1ead4030c03f6f7395a7bfd8a9c15218e8c863))
+
+### Misc
+
+- **migrate**: cover the sessions backfill, Refile and the command; document it ([d6a101e](https://github.com/urmzd/humagen/commit/d6a101e30733c95d63ff98533817d71fec7e307b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.191.0...v0.192.0)
+
+
+## 0.191.0 (2026-11-22)
+
+### Breaking
+
+- **github**: automatic review is off unless switched on ([a4e83b3](https://github.com/urmzd/humagen/commit/a4e83b365d1c0ef78896bb27b45337f4b5aa2272))
+
+### Features
+
+- **console**: a Repositories view for a GitHub app, and each repository's settings ([7507e03](https://github.com/urmzd/humagen/commit/7507e03d4c3ef99859ffdb3aea37ab76da1801dc))
+- **github**: repository settings drive review, agent, instructions, reads and cross-surface reads ([7fd9f3a](https://github.com/urmzd/humagen/commit/7fd9f3a83d9861a90609891068e48918ffe39542))
+- **github**: per-repository settings for GitHub clients (wip) ([6ea2619](https://github.com/urmzd/humagen/commit/6ea26197910f98e6b3ecc7d8c85e013ddf775a71))
+
+### Bug Fixes
+
+- **github**: quote repository settings descriptions in the API spec; lint ([87d553c](https://github.com/urmzd/humagen/commit/87d553c98313b4a5e67d868eeb56f684d48083d5))
+- **github**: show the workspace's cross-surface answer and who keeps it on every client; close a fence the read budget cuts ([ca89994](https://github.com/urmzd/humagen/commit/ca899945647616d4a916747206722f3a3bd4e645))
+- **console**: name the GitHub app in the path, one left edge for both pages, round row ends on a phone, even reads card ([1454f4f](https://github.com/urmzd/humagen/commit/1454f4f8ed708a9569a78d027fe8ecfe5a2041dc))
+- **github**: keep a repository to its own runs across every client; fence pre-run reads in a nonce block within 3 seconds; refuse an empty write over unread settings; cover only installed, named or kept repositories ([ae49fab](https://github.com/urmzd/humagen/commit/ae49fab7acdd55ec6c66fc39a5e5f91d77701192))
+- **console**: repository list fits a phone; empty state spacing ([fa1548c](https://github.com/urmzd/humagen/commit/fa1548c8495055f85be7816609a67df10ee43608))
+
+### Misc
+
+- **copy**: regenerate copy keys for the repositories view ([d87af1b](https://github.com/urmzd/humagen/commit/d87af1bcfd957e2c3cebdda4b302de511410c3da))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.190.0...v0.191.0)
+
+
+## 0.190.0 (2026-11-22)
+
+### Features
+
+- **github**: map GitHub logins to people from HUMAGEN_GITHUB_PEOPLE ([f36601b](https://github.com/urmzd/humagen/commit/f36601bbe17b7eb4de513ca8182050e523aafe8a))
+- **github**: file each pull request and issue as one session ([27e3ef2](https://github.com/urmzd/humagen/commit/27e3ef2207ad5eb1d1ef9ba0f571ab005dc29215))
+
+### Bug Fixes
+
+- **github**: judge GitHub sessions by the root run, keep memory as before, and keep clients apart ([50dc0e8](https://github.com/urmzd/humagen/commit/50dc0e80abe1c01ebf1fc4ec511ce9c66493cce2))
+- **console**: keep the GitHub link out of trace.ts and give Home's budget room for it ([ee3a7ae](https://github.com/urmzd/humagen/commit/ee3a7ae0e7878f1482bc5aab3003fc20d4977961))
+
+### Misc
+
+- **github**: grant the mapped askers runs:write and ask on an issue through the connector ([147d372](https://github.com/urmzd/humagen/commit/147d372c07cf441209426e5a78dc222d90d559b5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.189.0...v0.190.0)
+
+
+## 0.189.0 (2026-11-22)
+
+### Features
+
+- **github**: offer and read the repositories the app installation covers ([ca422e0](https://github.com/urmzd/humagen/commit/ca422e0a77df533dbf50f51aee0c539ebc649d62))
+
+### Bug Fixes
+
+- **github**: share one installation read outside the lock, keep each caller's deadline ([56a639a](https://github.com/urmzd/humagen/commit/56a639a25d5caa8fcc62db0a3d8807b257f7d685))
+
+### Misc
+
+- **github**: installed repositories, the picker and reads; docs and contract ([ed0031c](https://github.com/urmzd/humagen/commit/ed0031c9cb8f681e4cc0d129cbbcb04a1938dd28))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.1...v0.189.0)
+
+
+## 0.188.1 (2026-11-22)
+
+### Bug Fixes
+
+- **platform**: read corpora for a Slack session tree's audience in every session of it ([0e67e4e](https://github.com/urmzd/humagen/commit/0e67e4e9481664f6a662a9924597e475ce458718))
+- **slack**: check delivery before posting a new inbox item about a run ([5fb6937](https://github.com/urmzd/humagen/commit/5fb6937282387922f7eaec04d8095cd159ca349e))
+- **platform**: keep a Slack session tree out of personal tools and deliver only to its own thread ([ca178e9](https://github.com/urmzd/humagen/commit/ca178e968d659d0d4f5c89a8e3c824ad20f40621))
+- **slack**: deliver a Slack thread's own private session back to its conversation ([3bb0562](https://github.com/urmzd/humagen/commit/3bb05629c6b0731fee12615e038edfcaad48ce43))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.0...v0.188.1)
+
+
+## 0.188.0 (2026-11-22)
+
+### Features
+
+- **artifacts**: match list queries on text, say where a published file opens ([aea5451](https://github.com/urmzd/humagen/commit/aea5451d37f6dfe04d2df79a3db01f8b819e6b14))
+- **artifacts**: artifact_read, artifact_list and publish targets for agents ([c36c15d](https://github.com/urmzd/humagen/commit/c36c15d6681ab9c6a9531e1821862dcd52be5faa))
+- **deploy**: the chart and compose run the browser image ([8415670](https://github.com/urmzd/humagen/commit/84156707a7c4e551ad0344e2ea390680b807174a))
+- **deploy**: the browser image is one browser for every Humagen process ([ad69268](https://github.com/urmzd/humagen/commit/ad69268b2f9817ae1731af9a7062a8cfe76b635b))
+- **deploy**: a browser image, Chromium with the pinned Playwright MCP server ([a15cd53](https://github.com/urmzd/humagen/commit/a15cd533d64a137fb8f9497789f80568029e0d0f))
+
+### Bug Fixes
+
+- **deploy**: name the browser's reach under Compose and let the chart sandbox its pod ([d6cd138](https://github.com/urmzd/humagen/commit/d6cd1382b3c39d5eedfc34aba80e6aa5304863b4))
+- **deploy**: the browser overlay, a keep-open client that checks, and bounds ([abb8de1](https://github.com/urmzd/humagen/commit/abb8de1a2ae33703facdf3dcdb0901dcc055692e))
+- **ci**: restore the five jobs an edit cut from the workflow ([6eeb47b](https://github.com/urmzd/humagen/commit/6eeb47b800c498727d0625fa1251387bd7266466))
+- **deploy**: the bundled browser holds to what it says, from a review ([f94aa5f](https://github.com/urmzd/humagen/commit/f94aa5f75760beba70ff7ffb7b3c8aa2dbc66c10))
+- **platform**: a tool server that starts late is reached without a restart ([872f033](https://github.com/urmzd/humagen/commit/872f0336f3d406b777a7cd15b98f12b4cd00cd0f))
+
+### Misc
+
+- **browser**: print the browser's logs when it is not up to refuse a request ([7308cab](https://github.com/urmzd/humagen/commit/7308cab11ddeebbc30d4a86e942ad050f7511171))
+- **artifacts**: a run for an administrator outside the project reads by their own roles ([868bda8](https://github.com/urmzd/humagen/commit/868bda875b4aeb50dbd4b7d8f17da57078589447))
+- **console**: the Recent order test gives each row its own time ([f54cbd8](https://github.com/urmzd/humagen/commit/f54cbd8bad67bb2733a624f04c2b26b9279c3357))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.187.0...v0.188.0)
+
+
+## 0.186.0 (2026-11-22)
+
+### Features
+
+- **sessions**: generate short session titles, keep a person's rename ([55e6260](https://github.com/urmzd/humagen/commit/55e6260e137c4750f7d689254d44f872d9b75220))
+- **web**: open an alert's document, and keep the alert out of its review ([c1993dd](https://github.com/urmzd/humagen/commit/c1993dddf5e5bd70e8bd4939bc5842487955f2a7))
+- **alerts**: start a review with the alert as an attached document ([dcf9e40](https://github.com/urmzd/humagen/commit/dcf9e400a0b51a5865fe3aa1f9225d3a3de82d26))
+- **web**: one settings menu beside + on Home, and approval as a pill ([24f2e18](https://github.com/urmzd/humagen/commit/24f2e18d0efce07414f1c35866609f09276a4d37))
+- run a ! message as a command in the session sandbox ([0d783c0](https://github.com/urmzd/humagen/commit/0d783c0f41227df63487033f2a32751666172ab6))
+- **web**: lean alert card with View, Review and Done ([ea6d287](https://github.com/urmzd/humagen/commit/ea6d28711917da1661db79d0f2ab55ec5473eee6))
+- **alerts**: put a health alert on the answer that failed and add Review ([c91b621](https://github.com/urmzd/humagen/commit/c91b621a8ccdff0e42666e2cf2edcb9b9931519a))
+- **web**: mascots spin in 3D, the body drawn at each angle of the turn ([1b6de4e](https://github.com/urmzd/humagen/commit/1b6de4eb836fccd72d87d27fbd3531516281cdc2))
+- **web**: mascot bodies and arms in bot-avatars' 3D plush ([6e3b42d](https://github.com/urmzd/humagen/commit/6e3b42d79ed0eca0e224f5d22695b70392c6f1e6))
+- **web**: say the approval mode as a word under the composer ([404acad](https://github.com/urmzd/humagen/commit/404acadff196002376861e13e3a2be1fb778022a))
+- **web**: idle mascots hop, spin, wave and wiggle now and then, and when pointed at ([17566cd](https://github.com/urmzd/humagen/commit/17566cd9fc48d6c8478ec214d45a30f8b8437b67))
+- **web**: agent marks draw Humagen's own mascots ([1bbb61a](https://github.com/urmzd/humagen/commit/1bbb61aeffe1a81d5f22a4bff3b4c97fff452ce0))
+- **web**: mascot tools drawn as rendered objects with livelier motion ([3568778](https://github.com/urmzd/humagen/commit/35687782c0c23e45bf976302d8801eccc82a388f))
+- **web**: draw mascot fur once for smooth motion; Humagen as a tuxedoed secret agent ([12d48b5](https://github.com/urmzd/humagen/commit/12d48b50ac238828e5530db6feed1bcf64222bdb))
+- **web**: Humagen's own mascots: personas with arms that use their props (prototype) ([6a72a5a](https://github.com/urmzd/humagen/commit/6a72a5aafdbf9562a5dc08429cfadbdae87b8255))
+- **web**: mascots hold their props with their own furry hands ([63c85bd](https://github.com/urmzd/humagen/commit/63c85bd6668118892d4d03b7f9b11c97072f3cd4))
+- **web**: draw mascot props as real objects, with a gallery of every state ([0f568bb](https://github.com/urmzd/humagen/commit/0f568bb4430eb3f8304e5e81f636ef7f0741f43c))
+- **web**: marks finish their move on open eyes, and mascots carry props, not orbs ([3306761](https://github.com/urmzd/humagen/commit/33067619bed5ce3e5ac6a77aa2d3225d6763ba08))
+- **web**: idle glances and activity props on agent marks ([d3f2f82](https://github.com/urmzd/humagen/commit/d3f2f82a0fe38d2eaf37c9b16dac3f804c2837a2))
+
+### Bug Fixes
+
+- **platform**: command error strings end without punctuation ([83c5819](https://github.com/urmzd/humagen/commit/83c58193a364b0cca2d25f88abfda4c50d834b73))
+- clear a stale hold, key the upper arm by theme, retry a picture whose job threw ([1f4f994](https://github.com/urmzd/humagen/commit/1f4f99498fed2832364b237736909a4bac1933b4))
+- cross-review findings: held queue stays held, proper names, in-app links, Workspace breadcrumb, search history, mascot job queue and caches ([26ec662](https://github.com/urmzd/humagen/commit/26ec66200e5be49e1d1780b41cebf79e916c74ac))
+- **web**: a ! command never carries files, and ! is plain text outside a session ([71b8374](https://github.com/urmzd/humagen/commit/71b8374b8256c41983ef5337b4e8f181f29bada3))
+- **platform**: never title a session from a command; start one review per alert ([63c6f34](https://github.com/urmzd/humagen/commit/63c6f3495c2c60ab59e9867d6175d7b61525605b))
+- **console**: a sidebar row's ⋯ is 28px on a mouse, so its status dot never meets it ([135d12e](https://github.com/urmzd/humagen/commit/135d12e815cb817dc7c86eee12d3bde79e7c784b))
+- **screens**: composer screens follow the settings menu and the approval pill ([b58e25b](https://github.com/urmzd/humagen/commit/b58e25bfc904b6395171709b2419bbfb197b0c7b))
+- **alerts**: quote tool errors as code and give the document a Close ([5be7948](https://github.com/urmzd/humagen/commit/5be79486cf596eb21c567dcc3ac6a786f07ddb79))
+- **web**: mark Auto's risk on its icon, not a filled row ([8b83567](https://github.com/urmzd/humagen/commit/8b8356713094d6aed1dd5854c66c5c61a1e3fe9d))
+- **web**: center a sidebar row's status dot under its menu button ([54a2475](https://github.com/urmzd/humagen/commit/54a2475dfd6fd0087e59a41b2c2c8883b5900381))
+- **alerts**: link a recap to the answer by its console path ([c1d2bf5](https://github.com/urmzd/humagen/commit/c1d2bf552a8951970b2ec310c94767aa2567cb1e))
+- **web**: center an agent mark's mascot on its body so it lines up with the name ([a9cfe5a](https://github.com/urmzd/humagen/commit/a9cfe5af740b3598c6aed3b5aee21f529cb6fa20))
+- **web**: mascot arms grow from the body as one shaded, furred piece ([71fe44b](https://github.com/urmzd/humagen/commit/71fe44b948d3afa4beee78a60b0c3da43bd00a75))
+- **web**: center Home's greeting and prompt on desktop ([ce59202](https://github.com/urmzd/humagen/commit/ce59202b0ddbdc17238e08a673e89a076ef24616))
+- **web**: show a failed answer as a quiet line with a small Retry ([85b94f2](https://github.com/urmzd/humagen/commit/85b94f2b1b49f3357dfc5feaf1e08d400349a1cd))
+
+### Performance
+
+- **web**: draw mascots in idle-time jobs, on first view, as blob URLs; turns on first need ([8eb9dbf](https://github.com/urmzd/humagen/commit/8eb9dbfd62d2a52ceca87aea91a818c773a1c3aa))
+
+### Misc
+
+- **console**: the retry button names its agent properly ([81f70d5](https://github.com/urmzd/humagen/commit/81f70d5abda6187df50d44e9f309dbd6a70fc2ec))
+- **spec**: regenerate product copy keys ([f841bcb](https://github.com/urmzd/humagen/commit/f841bcb08da16c6c7658017f08c16f3426670bd6))
+- **screens**: Home's composer scenarios use the settings menu and typed skills ([37c658f](https://github.com/urmzd/humagen/commit/37c658fe58bbaf58509f2ef48598daeb5e65dc5f))
+- **spec**: regenerate product copy keys after the merges ([5fc3d88](https://github.com/urmzd/humagen/commit/5fc3d88c6cbb0f23359205dba30ed506427ca2dd))
+- **spec**: regenerate product copy keys ([2bb98b7](https://github.com/urmzd/humagen/commit/2bb98b77c57283f65aabe922d56356c231e2a549))
+- **web**: check Auto's warning on its icon, with no filled row ([e3b9351](https://github.com/urmzd/humagen/commit/e3b93518e1580002fb789771fad6f8e4d7fdefb4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.185.0...v0.186.0)
+
+
+## 0.185.0 (2026-11-22)
+
+### Features
+
+- **console**: tests read Sessions and Projects as tables; the pin mark and alert label are announced apart ([0020c46](https://github.com/urmzd/humagen/commit/0020c46cb2ad30a76b42dcd5bc8422b3ede7402a))
+- **console**: Sessions as a table: aligned columns, soft rows with space between them ([07acffb](https://github.com/urmzd/humagen/commit/07acffbeec5fdff224d71816c7f902c151bcdfa6))
+- **console**: sidebar status as one dot, and no count beside Recent ([9e7b0e9](https://github.com/urmzd/humagen/commit/9e7b0e959c129616942c98310892aa860aedd2a5))
+- **console**: proper agent names in Details; document the People search ([114b1be](https://github.com/urmzd/humagen/commit/114b1be84c2f815855cd97cc1da423e756ce5a0f))
+- **console**: search and add people in the People drawer ([4bc9e11](https://github.com/urmzd/humagen/commit/4bc9e11b168a0864791bb783a1c8c7ad356e74ad))
+- **console**: drop Progress from session Details ([42ae79b](https://github.com/urmzd/humagen/commit/42ae79bb8999b6c38aa7a30cb393d1185075beca))
+- **console**: a knowledge base is made with its sources, in one form ([5067702](https://github.com/urmzd/humagen/commit/5067702bc7c77365cef0c6d51e0a7592350b9c47))
+- **console**: focused drawers: no Search, Steps, Sources or Sessions tabs, and People invites people only ([0c3befd](https://github.com/urmzd/humagen/commit/0c3befde60a2fccbb688bab5339fa908ac7419f3))
+- **console**: a connection row has one control: the verb to connect it, or Connected with a menu ([3ed7249](https://github.com/urmzd/humagen/commit/3ed72498e7b9fcf15d5f85e75548bd967a51d18e))
+- **console**: the Store explains itself and lists packages as rows with a split button ([beb18fe](https://github.com/urmzd/humagen/commit/beb18fe963126ff55bfad964a2159100dd681150))
+- **console**: shadcn Item, Card, Field, ButtonGroup, Breadcrumb and Table; one title line and a side list for an item's sections ([cf49c78](https://github.com/urmzd/humagen/commit/cf49c78fd7df989cf464b6c3dd6d67097097d36f))
+- **console**: no Reply on a message, and a person's message time sits at the left end ([4b29d9b](https://github.com/urmzd/humagen/commit/4b29d9bb0fd850b6a8e719bfd576c35b8fb9d8ca))
+- **console**: the composer's footer names no agent and no model ([91a03d7](https://github.com/urmzd/humagen/commit/91a03d797b3a258dee51697e989bb05921251401))
+- **console**: a message's actions are always shown, and only its time shows on hover ([ac0eb60](https://github.com/urmzd/humagen/commit/ac0eb609bba121c5f1be9536138eb1528b797487))
+- **console**: an agent's mascot moves while the pointer is over it ([7ee9fa1](https://github.com/urmzd/humagen/commit/7ee9fa1b2e551af4d9653ea5665a0bdb1bc7405b))
+- **console**: a message's actions show in full or not at all, and are smaller ([66459f9](https://github.com/urmzd/humagen/commit/66459f90af919064f5baf287cf38eb761fefbb71))
+- **console**: remove the Side Chat ([e454023](https://github.com/urmzd/humagen/commit/e4540234a96b1c34e3e45a3a5cdab918b3946e13))
+- **console**: Automations, and background work in its session ([1d406af](https://github.com/urmzd/humagen/commit/1d406af3956d511473e5fdebbcde155645f1eb61))
+- **console**: clearer icons in the composer's + menu ([52e177c](https://github.com/urmzd/humagen/commit/52e177c9b572dfae4565060eb20ea47e127248a9))
+- **console**: the Usage popover is one grid of names and values ([dc1fc8c](https://github.com/urmzd/humagen/commit/dc1fc8cb09512f8580dc9ea48516d72a49ac7a53))
+- **console**: Home lists nothing under the chat bar ([7c4bd1a](https://github.com/urmzd/humagen/commit/7c4bd1acb11dd50e0d1c51f965160fa0c3851169))
+- **console**: a flat composer footer, and waiting messages in the conversation ([e94f1a4](https://github.com/urmzd/humagen/commit/e94f1a4f8125560125666c750fa6e8f5224bed19))
+
+### Bug Fixes
+
+- **console**: screens follow the redesigned drawers, Apps and status dot; table and title links meet touch size ([151d42b](https://github.com/urmzd/humagen/commit/151d42b55f8e1672b56210e8fc314df4669d9e01))
+- **console**: the Projects table's Updated column says only when ([29093ed](https://github.com/urmzd/humagen/commit/29093edad13cf1d84bd25ceceb0b5b50fb2ebfb6))
+- **console**: align People search results with the list ([1b326d8](https://github.com/urmzd/humagen/commit/1b326d833fdab673a8f96c55b2500c1ca39a252c))
+- **console**: a working answer says what it is doing before its first word ([b4e256c](https://github.com/urmzd/humagen/commit/b4e256c6077b01a5d8828f2ad2367e3663ee8165))
+- **console**: "Connect GitHub", and short words in capitals in agents' names (QA Reviewer) ([ce6c4b4](https://github.com/urmzd/humagen/commit/ce6c4b4b7f0a180640fce9c09ce9115cee82efe5))
+- **console**: restore what an unsafe lint fix changed in the session center ([bac9616](https://github.com/urmzd/humagen/commit/bac96166a3ae89672822216ac6e1a3a8271822ec))
+- **console**: the latest message keeps its action row when something follows the turns ([05b9804](https://github.com/urmzd/humagen/commit/05b98045e99ad65b16716ba87befc4dd85e0905b))
+
+### Misc
+
+- **screens**: Home has 27 session states after dropping its project and made strips ([ff51695](https://github.com/urmzd/humagen/commit/ff516951adca77799de198501b75bb0af17fb50e))
+- **console**: format a test ([1db1288](https://github.com/urmzd/humagen/commit/1db1288967f0e7c0feb61ae8735dd2fb82303811))
+- **console**: align the usage popover's agent row and drop an unused import ([7b6d7a2](https://github.com/urmzd/humagen/commit/7b6d7a2be0c63f6d244bde0514007d2a713a0725))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.184.0...v0.185.0)
+
+
+## 0.183.0 (2026-11-21)
+
+### Features
+
+- **console**: the composer says the product is AI, with a Terms link from branding (#511) ([e9e424a](https://github.com/urmzd/humagen/commit/e9e424ae1ad7b4f9ca8b67d109b9afb9b51e1d16))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.182.0...v0.183.0)
+
+
+## 0.182.0 (2026-11-21)
+
+### Features
+
+- **site**: a terms page at withhumagen.com/terms (#512) ([f741b57](https://github.com/urmzd/humagen/commit/f741b5738f429506b19e1f80670770b80f6e70d0))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.181.0...v0.182.0)
+
+
+## 0.181.0 (2026-11-21)
+
+### Features
+
+- **console**: the session panel says where a session is attached (#501) ([f805cfa](https://github.com/urmzd/humagen/commit/f805cfa038e0bf36aaa2de8289a6ec866afed160))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.180.0...v0.181.0)
+
+
+## 0.179.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: settings titles alone, one amber for waiting, Audit filters folded on phones (#509) ([0e706c8](https://github.com/urmzd/humagen/commit/0e706c84ec10f00304de13e05319b051bda06a90))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.179.0...v0.179.1)
+
+
+## 0.179.0 (2026-11-21)
+
+### Features
+
+- **console**: agent health shows online checks beside eval suites and their schedules (#482) ([7b5400e](https://github.com/urmzd/humagen/commit/7b5400eef2d222e56a41f88cde20fd3382dc01e6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.178.1...v0.179.0)
+
+
+## 0.178.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: clean up evals, drop dev and permission noise (#480) ([280843f](https://github.com/urmzd/humagen/commit/280843fcfdbef8ce05099416c5028327a2f69026))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.178.0...v0.178.1)
+
+
+## 0.178.0 (2026-11-21)
+
+### Features
+
+- **agents**: goal-first creation, grouped settings and an agent home (#476) ([53f88f5](https://github.com/urmzd/humagen/commit/53f88f5a501ebe988eee090d5a45bd00935e99fa))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.177.2...v0.178.0)
+
+
+## 0.177.1 (2026-11-21)
+
+### Bug Fixes
+
+- **surfaces**: Slack sessions listen, read and list as people expect (stack 7/7) (#466) ([4a0ed23](https://github.com/urmzd/humagen/commit/4a0ed23ecb590e8dc38bc575febfc1976b8c9b58))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.177.0...v0.177.1)
+
+
+## 0.176.1 (2026-11-21)
+
+### Bug Fixes
+
+- **slack**: follow a thread only once Slack holds the app's answer (#469) ([4f35b63](https://github.com/urmzd/humagen/commit/4f35b63ead581b9c1838bb39f0206d77d23cd26e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.176.0...v0.176.1)
+
+
+## 0.174.2 (2026-11-21)
+
+### Bug Fixes
+
+- **platform**: called runs get no caller person tool servers (#507) ([13ad1d9](https://github.com/urmzd/humagen/commit/13ad1d95858f07993b31b80119cd371a273ef5b9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.1...v0.174.2)
+
+
+## 0.174.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: stack workspace Apps as connection rows (#502) ([3541b4c](https://github.com/urmzd/humagen/commit/3541b4c34c7fc3e960f5b2b92f002d388d7c1b9e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.0...v0.174.1)
+
+
+## 0.169.0 (2026-11-21)
+
+### Features
+
+- **web**: an agent's page opens on its home (stack 6/6) (#468) ([81da130](https://github.com/urmzd/humagen/commit/81da130c7c7610d6534107c13740c42141c5d3fb))
+- **agents**: an agent's own Slack app, from its manifest and linked by its token (stack 5/6) (#467) ([5034ce7](https://github.com/urmzd/humagen/commit/5034ce765bb7b53539bd018ea6c9e9b0438115ee))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.168.0...v0.169.0)
+
+
+## 0.166.0 (2026-11-21)
+
+### Features
+
+- **console**: sidebar rows show their source and a labelled state, calm focus (#470) ([3a718dc](https://github.com/urmzd/humagen/commit/3a718dcfc21fb37c0442cd275801d8e39564e4e8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.165.0...v0.166.0)
+
+
+## 0.164.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: sidebar row preview card (#416) ([ae44611](https://github.com/urmzd/humagen/commit/ae44611277f8755246fbb642582c85c3b0fad75f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.164.0...v0.164.1)
+
+
+## 0.163.0 (2026-11-21)
+
+### Features
+
+- **web**: Continue Conversation (#443) ([25a2804](https://github.com/urmzd/humagen/commit/25a2804e6b98d2d8413c6cab2e6f1bb57c3ec91b))
+- **slack**: an alert for a person reaches the Slack app as a direct message notice (#424) ([730a20b](https://github.com/urmzd/humagen/commit/730a20b62e856dd17c3f3662d8d7a503abc6715c))
+
+### Bug Fixes
+
+- **slack**: no disclaimer or retry line on Slack answers (#423) ([182a702](https://github.com/urmzd/humagen/commit/182a702e98865ce54707a65cd9b408c6be1b60a4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.162.1...v0.163.0)
+
+
 ## 0.161.0 (2026-11-20)
 
 ### Features

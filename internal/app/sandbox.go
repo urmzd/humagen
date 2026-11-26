@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/urmzd/saige/sandbox/isolate/docker"
 	"github.com/urmzd/saige/sandbox/isolate/local"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/spec"
 	"github.com/urmzd/saige/flow/isolation"
 	poolleaser "github.com/urmzd/saige/flow/isolation/isolate"
@@ -24,6 +26,7 @@ import (
 // sandbox).
 type sandboxFlags struct {
 	kind, runtime, image, connectorsImage, workRoot, host, tlsDir *string
+	imageRegistries                                               *string
 	insecure                                                      *bool
 }
 
@@ -39,6 +42,7 @@ func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFla
 		connectorsImage: fs.String("sandbox-connectors-image", "", "with -sandbox=docker, the image stdio MCP servers run in. Empty means -sandbox-image"),
 		host:            fs.String("sandbox-host", "", `with -sandbox=docker, a Docker daemon on a sandbox host ("tcp://sandbox:2376", "ssh://user@sandbox" or "unix:///path"), so this server holds no Docker socket. Empty is the local daemon`),
 		tlsDir:          fs.String("sandbox-tls-dir", "", "with -sandbox-host, the directory with ca.pem, cert.pem and key.pem; a tcp:// host requires it"),
+		imageRegistries: fs.String("sandbox-image-registries", "", `with -sandbox=docker, the registries a workspace may add images of its own from, comma-separated ("ghcr.io,registry.acme.dev"). Empty allows none: every session runs -sandbox-image`),
 		workRoot:        fs.String("sandbox-work-root", "", "with -sandbox=docker, the host directory runs' work directories are made in; the Docker daemon must be able to mount it. With -sandbox=local, where instances are made. Empty means the system temporary directory"),
 	}
 }
@@ -50,6 +54,29 @@ func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFla
 func (f sandboxFlags) contained() bool {
 	kind := strings.TrimSpace(*f.kind)
 	return kind == "" || kind == "docker"
+}
+
+// images is what the flags let workspaces run of their own: with the
+// docker sandbox and some registry allowed, images pulled through the same
+// Docker daemon the sandbox starts instances on.
+func (f sandboxFlags) images() *platform.ImageConfig {
+	image := strings.TrimSpace(*f.image)
+	if image == "" {
+		image = spec.DefaultSandboxImage
+	}
+	c := &platform.ImageConfig{Default: image, Registries: []string{}}
+	if !f.contained() {
+		return c
+	}
+	for _, r := range strings.Split(*f.imageRegistries, ",") {
+		if r = strings.ToLower(strings.TrimSpace(r)); r != "" && !slices.Contains(c.Registries, r) {
+			c.Registries = append(c.Registries, r)
+		}
+	}
+	if len(c.Registries) > 0 {
+		c.Puller = dockerPuller{host: strings.TrimSpace(*f.host), tlsDir: strings.TrimSpace(*f.tlsDir)}
+	}
+	return c
 }
 
 // openSandbox builds the sandbox the flags name, and what to close on
@@ -143,7 +170,9 @@ func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *
 			stop()
 			return isolation.Sandbox{Leaser: unavailable{err: fmt.Errorf("sandbox %s is unavailable: %w", name, err)}, Name: name}, none, nil
 		}
-		leaser, err := poolleaser.New(d, cfg)
+		// The deployment's image has its pool; a workspace's image is kept
+		// warm only while it is told to be (imageLeaser).
+		leaser, err := newImageLeaser(d, cfg)
 		if err != nil {
 			stop()
 			return isolation.Sandbox{}, none, fmt.Errorf("sandbox: docker: %w", err)
@@ -188,7 +217,7 @@ func both(a, b func()) func() {
 	return func() { a(); b() }
 }
 
-func closer(l *poolleaser.Leaser) func() {
+func closer(l interface{ Close(context.Context) error }) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

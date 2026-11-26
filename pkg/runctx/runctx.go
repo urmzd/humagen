@@ -10,7 +10,9 @@
 // refused, never repaired.
 //
 // A called run inherits its caller's context (Narrow). It keeps the caller's
-// person and can only tighten the caller's ceilings.
+// person, as whose ceilings and reads it is held to, and can only tighten the
+// caller's ceilings. It acts for nobody, so it gets none of that person's own
+// tool servers.
 package runctx
 
 import (
@@ -32,8 +34,9 @@ const (
 	MetaDigest  = wire.PrivateMetaPrefix + "humagen.context.digest"
 )
 
-// maxPinned bounds a pinned context, in bytes.
-const maxPinned = 64 << 10
+// maxPinned bounds a pinned context, in bytes: the person's tool servers,
+// at most personctx.MaxPinnedBytes, and room for the rest.
+const maxPinned = personctx.MaxPinnedBytes + 64<<10
 
 // ErrInvalid reports a pinned context that cannot be read or does not match
 // its digest.
@@ -41,9 +44,9 @@ var ErrInvalid = errors.New("runctx: invalid")
 
 // Context is what a run was admitted with.
 type Context struct {
-	// Person is the subject the run acts for: whoever posted the message
-	// that started it, in a shared thread too. Empty for a run that acts
-	// for nobody, such as a schedule's.
+	// Person is the subject whose settings and limits apply. Called runs
+	// keep the caller's subject for policy checks. The run's actor says
+	// who the run acts for.
 	Person string `json:"person,omitempty"`
 	// Settings are the run's ceilings and preferences, resolved from the
 	// workspace, its project chain and its person.
@@ -66,22 +69,17 @@ func New(person string, resolved settings.Resolved, own personctx.Context) Conte
 	c.Memory = own.Memory
 	for _, t := range own.ToolServers {
 		if resolved.Ceilings.AllowsToolServer(t.Host()) {
-			c.ToolServers = append(c.ToolServers, t)
+			c.ToolServers = append(c.ToolServers, t.Pinned())
 		}
 	}
 	return c
 }
 
-// Narrow is the context a run called by this one gets: the same person, its
-// ceilings tightened by by, and only what still fits them.
+// Narrow keeps the caller's policy identity and tightens its ceilings.
+// A called run acts for nobody, so it inherits neither personal tool servers
+// nor the person's memory volume.
 func (c Context) Narrow(by settings.Ceilings) Context {
-	out := Context{Person: c.Person, Settings: c.Settings.Narrow(by), Memory: c.Memory, ToolServers: []personctx.ToolServer{}}
-	for _, t := range c.ToolServers {
-		if out.Settings.Ceilings.AllowsToolServer(t.Host()) {
-			out.ToolServers = append(out.ToolServers, t)
-		}
-	}
-	return out
+	return Context{Person: c.Person, Settings: c.Settings.Narrow(by), ToolServers: []personctx.ToolServer{}}
 }
 
 func (c Context) encode() ([]byte, error) {

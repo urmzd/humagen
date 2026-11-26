@@ -26,6 +26,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
 	mux.HandleFunc("POST /api/threads/{id}/fork", s.authed(auth.RunsWrite, s.seenThread(s.forkThread)))
 	mux.HandleFunc("GET /api/threads/{id}/forks", s.authed(auth.RunsRead, s.seenThread(s.listForks)))
+	mux.HandleFunc("GET /api/threads/{id}/usage", s.authed(auth.RunsRead, s.seenThread(s.threadUsage)))
 	mux.HandleFunc("POST /api/threads/{id}/bring-back", s.authed(auth.RunsWrite, s.seenThread(s.bringBackResult)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
@@ -330,7 +331,7 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, threads.ErrNotFound):
 		fail(w, http.StatusNotFound, "not found")
 	case errors.Is(err, platform.ErrSurfaceThreadBeforeSessions):
-		fail(w, http.StatusConflict, detail(err, threads.ErrExists))
+		failCode(w, http.StatusConflict, codeThreadBeforeSessions, detail(err, threads.ErrExists))
 	case errors.Is(err, threads.ErrExists):
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, threads.ErrFull):
@@ -346,6 +347,8 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, platform.ErrAnswered):
 		fail(w, http.StatusConflict, detail(err, platform.ErrAnswered))
 	case errors.Is(err, platform.ErrStaysInProject), errors.Is(err, platform.ErrStaysInChannel):
+		fail(w, http.StatusConflict, strings.TrimPrefix(err.Error(), "platform: "))
+	case errors.Is(err, platform.ErrNotListening):
 		fail(w, http.StatusConflict, strings.TrimPrefix(err.Error(), "platform: "))
 	case errors.Is(err, platform.ErrAnnouncementGone):
 		fail(w, http.StatusGone, strings.TrimPrefix(err.Error(), "platform: "))
@@ -392,4 +395,13 @@ func (s *Server) publishSummary(w http.ResponseWriter, r *http.Request, who auth
 		return
 	}
 	ok(w, http.StatusCreated, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, th)))
+}
+
+func (s *Server) threadUsage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.SessionUsage(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
 }

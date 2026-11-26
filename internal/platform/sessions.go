@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
@@ -35,6 +37,10 @@ type SessionInput struct {
 	Fresh       bool     `json:"fresh,omitempty"`
 	Project     string   `json:"project,omitempty"`
 	SourceAlert string   `json:"source_alert,omitempty"`
+	// Image and Repos are the image the session's tools run in and the
+	// repositories it works on, chosen from SessionOptions.
+	Image string   `json:"image,omitempty"`
+	Repos []string `json:"repos,omitempty"`
 	// Surface and ActAs are a chat surface's thread and the person a
 	// message from it is posted for: only that client's machine sends them,
 	// and the place's root session is found or started (surface_sessions.go).
@@ -44,9 +50,22 @@ type SessionInput struct {
 	// PostOnly posts a surface's message without starting anything, as a
 	// channel the app follows quietly, or catching a thread up, does.
 	PostOnly bool `json:"post_only,omitempty"`
+	// Listen, with Surface, posts a message that addressed nobody: a reply
+	// in a thread that does not mention the app. It starts no session. In
+	// one that is listening (threads.Thread.Listening) the agent is asked
+	// whether the message calls for it; anywhere else it is ErrNotListening.
+	Listen bool `json:"listen,omitempty"`
+	// Command starts the session with a command run in its sandbox, typed
+	// as "!" and the command, in place of a message to its agent: the
+	// session's first message is the command and how it came out, and no
+	// run starts (postCommand).
+	Command bool `json:"command,omitempty"`
 	// spoken marks the first message as said in voice mode, for a
 	// conversation the messages API starts (sendToNewConsoleRoot).
 	spoken bool
+	// review is set only by ReviewAlert: a review session's label is
+	// reserved, so no request starts one with words of its own.
+	review bool
 }
 
 // SessionMessageOptions choose a mentioned agent's continuing or fresh child.
@@ -188,11 +207,30 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 	return explicit, picked, nil
 }
 func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in SessionInput) (SessionView, error) {
+	if err := p.checkSessionChoice(ctx, who, in); err != nil {
+		return SessionView{}, err
+	}
 	if err := checkUploads(in.Uploads); err != nil {
 		return SessionView{}, err
 	}
 	in.Text = uploadText(in.Text, in.Uploads)
 	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
+	if strings.HasPrefix(strings.TrimSpace(in.Label), reviewPrefix) && !in.review {
+		return SessionView{}, fmt.Errorf("%w: a review session is opened with Review on its alert", threads.ErrInvalid)
+	}
+	if in.Command {
+		// Refused before the session is made, so a command that cannot
+		// run leaves no empty session behind.
+		if in.Surface != nil || in.ActAs != nil || in.PostOnly || in.Listen || in.Parent != "" || in.SourceAlert != "" {
+			return SessionView{}, fmt.Errorf("%w: a command starts only a new session of your own, from the console", threads.ErrInvalid)
+		}
+		if _, err := p.checkCommandInput(MessageInput{Text: in.Text, Uploads: in.Uploads}); err != nil {
+			return SessionView{}, err
+		}
+		if !who.Can(auth.RunsWrite) {
+			return SessionView{}, auth.ErrForbidden
+		}
+	}
 	if in.Surface != nil {
 		v, _, err := p.StartSurfaceSession(ctx, who, in)
 		return v, err
@@ -272,7 +310,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if err != nil {
 		return SessionView{}, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: firstWords(in.Text, threads.MaxTitle), Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert}}
+	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: startTitle(in), TitleSource: threads.TitlePlaceholder, Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert, Image: in.Image, Repos: slices.Clone(in.Repos)}}
 	if parent.ID != "" {
 		th.Participants = slices.Clone(parent.Participants)
 		th.Visibility = parent.Visibility
@@ -281,6 +319,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if err != nil && !errors.Is(err, threads.ErrExists) {
 		return SessionView{}, err
 	}
+	created := err == nil
 	existing, err := p.Threads.Get(who.Tenant, rec.ID)
 	if err != nil {
 		return SessionView{}, err
@@ -288,10 +327,44 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken, Uploads: in.Uploads}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken, Uploads: in.Uploads, Command: in.Command}); err != nil {
 		return SessionView{}, err
 	}
+	// A command is never sent to a model to name the session by.
+	if created && !in.Command {
+		p.nameSessionAtStart(ctx, who.Tenant, existing, in.Text)
+	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
+}
+
+// retitleAfterGreeting gives a session that began with only a greeting the
+// placeholder title of its first message that asks for something, and has it
+// named from that message. It renames only a title the system derived from
+// that greeting, never one a person set or a generated one.
+func (p *Platform) retitleAfterGreeting(ctx context.Context, tenant string, th threads.Thread, text string, command bool) {
+	if command || runs.Greeting(text) {
+		return
+	}
+	head, err := p.Threads.Summary(tenant, th.ID)
+	// A session started with a command waits for a message, as one started
+	// with a greeting does.
+	byCommand := th.TitleSource == threads.TitlePlaceholder && th.Title == runs.CommandTitle
+	if err != nil || head.Messages == 0 || !runs.Greeting(head.First) && !byCommand {
+		return
+	}
+	next := runs.SessionTitle(text)
+	if next == "" {
+		return
+	}
+	// A failed rename leaves the greeting title, which is still true.
+	kept, changed, err := p.Threads.Retitle(tenant, th.ID, p.now(), func(cur threads.Thread) (string, string, bool) {
+		derived := cur.TitleSource == threads.TitlePlaceholder || cur.TitleSource == "" && cur.Title == runs.SessionTitle(head.First)
+		return next, threads.TitlePlaceholder, derived && (runs.Greeting(cur.Title) || cur.Title == runs.CommandTitle)
+	})
+	if err != nil || !changed {
+		return
+	}
+	p.nameSessionAtStart(ctx, tenant, kept, text)
 }
 func firstWords(text string, n int) string {
 	text = strings.Join(strings.Fields(text), " ")
@@ -307,7 +380,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 	if len(options) > 0 {
 		option = options[0]
 	}
-	if (in.PostOnly || in.Answers != nil) && (option.Agent != "" || option.Fresh || option.Label != "") {
+	if (in.PostOnly || in.Answers != nil || in.Command) && (option.Agent != "" || option.Fresh || option.Label != "") {
 		return SessionView{}, fmt.Errorf("%w: child routing is only for a new agent request", threads.ErrInvalid)
 	}
 	th, err := p.SessionRecord(ctx, who, id)
@@ -323,6 +396,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
+	p.retitleAfterGreeting(ctx, who.Tenant, th, text, in.Command)
 	// A message that mentions another agent is answered in this session, by
 	// that agent or, for several, by the entry agent with what each said
 	// (carryOut). Only a request that asks for a child session by option
@@ -389,6 +463,131 @@ func sessionStatus(rr []runs.Run) string {
 	return status
 }
 
+// waitingOn is what the latest run parked on a person waits for: the tool
+// an approval asks about, or the first line of a question, and its kind.
+// Only a question a person answers counts, as askOf and questionParts decide
+// it: a parent waiting on its delegation to a child agent waits on nobody. A
+// run's questions are read as Waits orders them. Whom it waits on is not
+// read from the run: see openQuestions.
+func waitingOn(rr []runs.Run) (what, kind string) {
+	var at time.Time
+	var q *event.Question
+	for i := range rr {
+		r := &rr[i]
+		if r.Status != runs.Parked || (q != nil && r.UpdatedAt.Before(at)) {
+			continue
+		}
+		for _, w := range r.Waits() {
+			if _, _, ok := questionParts(partKind(w)); ok && w.ID != "" {
+				q, at = &w, r.UpdatedAt
+				break
+			}
+		}
+	}
+	if q == nil {
+		return "", ""
+	}
+	return attentionOf(questionPartOf(*q))
+}
+
+// questionPartOf is the parts of a question that say what it is about.
+func questionPartOf(q event.Question) inbox.QuestionPart {
+	part := inbox.QuestionPart{ID: q.ID, Kind: partKind(q), Prompt: q.Prompt}
+	if q.Tool != nil {
+		part.Tool = &inbox.QuestionTool{Name: q.Tool.Name}
+	}
+	return part
+}
+
+// attentionOf is what a question waits for, in a few words, and its kind:
+// the tool an approval asks about, else the first line of what it asks.
+func attentionOf(q inbox.QuestionPart) (what, kind string) {
+	part, _, _ := questionParts(q.Kind)
+	if part == inbox.PartApproval {
+		if q.Tool != nil && q.Tool.Name != "" {
+			return firstWords(q.Tool.Name, MaxAttention), WaitingApproval
+		}
+		return firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingApproval
+	}
+	return firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
+}
+
+// openQuestions is the open questions the runs of some sessions wait on
+// that the reader may answer, newest first, by the session each is about.
+// A question is the reader's as answering decides it from what it was raised
+// with and what they hold: mayAnswer, the rule checkAnswer holds every
+// answer to and the inbox offers a question's actions by, so a listing never
+// says a run waits on someone answering would refuse. A budget hold is
+// billing:write's, though it is addressed to everyone.
+//
+// It reports the run, not the reader's notifications: a reader who hid,
+// snoozed or deleted their copy of the message is still whom the run waits
+// on, so no reader's marks are read. A question a called agent's run raised
+// is filed under the session that called it, so it counts there. Only
+// sessions of the page, which the reader was already found to read, are
+// asked about.
+//
+// The cost is one statement, whatever the inbox holds and however many
+// sessions are asked about (inbox.Store.Asking: the tenant's newest
+// inbox.MaxAsking live messages, in one list, with no lookup for any; the
+// inbox keeps no index by session, so one session costs the same). known is
+// false when the tenant holds more live messages than that: a session with
+// no question here may still wait on the reader, and its row must say it
+// waits without saying on whom (ThreadSummary.WaitingUnknown). A reader who
+// may not write runs is asked nothing and nothing is read.
+func (p *Platform) openQuestions(who auth.Principal, sessions []string) (asks map[string][]inbox.QuestionPart, known bool) {
+	if !who.Can(auth.RunsWrite) || len(sessions) == 0 {
+		return nil, true
+	}
+	msgs, complete, err := p.Inbox.Asking(who.Tenant, sessions)
+	if err != nil {
+		p.log.Warn("platform: the questions waiting on a reader could not be read; sessions are listed without saying whom they wait on", "tenant", who.Tenant, "error", err)
+		return nil, false
+	}
+	reader := readerOf(who)
+	asks = map[string][]inbox.QuestionPart{}
+	for _, m := range msgs {
+		for _, part := range m.Parts {
+			if part.Question == nil || part.State != inbox.PartOpen {
+				continue
+			}
+			if _, err := p.mayAnswer(who, reader, m, *part.Question); err == nil {
+				asks[m.Source.Thread] = append(asks[m.Source.Thread], *part.Question)
+			}
+		}
+	}
+	return asks, complete
+}
+
+// latestFailure is why the latest turn failed, or "" when it did not: a turn
+// still going or answered since leaves an earlier failure behind. Its error
+// is read as shownRun shows it in th, so a run moved out of a private project
+// does not name it.
+func latestFailure(rr []runs.Run, th threads.Thread) string {
+	var latest *runs.Run
+	for i := range rr {
+		r := &rr[i]
+		if latest == nil || r.UpdatedAt.After(latest.UpdatedAt) {
+			latest = r
+		}
+	}
+	if latest == nil || latest.Status != runs.Failed {
+		return ""
+	}
+	shown := shownRun(*latest, th, nil)
+	return cmp.Or(firstWords(firstLineOf(cmp.Or(shown.Error, shown.Reason)), MaxAttention), "No reason was recorded.")
+}
+
+// firstLineOf is the first line of text that holds anything, trimmed.
+func firstLineOf(text string) string {
+	for line := range strings.Lines(text) {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
 // sessionRow is a session placed in a listing before it is summarized: its
 // record, what the run index keeps of it, when it last changed and how far
 // the reader's open alerts raise it.
@@ -422,7 +621,7 @@ func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) Session
 	out, err := p.summarizeSessions(who, []sessionRow{row}, false)
 	if err != nil {
 		p.log.Warn("platform: a session's runs could not be read; it is shown without them", "session", th.ID, "error", err)
-		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who.Tenant, row, nil, threads.Message{}, false)})[0]
+		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who, row, nil, threads.Message{}, false, nil)})[0]
 	}
 	return out[0]
 }
@@ -460,10 +659,24 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 	if err != nil {
 		return nil, err
 	}
+	// Whom the rows that wait on a person wait on is read once for all of
+	// them (openQuestions), and not at all when none waits.
+	var waiting []string
+	for _, row := range rows {
+		if row.kept.Waiting > 0 || slices.ContainsFunc(turns[row.head.ID], func(r runs.Run) bool { return r.Status == runs.Parked }) {
+			waiting = append(waiting, row.head.ID)
+		}
+	}
+	asks, known := p.openQuestions(who, waiting)
 	out := make([]SessionSummary, len(rows))
 	for i, row := range rows {
 		message, said := last[row.head.ID]
-		out[i] = p.summarizeSession(who.Tenant, row, turns[row.head.ID], message, said)
+		out[i] = p.summarizeSession(who, row, turns[row.head.ID], message, said, asks[row.head.ID])
+		if c := &out[i].Conversation; !known && !c.WaitingOnYou && (c.Waiting > 0 || c.WaitingFor != "") {
+			// Not found among what was read of the inbox, which is not all
+			// of it: it waits, and on whom is not known.
+			c.WaitingUnknown = true
+		}
 		if placed {
 			out[i].UpdatedAt, out[i].Conversation.UpdatedAt = row.at, row.at
 		}
@@ -475,7 +688,7 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 // message, said when it has one. The people in it are not yet named as the
 // directory names them: shownSessions does that, and nothing is returned
 // without it.
-func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run, message threads.Message, said bool) SessionSummary {
+func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []runs.Run, message threads.Message, said bool, asks []inbox.QuestionPart) SessionSummary {
 	th := row.head.Thread
 	at := row.at
 	for _, r := range rr {
@@ -495,8 +708,17 @@ func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run
 			summary.People = append(summary.People, person.Name)
 		}
 	}
-	conversation := ThreadSummary{ThreadSummary: summary, Visibility: th.Visibility}
+	conversation := ThreadSummary{ThreadSummary: summary, TitleSource: th.TitleSource, Visibility: th.Visibility}
 	conversation.Messages = row.head.Messages
+	conversation.Source = threadSource(th)
+	conversation.Joined = joinedSession(th, who.Subject)
+	conversation.WaitingFor, conversation.WaitingKind = waitingOn(rr)
+	if len(asks) > 0 {
+		// What waits on the reader is said over what else waits.
+		conversation.WaitingFor, conversation.WaitingKind = attentionOf(asks[0])
+		conversation.WaitingOnYou = true
+	}
+	conversation.Failure = latestFailure(rr, th)
 	if said {
 		lastAgent := time.Time{}
 		for _, run := range rr {
@@ -535,7 +757,7 @@ func (p *Platform) sessionRows(who auth.Principal, q SessionQuery) ([]sessionRow
 		if th.Session == nil || th.Archive != nil || (q.Parent != "" && th.Session.Parent != q.Parent) || (q.Agent != "" && th.Session.Agent != q.Agent) || (inProject && th.Project != project) {
 			return false
 		}
-		if q.Roots && strings.HasPrefix(th.Session.Parent, "s_") {
+		if q.Roots && threads.SessionParent(th.Session.Parent) {
 			return false
 		}
 		return !q.Mine || sessionOf(th, who.Subject)
@@ -624,6 +846,12 @@ func sessionOf(th threads.Thread, subject string) bool {
 		}
 	}
 	return false
+}
+
+// joinedSession reports that subject takes part in a session someone else
+// started: the sidebar's Participated.
+func joinedSession(th threads.Thread, subject string) bool {
+	return subject != "" && th.CreatedBy != subject && sessionOf(th, subject)
 }
 
 // ListSessions is every session a query selects that the reader may read, at

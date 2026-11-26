@@ -62,7 +62,8 @@ test("a turn reads as its words and runs of steps, in the order they came", () =
     order,
     "in the order they came",
   );
-  assert.ok(text.includes("Worked for 44s"));
+  // The message says when; no line sums how long the turn took.
+  assert.ok(!text.includes("Worked for"));
   // A failed call is counted, quietly.
   assert.ok(text.includes("1 failed"));
 });
@@ -72,15 +73,22 @@ test("a run of steps opens to one row per call, and a row to its arguments and r
   const groups = screen.getAllByTestId("step-group");
   const mixed = groups.find((g) => (g.textContent ?? "").includes("Read 2 files")) as HTMLElement;
   assert.equal(within(mixed).queryAllByTestId("tool-row").length, 0, "folded at first");
-  fireEvent.click(within(mixed).getByRole("button", { expanded: false }));
+  // The line opens the run; beside it, its failed count opens it too.
+  fireEvent.click(within(mixed).getAllByRole("button", { expanded: false })[0] as HTMLElement);
   const rows = within(mixed).getAllByTestId("tool-row");
   assert.equal(rows.length, 4);
   assert.ok((rows[3]?.textContent ?? "").includes("go test ./pkg/isolate/docker/..."));
   // The command row opens to the command and what it printed.
   fireEvent.click(within(rows[3] as HTMLElement).getByRole("button", { expanded: false }));
+  // The command, in a block of its own with Copy, and what it printed.
+  const command = within(rows[3] as HTMLElement).getByTestId("command-block");
+  assert.ok(
+    (command.textContent ?? "").includes(
+      "go test ./pkg/isolate/docker/... -run TestRemote -count=1",
+    ),
+  );
   const blocks = within(rows[3] as HTMLElement).getAllByTestId("tool-block");
-  assert.equal(blocks[0]?.textContent, "go test ./pkg/isolate/docker/... -run TestRemote -count=1");
-  assert.ok((blocks[1]?.textContent ?? "").startsWith("ok"));
+  assert.ok((blocks[0]?.textContent ?? "").startsWith("ok"));
   fireEvent.click(within(rows[3] as HTMLElement).getByRole("button", { expanded: true }));
   assert.equal(within(rows[3] as HTMLElement).queryAllByTestId("tool-block").length, 0);
   // And the run folds again.
@@ -100,7 +108,7 @@ test("a long result shows a preview with Show more", () => {
   );
   const row = screen.getByTestId("tool-row");
   fireEvent.click(within(row).getByRole("button", { expanded: false }));
-  const result = () => within(row).getAllByTestId("tool-block")[1]?.textContent ?? "";
+  const result = () => within(row).getAllByTestId("tool-block").at(-1)?.textContent ?? "";
   assert.ok(!result().includes("line 39"));
   fireEvent.click(within(row).getByRole("button", { name: "Show more" }));
   assert.ok(result().includes("line 39"));
@@ -147,6 +155,51 @@ test("while a call runs, its run says which, and a call waiting on a person does
   assert.equal(group.querySelector(".aui-shimmer, [class*='shimmer']"), null, "nothing animates");
   // A run waiting on a person is open, at the step's own row.
   assert.ok(within(group).getByText("Waiting for approval"));
+});
+
+test("waiting on a person is one amber wherever a turn says it, and working keeps the agent's color", () => {
+  const call = (id: string, status: "waiting" | "in_progress"): Turn["tasks"][number] => ({
+    ...(delegatingTurn.tasks[3] as Turn["tasks"][number]),
+    id,
+    status,
+  });
+  show({
+    ...multiStepTurn,
+    status: "waiting",
+    tasks: [
+      {
+        ...(multiStepTurn.tasks[4] as Turn["tasks"][number]),
+        status: "waiting",
+        output: undefined,
+      },
+      call("waits", "waiting"),
+      call("works", "in_progress"),
+    ],
+  });
+  const article = screen.getByRole("article");
+  const amber = (node: Element | null | undefined, what: string) => {
+    assert.match(node?.getAttribute("class") ?? "", /\b(text|bg)-aui-warn\b/, `${what} is amber`);
+    assert.doesNotMatch(
+      node?.getAttribute("class") ?? "",
+      /aui-accent/,
+      `${what} is not the accent`,
+    );
+  };
+  // Beside the agent's name: the dot. The name itself keeps its own color.
+  const says = within(article.querySelector("header") as HTMLElement).getAllByText(
+    "Needs your input",
+  )[0];
+  amber(says?.previousElementSibling, "the header's dot");
+  // The step line, the step's own row and its mark.
+  const group = screen.getByTestId("step-group");
+  amber(within(group).getAllByText("waiting for you")[0], "the step line's words");
+  const row = within(group).getByText("Waiting for approval");
+  amber(row, "the waiting row's words");
+  amber(row.closest('[data-aui="task"]')?.querySelector("span[aria-hidden]"), "the waiting mark");
+  // A call to another agent: waiting is amber, working is still that agent's color.
+  const [waits, works] = [...article.querySelectorAll('[data-aui="agent-call"]')];
+  amber(within(waits as HTMLElement).getByText("Waiting for you"), "a waiting call's word");
+  assert.match(within(works as HTMLElement).getByText("Working").className, /text-aui-accent/);
 });
 
 test("a finished turn that changed files ends with a card of them, each opening its changes", () => {

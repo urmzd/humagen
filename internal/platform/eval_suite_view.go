@@ -3,6 +3,7 @@ package platform
 import (
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -93,9 +94,46 @@ func (p *Platform) EvalRunsView(who auth.Principal, name string) ([]evals.Run, e
 	if !p.Seer(who).Suite(suite) {
 		return nil, auth.ErrForbidden
 	}
-	records, err := p.Evals.History(who.Tenant, name)
+	runs, _, err := p.EvalSuiteListing(who, suite)
+	return runs, err
+}
+
+// EvalSchedule is when a suite's schedule next starts it, as runDueEvals
+// decides it. Busy means a run of the suite is going: the loop skips the
+// suite until it ends, so the next run comes after it.
+type EvalSchedule struct {
+	Scheduled bool
+	Next      time.Time
+	Busy      bool
+}
+
+// evalSchedule reads a schedule from the runs given. A due suite starts
+// within a minute, so its next run is no earlier than now.
+func (p *Platform) evalSchedule(suite evals.Suite, runs []evals.Run) EvalSchedule {
+	next, scheduled := evals.NextRun(suite, runs)
+	if !scheduled {
+		return EvalSchedule{}
+	}
+	if now := p.now(); next.Before(now) {
+		next = now
+	}
+	busy := slices.ContainsFunc(runs, func(r evals.Run) bool { return r.Status == evals.Running })
+	return EvalSchedule{Scheduled: true, Next: next, Busy: busy}
+}
+
+// EvalSuiteListing is a suite's runs the caller may read and its schedule,
+// from one read of its history. The caller has already checked the suite is
+// theirs to see.
+//
+// The schedule a reader is shown comes from the runs they may read only:
+// a run they may not see (a replay of a private run, say) moves neither the
+// next run nor busy for them, so neither says such a run exists. For a reader
+// who sees every run it is what runDueEvals decides; for another it may say
+// the next run is due when the loop is waiting on a run they cannot see.
+func (p *Platform) EvalSuiteListing(who auth.Principal, suite evals.Suite) ([]evals.Run, EvalSchedule, error) {
+	records, err := p.Evals.History(who.Tenant, suite.Name)
 	if err != nil {
-		return nil, err
+		return nil, EvalSchedule{}, err
 	}
 	out := make([]evals.Run, 0, len(records))
 	for _, record := range records {
@@ -103,7 +141,7 @@ func (p *Platform) EvalRunsView(who auth.Principal, name string) ([]evals.Run, e
 			out = append(out, record.Run)
 		}
 	}
-	return out, nil
+	return out, p.evalSchedule(suite, out), nil
 }
 
 // MergeEvalSuiteReplay preserves server-owned snapshots on a public editing

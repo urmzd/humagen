@@ -37,6 +37,21 @@ func (m *Manager) BeginFor(ctx context.Context, tenant, actor, owner, provider, 
 
 // BeginRegistered accepts an issuer-bound client only for an explicit custom service.
 func (m *Manager) BeginRegistered(ctx context.Context, tenant, actor, owner, provider, resource string, registration *Registration) (Authorization, error) {
+	return m.beginRegistered(ctx, tenant, actor, owner, provider, resource, registration, "")
+}
+
+// BeginBound begins a person's own consent bound to the browser that asked:
+// binding is a secret that browser holds, and CompleteIdentity takes the
+// callback only with it, so a code and state carried to another browser,
+// or to a caller that is not one, complete nothing.
+func (m *Manager) BeginBound(ctx context.Context, tenant, person, provider, resource, binding string) (Authorization, error) {
+	if binding == "" || len(binding) > 512 {
+		return Authorization{}, ErrInvalid
+	}
+	return m.beginRegistered(ctx, tenant, person, person, provider, resource, nil, binding)
+}
+
+func (m *Manager) beginRegistered(ctx context.Context, tenant, actor, owner, provider, resource string, registration *Registration, binding string) (Authorization, error) {
 	if m == nil {
 		return Authorization{}, ErrUnavailable
 	}
@@ -100,7 +115,7 @@ func (m *Manager) BeginRegistered(ctx context.Context, tenant, actor, owner, pro
 	if err = m.limitPending(tenant, owner, provider); err != nil {
 		return Authorization{}, err
 	}
-	return m.begin(ctx, tenant, actor, owner, provider, p)
+	return m.begin(ctx, tenant, actor, owner, provider, p, binding)
 }
 
 // Connections lists only the selected owner's encrypted records in one tenant.
@@ -193,7 +208,7 @@ func (m *Manager) limitPending(tenant, owner, provider string) error {
 			return err
 		}
 		if !m.now().Before(pending.Transaction.Expires) {
-			batch.DeleteAt(tenant, row.Key, row.Version)
+			m.dropPending(batch, tenant, row)
 			continue
 		}
 		count++

@@ -1,18 +1,33 @@
+import { defaultCopy } from "@humagen/components";
 import { PlusIcon } from "@humagen/render-web";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@humagen/render-web/ui/sheet";
+import { Switch } from "@humagen/render-web/ui/switch";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   api,
   type ModelProvider,
   type ModelProviderCheck,
-  type ModelProviderChoice,
   type ModelProviderInput,
   type ModelProviderKind,
+  type ModelProviderSetup,
 } from "./api.ts";
 import { Pill } from "./cards.tsx";
 import { forgetConfiguredProviders, ProviderMark } from "./ModelChain.tsx";
-import { button, card, field, Label, Problem, primary } from "./ui.tsx";
+import {
+  button,
+  Confirm,
+  field,
+  Label,
+  MoreMenu,
+  Problem,
+  pageTitle,
+  primary,
+  SkeletonRows,
+} from "./ui.tsx";
+
+const words = defaultCopy.modelProviders;
 
 /** The providers an administrator enables by name. Agents, the platform's included, name these. */
 const KINDS: { kind: ModelProviderKind; name: string }[] = [
@@ -22,6 +37,7 @@ const KINDS: { kind: ModelProviderKind; name: string }[] = [
 ];
 
 const kindName = (kind: ModelProviderKind) => KINDS.find((k) => k.kind === kind)?.name ?? kind;
+const providerName = (name: string) => KINDS.find((k) => k.kind === name)?.name ?? name;
 
 const message = (error: unknown, fallback: string) =>
   error instanceof ApiError ? error.message : fallback;
@@ -52,6 +68,58 @@ function reach(m: ModelProvider): string {
 
 type Editing = { provider?: ModelProvider; kind: ModelProviderKind; name?: string };
 
+const providerList = "min-w-0 divide-y divide-aui-border rounded-aui-lg border border-aui-border";
+
+function ProviderGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-2">
+      <h2 className="font-medium text-aui-sm text-aui-fg">{label}</h2>
+      {children}
+    </section>
+  );
+}
+
+function ProviderRow({
+  name,
+  kind,
+  description,
+  children,
+  status,
+  problem,
+  confirm,
+}: {
+  name: string;
+  kind: string;
+  description: string;
+  children?: ReactNode;
+  status?: ReactNode;
+  problem?: string;
+  /** The second step of removing it, asked in place under the row. */
+  confirm?: ReactNode;
+}) {
+  return (
+    <li className="flex min-w-0 flex-col gap-2 px-3 py-2.5">
+      <div className="flex min-h-9 min-w-0 items-center gap-3 pointer-coarse:min-h-11">
+        <ProviderMark provider={kind} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-medium text-aui-sm text-aui-fg" title={name}>
+            {name}
+          </span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-aui-xs text-aui-muted" title={description}>
+              {description}
+            </span>
+            {status}
+          </div>
+        </div>
+        {children}
+      </div>
+      <Problem message={problem ?? null} />
+      {confirm}
+    </li>
+  );
+}
+
 /**
  * The providers agents and routing run on. Anthropic, OpenAI and Google are enabled by
  * name, which is what agents' models name; any server that speaks the OpenAI API is
@@ -67,23 +135,42 @@ export function ModelProviderSettings({
   /** A provider was enabled, changed or turned off. */
   onChanged?: () => void;
 }) {
-  const [own, setOwn] = useState<ModelProvider[] | null>(null);
-  const [declared, setDeclared] = useState<ModelProviderChoice[]>([]);
+  const [setup, setSetup] = useState<ModelProviderSetup | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Editing | null>(null);
+  const [editor, setEditor] = useState<Editing | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [checks, setChecks] = useState<Record<string, ModelProviderCheck | "checking">>({});
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [changing, setChanging] = useState<Record<string, boolean>>({});
+  const [rowProblems, setRowProblems] = useState<Record<string, string>>({});
+  const opener = useRef<HTMLElement | null>(null);
+  const add = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(() => {
+    setProblem(null);
     api
       .modelProviderSetup()
-      .then((s) => {
-        setOwn(s.workspace ?? []);
-        setDeclared(s.providers.filter((p) => p.source === "deployment"));
-      })
-      .catch((e) => setProblem(message(e, "The providers could not be read.")));
+      .then(setSetup)
+      .catch((e) => setProblem(message(e, words.readFailed)));
   }, []);
-  useEffect(load, []);
+  useEffect(() => load(), [load]);
+
+  const begin = (next: Editing, trigger = document.activeElement) => {
+    opener.current = trigger instanceof HTMLButtonElement ? trigger : add.current;
+    setEditor(next);
+  };
+
+  const saveWorkspace = (next: (own: ModelProvider[]) => ModelProvider[]) => {
+    setSetup((current) => current && { ...current, workspace: next(current.workspace ?? []) });
+    forgetConfiguredProviders();
+    onChanged?.();
+  };
+  const update = (m: ModelProvider) =>
+    saveWorkspace((own) =>
+      own.some((p) => p.name === m.name)
+        ? own.map((p) => (p.name === m.name ? m : p))
+        : [...own, m],
+    );
 
   const check = (name: string) => {
     setChecks((c) => ({ ...c, [name]: "checking" }));
@@ -97,175 +184,240 @@ export function ModelProviderSettings({
             id: name,
             name,
             status: "down",
-            detail: message(e, "Not checked"),
+            detail: message(e, words.checkFailed),
             latency_ms: 0,
           },
         })),
       );
   };
-  const remove = (name: string) => {
-    setProblem(null);
-    api
-      .deleteModelProvider(name)
-      .then(() => {
-        setConfirming(null);
-        forgetConfiguredProviders();
-        load();
-        onChanged?.();
-      })
-      .catch((e) => {
-        setConfirming(null);
-        setProblem(message(e, "The provider could not be removed."));
-      });
+  const setEnabled = async (name: string, enabled: boolean) => {
+    setChanging((current) => ({ ...current, [name]: true }));
+    setRowProblems((current) => ({ ...current, [name]: "" }));
+    try {
+      update(await api.setModelProviderEnabled(name, enabled));
+      setChecks(({ [name]: _old, ...rest }) => rest);
+    } catch (error) {
+      setRowProblems((current) => ({
+        ...current,
+        [name]: message(error, words.updateFailed(name)),
+      }));
+    } finally {
+      setChanging((current) => ({ ...current, [name]: false }));
+    }
   };
   const saved = (m: ModelProvider) => {
-    setEditing(null);
-    forgetConfiguredProviders();
-    load();
-    onChanged?.();
-    check(m.name);
+    update(m);
+    setEditor(null);
+    if (!m.disabled) check(m.name);
+  };
+  const remove = async (name: string) => {
+    setChanging((current) => ({ ...current, [name]: true }));
+    setRowProblems((current) => ({ ...current, [name]: "" }));
+    try {
+      await api.deleteModelProvider(name);
+      saveWorkspace((own) => own.filter((m) => m.name !== name));
+      setChecks(({ [name]: _old, ...rest }) => rest);
+      setRowProblems(({ [name]: _old, ...rest }) => rest);
+    } catch (error) {
+      setRowProblems((current) => ({ ...current, [name]: message(error, words.removeFailed) }));
+    } finally {
+      setChanging(({ [name]: _old, ...rest }) => rest);
+    }
   };
 
-  if (own === null) return <Problem message={problem} />;
-  const deployed = (name: string) => declared.find((d) => d.name === name);
-  const mine = (name: string) => own.find((m) => m.name === name);
-  const servers = own.filter((m) => !KINDS.some((k) => k.kind === m.name));
-  const extraDeclared = declared.filter((d) => !KINDS.some((k) => k.kind === d.name));
+  const own = setup?.workspace ?? [];
+  const choices = setup?.providers ?? [];
+  const deployed = choices.filter((p) => p.source === "deployment");
+  const readOnly = canEdit ? [] : choices.filter((p) => p.source === "workspace" && p.declared);
+  const managed = own.filter((m) => !deployed.some((p) => p.name === m.name));
+  const configured = [...deployed, ...readOnly, ...managed];
+  const available = KINDS.filter(({ kind }) => !configured.some((p) => p.name === kind));
 
-  const status = (name: string) => {
-    const c = checks[name];
-    if (c === "checking") return <Pill>Checking</Pill>;
-    if (!c) return <Pill tone="ok">Enabled</Pill>;
+  const workspaceRow = (m: ModelProvider) => {
+    const name = providerName(m.name);
+    const c = m.disabled ? undefined : checks[m.name];
+    const result = c && c !== "checking" ? c : undefined;
+    const pending = changing[m.name] || c === "checking";
+    const status =
+      c === "checking" ? (
+        <Pill>{words.status.checking}</Pill>
+      ) : result ? (
+        <Pill
+          tone={
+            result.status === "operational" ? "ok" : result.status === "degraded" ? "warn" : "bad"
+          }
+        >
+          {words.status[result.status]}
+        </Pill>
+      ) : undefined;
     return (
-      <Pill tone={c.status === "operational" ? "ok" : c.status === "degraded" ? "warn" : "bad"}>
-        {c.status === "operational" ? "Answering" : c.status === "degraded" ? "Slow" : "Failing"}
-      </Pill>
+      <ProviderRow
+        key={m.name}
+        name={name}
+        kind={m.kind}
+        description={reach(m)}
+        status={status}
+        problem={
+          rowProblems[m.name] || (result?.status !== "operational" ? result?.detail : undefined)
+        }
+        confirm={
+          removing === m.name && (
+            <Confirm
+              question={`${words.removeProvider(name)}? ${words.removeHint}`}
+              action={words.remove}
+              onConfirm={() => {
+                setRemoving(null);
+                void remove(m.name);
+              }}
+              onKeep={() => setRemoving(null)}
+            />
+          )
+        }
+      >
+        <div className="flex shrink-0 items-center gap-1">
+          <Switch
+            type="button"
+            aria-label={words.activation(name)}
+            checked={!m.disabled}
+            aria-busy={changing[m.name] || undefined}
+            aria-disabled={pending || undefined}
+            disabled={!canEdit}
+            className="relative aria-disabled:cursor-wait aria-disabled:opacity-50 data-[state=unchecked]:border-aui-muted data-[state=unchecked]:[&>[data-slot=switch-thumb]]:bg-aui-muted pointer-coarse:before:absolute pointer-coarse:before:-inset-y-2.5 pointer-coarse:before:inset-x-0"
+            onCheckedChange={(enabled) => {
+              if (!pending) void setEnabled(m.name, enabled);
+            }}
+          />
+          {canEdit && (
+            <MoreMenu
+              label={words.manage(name)}
+              items={[
+                ...(!m.disabled
+                  ? [{ label: words.check, disabled: pending, onSelect: () => check(m.name) }]
+                  : []),
+                {
+                  label: words.edit,
+                  disabled: pending,
+                  onSelect: () => begin({ provider: m, kind: m.kind, name: m.name }),
+                },
+                {
+                  label: words.remove,
+                  destructive: true,
+                  disabled: pending,
+                  onSelect: () => setRemoving(m.name),
+                },
+              ]}
+            />
+          )}
+        </div>
+      </ProviderRow>
     );
   };
-  const actions = (m: ModelProvider, kind: ModelProviderKind) =>
-    canEdit &&
-    (confirming === m.name ? (
-      <span className="flex items-center gap-2">
-        <button type="button" className={button} onClick={() => setConfirming(null)}>
-          Keep
-        </button>
-        <button type="button" className={primary} onClick={() => remove(m.name)}>
-          Turn Off {m.name}
-        </button>
-      </span>
-    ) : (
-      <span className="flex items-center gap-1">
-        <button type="button" className={button} onClick={() => check(m.name)}>
-          Check
-        </button>
-        <button
-          type="button"
-          className={button}
-          onClick={() => setEditing({ provider: m, kind, name: m.name })}
-        >
-          Edit
-        </button>
-        <button type="button" className={button} onClick={() => setConfirming(m.name)}>
-          Turn Off
-        </button>
-      </span>
-    ));
-  const failure = (name: string) => {
-    const c = checks[name];
-    return c && c !== "checking" && c.status !== "operational" && c.detail ? (
-      <span className="text-aui-xs text-aui-bad">{c.detail}</span>
-    ) : null;
-  };
-  const row = "flex min-w-0 flex-wrap items-center gap-3 px-3 py-2.5";
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <Problem message={problem} />
-      <ul
-        aria-label="Model providers"
-        className="flex min-w-0 flex-col divide-y divide-aui-border rounded-aui-lg border border-aui-border"
-      >
-        {KINDS.map(({ kind, name }) => {
-          const d = deployed(kind);
-          const m = mine(kind);
-          return (
-            <li key={kind} className={row}>
-              <ProviderMark provider={kind} />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-aui-sm font-medium text-aui-fg">{name}</span>
-                <span className="truncate text-aui-xs text-aui-muted">
-                  {d ? "Set in the deployment's spec" : m ? reach(m) : "Not enabled"}
-                </span>
-                {m && failure(m.name)}
-              </div>
-              {d ? (
-                <Pill tone="ok">Deployment</Pill>
-              ) : m ? (
-                <>
-                  {status(m.name)}
-                  {actions(m, kind)}
-                </>
-              ) : (
-                canEdit && (
-                  <button
-                    type="button"
-                    className={primary}
-                    onClick={() => setEditing({ kind, name: kind })}
+    <>
+      <header className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 pb-2">
+        <div className="min-w-0 flex-[1_1_18rem]">
+          <h1 className={pageTitle}>{words.title}</h1>
+        </div>
+        {canEdit && (
+          <button
+            ref={add}
+            type="button"
+            className={primary}
+            disabled={!setup}
+            onClick={(event) => begin({ kind: "openai" }, event.currentTarget)}
+          >
+            <PlusIcon size={14} />
+            {words.add}
+          </button>
+        )}
+      </header>
+      <Problem
+        message={problem}
+        action={
+          <button type="button" className={button} onClick={load}>
+            {defaultCopy.retry}
+          </button>
+        }
+      />
+      {!setup && !problem && <SkeletonRows height="3.5rem" />}
+      {setup && (
+        <>
+          <ProviderGroup label={words.configured}>
+            {configured.length === 0 ? (
+              <p className="text-aui-sm text-aui-muted">{words.empty}</p>
+            ) : (
+              <ul aria-label={words.configured} className={providerList}>
+                {deployed.map((p) => (
+                  <ProviderRow
+                    key={p.name}
+                    name={providerName(p.name)}
+                    kind={KINDS.find((k) => k.kind === p.name)?.kind ?? p.kind ?? p.name}
+                    description={words.deploymentHint}
                   >
-                    Enable
-                  </button>
-                )
-              )}
-            </li>
-          );
-        })}
-        {extraDeclared.map((d) => (
-          <li key={`d:${d.name}`} className={row}>
-            <ProviderMark provider={d.kind ?? d.name} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-aui-sm font-medium text-aui-fg">{d.name}</span>
-              <span className="truncate text-aui-xs text-aui-muted">
-                {d.kind ? kindName(d.kind) : "Provider"} · set in the deployment's spec
-              </span>
-            </div>
-            <Pill tone="ok">Deployment</Pill>
-          </li>
-        ))}
-        {servers.map((m) => (
-          <li key={m.name} className={row}>
-            <ProviderMark provider={m.kind} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-aui-sm font-medium text-aui-fg">{m.name}</span>
-              <span className="truncate text-aui-xs text-aui-muted" title={reach(m)}>
-                {reach(m)}
-              </span>
-              {failure(m.name)}
-            </div>
-            {status(m.name)}
-            {actions(m, m.kind)}
-          </li>
-        ))}
-      </ul>
-      {canEdit && editing === null && (
-        <button
-          type="button"
-          className={`${button} self-start`}
-          onClick={() => setEditing({ kind: "openai" })}
+                    <Pill>{words.deployment}</Pill>
+                  </ProviderRow>
+                ))}
+                {readOnly.map((p) => (
+                  <ProviderRow
+                    key={p.name}
+                    name={providerName(p.name)}
+                    kind={p.kind ?? p.name}
+                    description={words.workspaceHint}
+                  >
+                    <Pill>{words.enabled}</Pill>
+                  </ProviderRow>
+                ))}
+                {managed.map(workspaceRow)}
+              </ul>
+            )}
+          </ProviderGroup>
+          {available.length > 0 && (
+            <ProviderGroup label={words.available}>
+              <ul aria-label={words.available} className={providerList}>
+                {available.map(({ kind, name }) => (
+                  <ProviderRow key={kind} name={name} kind={kind} description={words.unconfigured}>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className={button}
+                        aria-label={words.setupProvider(name)}
+                        onClick={(event) => begin({ kind, name: kind }, event.currentTarget)}
+                      >
+                        {words.setup}
+                      </button>
+                    )}
+                  </ProviderRow>
+                ))}
+              </ul>
+            </ProviderGroup>
+          )}
+        </>
+      )}
+      <Sheet open={editor !== null} onOpenChange={(open) => !open && !saving && setEditor(null)}>
+        <SheetContent
+          aria-describedby={undefined}
+          onCloseAutoFocus={(event) => {
+            const target = opener.current?.isConnected ? opener.current : add.current;
+            if (target) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
         >
-          <PlusIcon size={14} />
-          Add OpenAI-Compatible Server
-        </button>
-      )}
-      {editing !== null && (
-        <ProviderForm
-          key={editing.provider?.name ?? editing.name ?? "server"}
-          editing={editing}
-          taken={[...own.map((m) => m.name), ...declared.map((d) => d.name)]}
-          onCancel={() => setEditing(null)}
-          onSaved={saved}
-        />
-      )}
-    </div>
+          {editor && (
+            <ProviderForm
+              editing={editor}
+              taken={configured.map((m) => m.name)}
+              busy={saving}
+              setBusy={setSaving}
+              onCancel={() => setEditor(null)}
+              onSaved={saved}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
@@ -276,11 +428,15 @@ export function ModelProviderSettings({
 function ProviderForm({
   editing,
   taken,
+  busy,
+  setBusy,
   onCancel,
   onSaved,
 }: {
   editing: Editing;
   taken: string[];
+  busy: boolean;
+  setBusy: (busy: boolean) => void;
   onCancel: () => void;
   onSaved: (saved: ModelProvider) => void;
 }) {
@@ -295,7 +451,6 @@ function ProviderForm({
   const [vertex, setVertex] = useState(!!existing?.vertex);
   const [project, setProject] = useState(existing?.vertex?.project ?? "");
   const [location, setLocation] = useState(existing?.vertex?.location ?? "us-central1");
-  const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const keeps = !!existing && (existing.key_stored || !!existing.key_ref);
 
@@ -323,121 +478,118 @@ function ProviderForm({
 
   const keyOptional = keeps || (server && !!baseURL.trim()) || (kind === "google" && vertex);
   const title = existing
-    ? `Change ${existing.name}`
+    ? `Edit ${providerName(existing.name)}`
     : server
-      ? "Add an OpenAI-compatible server"
-      : `Enable ${kindName(kind)}`;
+      ? words.add
+      : words.setupProvider(kindName(kind));
   return (
-    <form
-      className={`${card} flex min-w-0 flex-col gap-3`}
-      onSubmit={submit}
-      aria-label="Model provider"
-    >
-      <h2 className="flex items-center gap-2 text-aui-sm font-medium text-aui-fg">
-        <ProviderMark provider={kind} />
-        {title}
-      </h2>
-      {server && (
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-          <Label text="Name" hint="What agents name it by, such as groq or ollama.">
-            <input
-              className={field}
-              value={name}
-              disabled={!!existing}
-              maxLength={63}
-              pattern="[a-z0-9][a-z0-9-]*"
-              required
-              onChange={(e) => setName(e.target.value.toLowerCase())}
-            />
-          </Label>
-          <Label text="Base URL" hint="Its /v1 address.">
-            <input
-              className={field}
-              type="url"
-              required
-              placeholder="http://127.0.0.1:11434/v1"
-              value={baseURL}
-              onChange={(e) => setBaseURL(e.target.value)}
-            />
-          </Label>
-        </div>
-      )}
-      {kind === "google" && (
-        <label className="flex items-center gap-2 text-aui-sm">
-          <input type="checkbox" checked={vertex} onChange={(e) => setVertex(e.target.checked)} />
-          Use Vertex AI with the server's own sign-in
-        </label>
-      )}
-      {kind === "google" && vertex && (
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-          <Label text="Project">
-            <input
-              className={field}
-              required
-              value={project}
-              onChange={(e) => setProject(e.target.value)}
-            />
-          </Label>
-          <Label text="Location">
-            <input
-              className={field}
-              required
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </Label>
-        </div>
-      )}
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
-        <Label text="Key">
-          <NativeSelect
-            aria-label="How the key is given"
-            value={keyWay}
-            onChange={(e) => setKeyWay(e.target.value as "value" | "env")}
-          >
-            <option value="value">Paste it</option>
-            <option value="env">Environment variable</option>
-          </NativeSelect>
-        </Label>
-        {keyWay === "value" ? (
-          <Label
-            text="Value"
-            hint={
-              keeps
-                ? "Leave empty to keep the key it has."
-                : "Kept in the secret store, never shown again."
-            }
-          >
-            <input
-              className={field}
-              type="password"
-              autoComplete="off"
-              required={!keyOptional}
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-            />
-          </Label>
-        ) : (
-          <Label text="Variable" hint="One the server's configuration gives this workspace.">
-            <input
-              className={field}
-              placeholder="env:HUMAGEN_ANTHROPIC_KEY"
-              required={!keyOptional}
-              value={keyRef}
-              onChange={(e) => setKeyRef(e.target.value)}
-            />
-          </Label>
+    <>
+      <SheetHeader>
+        <SheetTitle>{title}</SheetTitle>
+      </SheetHeader>
+      <form className="flex min-w-0 flex-col gap-3" onSubmit={submit} aria-label="Model provider">
+        {server && (
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+            <Label text="Name" hint="What agents name it by, such as groq or ollama.">
+              <input
+                className={field}
+                value={name}
+                disabled={!!existing}
+                maxLength={63}
+                pattern="[a-z0-9][a-z0-9-]*"
+                required
+                onChange={(e) => setName(e.target.value.toLowerCase())}
+              />
+            </Label>
+            <Label text="Base URL" hint="Its /v1 address.">
+              <input
+                className={field}
+                type="url"
+                required
+                placeholder="http://127.0.0.1:11434/v1"
+                value={baseURL}
+                onChange={(e) => setBaseURL(e.target.value)}
+              />
+            </Label>
+          </div>
         )}
-      </div>
-      <Problem message={problem} />
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" className={button} onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="submit" className={primary} disabled={busy}>
-          {busy ? "Saving…" : existing ? "Save" : server ? "Add Server" : "Enable"}
-        </button>
-      </div>
-    </form>
+        {kind === "google" && (
+          <label className="flex items-center gap-2 text-aui-sm">
+            <input type="checkbox" checked={vertex} onChange={(e) => setVertex(e.target.checked)} />
+            Use Vertex AI with the server's own sign-in
+          </label>
+        )}
+        {kind === "google" && vertex && (
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+            <Label text="Project">
+              <input
+                className={field}
+                required
+                value={project}
+                onChange={(e) => setProject(e.target.value)}
+              />
+            </Label>
+            <Label text="Location">
+              <input
+                className={field}
+                required
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
+            </Label>
+          </div>
+        )}
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <Label text="Key">
+            <NativeSelect
+              aria-label="How the key is given"
+              value={keyWay}
+              onChange={(e) => setKeyWay(e.target.value as "value" | "env")}
+            >
+              <option value="value">Paste it</option>
+              <option value="env">Environment variable</option>
+            </NativeSelect>
+          </Label>
+          {keyWay === "value" ? (
+            <Label
+              text="Value"
+              hint={
+                keeps
+                  ? "Leave empty to keep the key it has."
+                  : "Kept in the secret store, never shown again."
+              }
+            >
+              <input
+                className={field}
+                type="password"
+                autoComplete="off"
+                required={!keyOptional}
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+              />
+            </Label>
+          ) : (
+            <Label text="Variable" hint="One the server's configuration gives this workspace.">
+              <input
+                className={field}
+                placeholder="env:HUMAGEN_ANTHROPIC_KEY"
+                required={!keyOptional}
+                value={keyRef}
+                onChange={(e) => setKeyRef(e.target.value)}
+              />
+            </Label>
+          )}
+        </div>
+        <Problem message={problem} />
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className={button} disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className={primary} disabled={busy}>
+            {busy ? "Saving…" : existing ? "Save" : server ? "Add Server" : words.setup}
+          </button>
+        </div>
+      </form>
+    </>
   );
 }

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/connectors"
@@ -311,6 +313,9 @@ func (p *Platform) DeleteClient(_ context.Context, tenant, id, by string) error 
 	if err := p.secrets.Drop(tenant, id); err != nil {
 		return err
 	}
+	if err := p.RepoSettings.DeleteClient(tenant, id); err != nil {
+		return err
+	}
 	if err := p.Policies.Delete(tenant, policy.Scope{Kind: policy.Client, Name: id}, by, p.now()); err != nil && !errors.Is(err, policy.ErrNotFound) {
 		return err
 	}
@@ -411,6 +416,11 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 	return creds, secrets, nil
 }
 
+// appLoginReader reads the login of a GitHub App's bot account from GitHub.
+type appLoginReader interface {
+	AppLogin(ctx context.Context) (string, error)
+}
+
 // keep stores the secret values that were written, and forgets a stored value
 // that a reference has replaced.
 func (p *Platform) keep(c clients.Client, in ClientInput) error {
@@ -458,7 +468,15 @@ func (p *Platform) bind(s *surface, st *seat) {
 	}
 	tenant, client, name := st.client.Tenant, st.client.ID, s.name
 	stopper.OnStop(func(ctx context.Context, runID, who string) error {
-		return p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		err := p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		if errors.Is(err, ErrForbidden) {
+			p.log.Info("platform: a stop from a surface was refused", "surface", name, "tenant", tenant, "client", client, "run", runID, "user", who, "why", err.Error())
+			return fmt.Errorf("%w: %w", slack.ErrStopRefused, err)
+		}
+		if errors.Is(err, errNothingToStop) {
+			return fmt.Errorf("%w: %w", slack.ErrNothingToStop, err)
+		}
+		return err
 	})
 }
 
@@ -494,6 +512,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			DeliveryState: deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.Sender = func(team, user string) bool { return p.slackSender(c, team, user) }
 		cfg.ContinueThread = func(team, channel, thread string) bool {
 			return p.continueSurface(c, address.Address{Connector: "slack", Workspace: team, Path: []string{channel}}.WithParam("thread", thread))
 		}
@@ -514,7 +533,8 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 	case clients.GitHub:
 		guard := p.guardFor(c)
 		var api github.API
-		if github.IsPrivateKeyPEM(secrets.token) {
+		app := github.IsPrivateKeyPEM(secrets.token)
+		if app {
 			appAPI, err := github.NewAppHTTPAPI(p.observeGitHubAppAuth(c, github.AppConfig{
 				AppID:          c.Identity.AppID,
 				InstallationID: c.Identity.Installation,
@@ -548,8 +568,11 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			Tenant:         c.Tenant,
 			DeliveryState:  deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
-		// A comment that mentions the app and names no agent is raised
-		// naming none, and stamp decides who answers it where it is filed.
+		// Only the trigger asks ("@humagen", or the app's login): a comment
+		// that holds it and names no agent after it is raised naming none,
+		// and stamp decides who answers it where it is filed. An agent's
+		// name alone asks nobody, since on GitHub it may be someone's account.
+		cfg.Triggers = c.Triggers()
 		if g := c.GitHub; g != nil {
 			cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.Checks, g.Guides, g.Mutations, g.ReadRepositories
 			cfg.Login = g.Login
@@ -563,13 +586,51 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
+		cfg.AsksReview = func(v ghtransport.View) (bool, error) { return p.asksReview(c, v) }
+		cfg.ReviewPolicy = func(ctx context.Context, v ghtransport.View) (github.ReviewGrant, error) {
+			return p.reviewGrant(ctx, c, v)
+		}
+		// One approval of each commit is claimed in the store every
+		// replica shares; without it nothing approves.
+		cfg.ApprovalClaims, cfg.Log = p.approvalClaims, p.log
+		// Only a client that authenticates as a GitHub App approves, and
+		// only when GitHub names its bot account as the client's login. Its
+		// own checks are told apart by its ID as well as its login. A token
+		// client posts as the token's person, and never approves.
+		if app {
+			if id, err := strconv.ParseInt(strings.TrimSpace(c.Identity.AppID), 10, 64); err == nil && id > 0 {
+				cfg.AppID = id
+			}
+			if reader, ok := api.(appLoginReader); ok {
+				cfg.AppLogin = reader.AppLogin
+			}
+		}
+		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
+		installed := p.installedRepos(c, api, app)
+		if installed != nil {
+			cfg.MayRead = installed.Covers
+		}
+		// A repository its settings keep to its own runs is read by no other
+		// run, whatever grants it (github_repo_settings.go).
+		cfg.ReadRefused = func(_ context.Context, owner, repo string) bool {
+			return !p.readableElsewhere(c.Tenant, owner+"/"+repo)
+		}
 		peer, err := github.New(cfg)
 		if err != nil {
 			return nil, refused(err)
 		}
-		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard}
+		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard, installed: installed}
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
+		}
+		// The reads the platform makes for a run on an issue or pull request
+		// go through the connector, as the run's own reads do, so a redirect
+		// to another repository is decided by the same grants.
+		if _, ok := api.(github.ContextAPI); ok {
+			st.context = peer.PlaceReader()
+		}
+		if _, ok := api.(github.LatestCommentsAPI); ok {
+			st.comments = peer
 		}
 		return st, nil
 	}

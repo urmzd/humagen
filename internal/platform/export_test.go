@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/isolation"
 	"github.com/urmzd/saige/flow/runtime"
@@ -20,6 +21,14 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
+
+// SurfaceAnswered reports whether a client has an answer on record at a
+// place on its surface: the thread a run answered in, or the answer's own
+// message. A reply there continues it and a reaction there finds its run.
+func (p *Platform) SurfaceAnswered(tenant, client string, at address.Address) bool {
+	c, err := p.Clients.Get(tenant, client)
+	return err == nil && p.continueSurface(c, at)
+}
 
 // UseTool calls one of a turn's file tools the way the agent loop would, and
 // returns what the tool reported on the run's stream.
@@ -181,3 +190,81 @@ func (p *Platform) ReleaseTurn(req runtime.Request) { p.releaseTurn(req) }
 
 // SetPersonCommandTimeout shortens how long a person's command may run.
 func (p *Platform) SetPersonCommandTimeout(d time.Duration) { p.personCommands.timeout = d }
+
+// SetImageRepullTimeout bounds one pull of a ready image at start to d,
+// and returns what puts it back.
+func SetImageRepullTimeout(d time.Duration) (restore func()) {
+	was := imageRepullTimeout
+	imageRepullTimeout = d
+	return func() { imageRepullTimeout = was }
+}
+
+// SetImageCheckTimeout bounds one image's pull and first start to d, and
+// returns what puts it back.
+func SetImageCheckTimeout(d time.Duration) (restore func()) {
+	was := imageCheckTimeout
+	imageCheckTimeout = d
+	return func() { imageCheckTimeout = was }
+}
+
+// SetImageBeats sets how often a check under way says so, how long a
+// silent one is before it counts as stranded, and how often a process looks
+// for those. It returns what puts them back.
+func SetImageBeats(every, stale, sweep time.Duration) (restore func()) {
+	wasEvery, wasStale, wasSweep := imageBeatEvery, imageBeatStale, imageSweepEvery
+	imageBeatEvery, imageBeatStale, imageSweepEvery = every, stale, sweep
+	return func() { imageBeatEvery, imageBeatStale, imageSweepEvery = wasEvery, wasStale, wasSweep }
+}
+
+// SweepImages does one pass of the images sweep: checks no process is
+// running are started again, and what is kept warm is read again.
+func SweepImages(p *Platform) {
+	p.adoptStrandedChecks()
+	p.keepImagesWarm()
+}
+
+// SessionDigest is the digest a session's runs and a person's commands
+// lease, or why they are refused one.
+func SessionDigest(p *Platform, tenant, thread string) (string, error) {
+	return p.imageOf(tenant, thread)
+}
+
+// QuickToolSeedRetries makes a provider that was unreachable at start be
+// asked again every few milliseconds, for the length of the test.
+func QuickToolSeedRetries(t interface{ Cleanup(func()) }) {
+	first, most := toolSeedRetry, toolSeedRetryMax
+	toolSeedRetry, toolSeedRetryMax = 20*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { toolSeedRetry, toolSeedRetryMax = first, most })
+}
+
+// ScoreOnline scores a finished run against its online checks, as the hook
+// a run's end calls does.
+func (p *Platform) ScoreOnline(run runs.Run) error { return p.scoreOnline(run) }
+
+// WaitTitles returns once every session title being generated is kept or
+// dropped.
+func (p *Platform) WaitTitles() { p.titling.Wait() }
+
+// CleanTitle is cleanTitle, for tests.
+func CleanTitle(answer string) string { return cleanTitle(answer) }
+
+// ThinTitle is thinTitle, for tests.
+func ThinTitle(text string) bool { return thinTitle(text) }
+
+// ClientAction calls a client's connector action from source, as a run's
+// tool call reaches it, and returns the action's summary.
+func (p *Platform) ClientAction(ctx context.Context, tenant, client, name string, source address.Address, args string) (string, error) {
+	for _, s := range p.surfaces {
+		st := s.seat(tenant, client)
+		if st == nil {
+			continue
+		}
+		for _, a := range st.peer.Actions() {
+			if a.Name == name {
+				r, err := a.Invoke(ctx, source, []byte(args))
+				return r.Summary, err
+			}
+		}
+	}
+	return "", os.ErrNotExist
+}
