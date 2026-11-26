@@ -75,7 +75,7 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
 
 /** One set of tracks for the header and rows. The action column fits all three controls. */
 const alertRow =
-  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_15rem]";
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-2 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_15rem]";
 const alertActions =
   "col-start-2 grid min-w-0 grid-cols-[repeat(2,minmax(0,max-content))] items-center gap-2 @lg:flex @3xl:pointer-fine:col-start-auto @3xl:pointer-fine:justify-end";
 /**
@@ -707,8 +707,10 @@ export function AlertsPage({
             // Laid out as a table, so alerts line up: what it is, how pressing, when, and what to do.
             // It is a list to a screen reader: each row is its own grid with the same tracks,
             // and a narrow or touch row stacks, which a real table cannot do.
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <div className={`${alertRow} min-h-9 py-1 text-aui-2xs text-aui-muted`}>
+            <div className="flex min-w-0 flex-col">
+              <div
+                className={`${alertRow} min-h-9 border-aui-border border-b py-1 text-aui-muted text-aui-xs`}
+              >
                 <label className={alertCheck}>
                   {canWrite && (
                     <input
@@ -760,7 +762,7 @@ export function AlertsPage({
                   </>
                 )}
               </div>
-              <ul aria-label={words.table.label} className="flex min-w-0 flex-col gap-1.5">
+              <ul aria-label={words.table.label} className="flex min-w-0 flex-col">
                 {shown.map((a) => {
                   const to = alertDestination(a);
                   const label = alertActionLabel(a);
@@ -768,8 +770,8 @@ export function AlertsPage({
                   return (
                     <li
                       key={a.id}
-                      // The same soft row, with space between rows, as every table (DataTable).
-                      className={`${alertRow} rounded-aui-lg py-3 transition-colors hover:bg-aui-hover ${selected.has(a.id) ? "bg-aui-hover" : "bg-[color-mix(in_oklab,var(--aui-hover)_55%,transparent)]"}`}
+                      // The same ruled row as every table (DataTable).
+                      className={`${alertRow} border-aui-border border-b py-3 transition-colors last:border-0 hover:bg-aui-hover ${selected.has(a.id) ? "bg-aui-hover" : ""}`}
                     >
                       <label className={alertCheck}>
                         {canWrite && (

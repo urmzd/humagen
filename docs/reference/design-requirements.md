@@ -1281,9 +1281,22 @@ Rules:
 Contrast, computed from the tokens: accent on the page 6.3:1 in light and
 7.5:1 in dark; white on the light accent 6.3:1; ink on the dark accent 7.2:1.
 
-Not changed, and why: Sessions, Projects and Alerts keep `DataTable`'s soft
-rounded rows and Agents keeps its ruled table with a fixed set of columns,
-which `agents.test.tsx` pins. Whether the two become one is the owner's call.
+- Every list of records is ruled rows (owner's choice, 2026-11-26): a quiet
+  header on a rule, a rule under each row, a fill on hover and on the open
+  row. `DataTable` draws it, so Sessions, Projects and a GitHub app's
+  repositories have it, and Alerts and Agents draw the same row. Before,
+  `DataTable` drew each row as a filled rounded box with a gap between rows,
+  while Agents, Apps and Audit were ruled. Agents keeps its fixed set of
+  columns, which `agents.test.tsx` pins.
+- An integration's mark is drawn in its brand's color (`ConnectionLogo`), so
+  Docs, Sheets and Slides are told apart; a mark that is black, or too dark
+  for the dark theme, takes the text color.
+
+Not changed: an approval still says it waits in four places (the header, the
+step line, the open step and the card). `StepGroup` opens a waiting step by
+rule, so removing the repeat is a change to that rule. The site's recorded
+demo still shows the console before this change; `make showcase` records it
+again on live models.
 
 ### DES-091: One component vocabulary, one layout rule
 

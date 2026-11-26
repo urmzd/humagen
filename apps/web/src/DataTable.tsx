@@ -24,24 +24,13 @@ const hidden = {
   lg: "hidden lg:table-cell",
 };
 
-/** Where every cell after this one hides, it ends the row: round it there, not square. */
-const ends = {
-  sm: "max-sm:rounded-r-aui-lg",
-  md: "max-md:rounded-r-aui-lg",
-  lg: "max-lg:rounded-r-aui-lg",
-};
-function endOf(later: { hide?: keyof typeof ends }[], control: boolean): string {
-  if (control || !later.length || later.some((c) => !c.hide)) return "";
-  const bp = (["sm", "md", "lg"] as const).find((b) => later.some((c) => c.hide === b));
-  return bp ? ends[bp] : "";
-}
-
 /**
- * Things to compare, as one table built from shadcn's Table: a quiet header,
- * then each thing as a soft rounded row with space between rows. The first
- * column holds the row's link and the whole row opens it; a trailing control,
- * such as the ⋯ menu, stays clickable above that link. Every list of things
- * a person compares and opens uses this: Sessions, Projects, Alerts.
+ * Things to compare, as one table built from shadcn's Table: a quiet header
+ * on a rule, then each thing as a row with a rule under it and a fill while
+ * the pointer is on it. The first column holds the row's link and the whole
+ * row opens it; a trailing control, such as the ⋯ menu, stays clickable
+ * above that link. Every list of things a person compares and opens uses
+ * this: Sessions, Projects, repositories. Alerts draws the same row.
  */
 export function DataTable<T>({
   label,
@@ -64,22 +53,22 @@ export function DataTable<T>({
 }) {
   const [first, ...rest] = columns;
   if (!first) return null;
-  const cell =
-    "bg-[color-mix(in_oklab,var(--aui-hover)_55%,transparent)] px-4 py-3 transition-colors group-hover:bg-aui-hover group-data-[current=true]:bg-aui-hover first:rounded-l-aui-lg last:rounded-r-aui-lg";
+  // The rules run the width of the page's column; the words stand a little in from its edges.
+  const cell = "px-3 py-3 first:pl-2 last:pr-2";
   return (
-    <Table aria-label={label} className="border-separate border-spacing-y-1.5 text-aui-sm">
-      <TableHeader className="[&_tr]:border-0">
-        <TableRow className="border-0 hover:bg-transparent">
+    <Table aria-label={label} className="text-aui-sm">
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
           {columns.map((c) => (
             <TableHead
               key={c.name}
-              className={`h-6 px-4 font-normal text-aui-2xs text-aui-muted ${c.hide ? hidden[c.hide] : ""} ${c.className ?? ""}`}
+              className={`h-9 px-3 font-normal text-aui-xs text-aui-muted first:pl-2 last:pr-2 ${c.hide ? hidden[c.hide] : ""} ${c.className ?? ""}`}
             >
               {c.name}
             </TableHead>
           ))}
           {control && (
-            <TableHead className="h-6 w-10 px-2">
+            <TableHead className="h-9 w-10 px-2">
               <span className="sr-only">{controlLabel}</span>
             </TableHead>
           )}
@@ -92,24 +81,22 @@ export function DataTable<T>({
             <TableRow
               key={rowKey(row)}
               data-current={to.current ? "true" : undefined}
-              className="group relative border-0 hover:bg-transparent"
+              className="group relative hover:bg-aui-hover data-[current=true]:bg-aui-hover"
             >
-              <TableCell
-                className={`${cell} w-full max-w-0 ${endOf(rest, !!control)} ${first.className ?? ""}`}
-              >
+              <TableCell className={`${cell} w-full max-w-0 ${first.className ?? ""}`}>
                 <a
                   href={to.href}
                   onClick={(event) => follow(event, to.onOpen)}
                   aria-current={to.current ? "true" : undefined}
-                  className="block truncate font-medium text-aui-fg outline-none -my-3 py-3 after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
+                  className="block truncate font-medium text-aui-fg outline-none -my-3 py-3 after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
                 >
                   {first.cell(row)}
                 </a>
               </TableCell>
-              {rest.map((c, i) => (
+              {rest.map((c) => (
                 <TableCell
                   key={c.name}
-                  className={`${cell} text-aui-muted text-aui-xs ${c.hide ? hidden[c.hide] : ""} ${endOf(rest.slice(i + 1), !!control)} ${c.className ?? ""}`}
+                  className={`${cell} text-aui-muted text-aui-xs ${c.hide ? hidden[c.hide] : ""} ${c.className ?? ""}`}
                 >
                   {c.cell(row)}
                 </TableCell>
