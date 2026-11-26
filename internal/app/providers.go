@@ -79,8 +79,25 @@ func modelProviderKey(kind, name string, b spec.ModelBlock, keyOf platform.KeyFu
 			}
 			cfg := anthropic.Config{APIKey: key, Model: saigetypes.ModelID(s.Model)}
 			var a *anthropic.Adapter
-			if a, err = anthropic.New(cfg, opts...); err == nil && a.Capabilities().Supports(saigetypes.CapPromptCacheMarkers) {
-				a, err = anthropic.New(cfg, append(opts, anthropic.WithPromptCachePolicy(anthropic.DefaultPromptCachePolicy(native.PromptCacheShort)))...)
+			if a, err = anthropic.New(cfg, opts...); err == nil {
+				// What the model allows decides the rest, so the adapter is
+				// built once to read it and once more with what it adds.
+				caps, n := a.Capabilities(), len(opts)
+				// Anthropic takes an output cap on every request, and the
+				// adapter sends 4096 tokens when it is given none: a document
+				// written in one tool call, or the thinking before it, is cut
+				// off there and the run ends with nothing. The cap is the
+				// most the model accepts, as it is for a provider that takes
+				// none. What a run may spend is bounded by its budget.
+				if caps.MaxOutputTokens > 0 {
+					opts = append(opts, anthropic.WithMaxTokens(int64(caps.MaxOutputTokens)))
+				}
+				if caps.Supports(saigetypes.CapPromptCacheMarkers) {
+					opts = append(opts, anthropic.WithPromptCachePolicy(anthropic.DefaultPromptCachePolicy(native.PromptCacheShort)))
+				}
+				if len(opts) > n {
+					a, err = anthropic.New(cfg, opts...)
+				}
 			}
 			p = a
 		case "google":
