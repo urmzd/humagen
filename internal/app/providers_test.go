@@ -78,3 +78,49 @@ func TestAnAnthropicRequestCarriesTheModelsOutputLimit(t *testing.T) {
 		t.Fatal("no request reached the provider")
 	}
 }
+
+// A tool's input is asked for as it is written from Anthropic itself, and not
+// from a gateway, which may not know the field.
+func TestToolInputIsStreamedAsWrittenFromAnthropicAndNotFromAGateway(t *testing.T) {
+	if !eagerToolInput(spec.ModelBlock{}) {
+		t.Fatal("Anthropic's own address is not asked for eager tool input")
+	}
+	seen := make(chan any, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Tools []map[string]any `json:"tools"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		if len(body.Tools) == 1 {
+			seen <- body.Tools[0]["eager_input_streaming"]
+		}
+		http.Error(w, `{"type":"error","error":{"type":"invalid_request_error","message":"stop"}}`, http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	gateway := spec.ModelBlock{Key: &spec.Ref{Ref: "env:K"}, BaseURL: srv.URL}
+	if eagerToolInput(gateway) {
+		t.Fatal("a gateway is asked for eager tool input")
+	}
+	keys := credref.Resolver{LookupEnv: func(string) (string, bool) { return "k", true }}
+	p, err := modelProvider("anthropic", "anthropic", gateway, keys)(native.Spec{Name: "a", Model: "claude-sonnet-5-5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := p.Stream(t.Context(), saigetypes.Request{
+		Messages: []saigetypes.Message{saigetypes.UserMsg(saigetypes.TextPart{Text: "hi"})},
+		Tools:    []saigetypes.ToolDef{{Name: "write", Parameters: saigetypes.ParameterSchema{Type: "object"}}},
+	})
+	if err == nil {
+		for range out {
+		}
+	}
+	select {
+	case got := <-seen:
+		if got != nil {
+			t.Fatalf("a gateway was sent eager_input_streaming = %v", got)
+		}
+	default:
+		t.Fatal("no request with the tool reached the gateway")
+	}
+}

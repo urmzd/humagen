@@ -53,6 +53,14 @@ func workspaceModel(kind, name string, b spec.ModelBlock, key platform.KeyFunc) 
 	return modelProviderKey(kind, name, spec.ModelDefaults(kind, b), key)
 }
 
+// eagerToolInput reports whether an Anthropic model is asked to send a tool's
+// input as it writes it. Without it Anthropic holds each tool-input parameter
+// back until it is whole, so a document written in one call arrives all at
+// once and a person sees a step that says nothing until then. It is asked of
+// Anthropic's own address only: a gateway at another address may not know the
+// field and refuse the request.
+func eagerToolInput(b spec.ModelBlock) bool { return b.BaseURL == "" }
+
 // workspaceProbe checks a provider a workspace set up, spending no tokens
 // (platform.ModelKinds.Probe).
 func workspaceProbe(kind string, b spec.ModelBlock, key platform.KeyFunc) platform.Probe {
@@ -76,6 +84,9 @@ func modelProviderKey(kind, name string, b spec.ModelBlock, keyOf platform.KeyFu
 			var opts []anthropic.Option
 			if b.BaseURL != "" {
 				opts = append(opts, anthropic.WithBaseURL(b.BaseURL))
+			}
+			if eagerToolInput(b) {
+				opts = append(opts, anthropic.WithEagerToolInput())
 			}
 			cfg := anthropic.Config{APIKey: key, Model: saigetypes.ModelID(s.Model)}
 			var a *anthropic.Adapter
