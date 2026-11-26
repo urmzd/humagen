@@ -542,62 +542,25 @@ exports[`renderToSlack > renders the waiting turn 1`] = `
       "type": "markdown",
     },
     {
-      "text": {
-        "text": "*Roll back payments-api in production to deploy #4811?*",
-        "type": "mrkdwn",
-      },
-      "type": "section",
-    },
-    {
-      "fields": [
-        {
-          "text": "*Service*
-payments-api",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "*Environment*
-production",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "*From*
-#4812 (14:50)",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "*To*
-#4811 (yesterday 17:20)",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "section",
-    },
-    {
-      "block_id": "approval:a1:r1",
-      "elements": [
+      "actions": [
         {
           "accessibility_label": "Roll Back: Roll back payments-api in production to deploy #4811?",
           "action_id": "aui.approve#0",
           "confirm": {
             "confirm": {
-              "emoji": true,
               "text": "Yes, Continue",
               "type": "plain_text",
             },
             "deny": {
-              "emoji": true,
               "text": "Go Back",
               "type": "plain_text",
             },
             "style": "danger",
             "text": {
-              "emoji": true,
               "text": "This can't be undone.",
               "type": "plain_text",
             },
             "title": {
-              "emoji": true,
               "text": "Are you sure?",
               "type": "plain_text",
             },
@@ -612,20 +575,11 @@ production",
           "value": "{"turnId":"turn-1","target":"a1"}",
         },
         {
-          "action_id": "aui.edit#1",
+          "accessibility_label": "Ask a Question: Roll back payments-api in production to deploy #4811?",
+          "action_id": "aui.ask#1",
           "text": {
             "emoji": true,
-            "text": "Edit",
-            "type": "plain_text",
-          },
-          "type": "button",
-          "value": "{"turnId":"turn-1","target":"a1"}",
-        },
-        {
-          "action_id": "aui.ask#2",
-          "text": {
-            "emoji": true,
-            "text": "Ask a Question",
+            "text": "Ask",
             "type": "plain_text",
           },
           "type": "button",
@@ -633,7 +587,7 @@ production",
         },
         {
           "accessibility_label": "Decline: Roll back payments-api in production to deploy #4811?",
-          "action_id": "aui.deny#3",
+          "action_id": "aui.deny#2",
           "text": {
             "emoji": true,
             "text": "Decline",
@@ -643,20 +597,40 @@ production",
           "value": "{"turnId":"turn-1","target":"a1"}",
         },
       ],
-      "type": "actions",
+      "block_id": "approval:a1:r1",
+      "body": {
+        "text": "*Roll back payments-api in production to deploy #4811?*
+Service: payments-api
+Environment: production
+From: #4812 (14:50)
+To: #4811 (yesterday 17:20)",
+        "type": "mrkdwn",
+      },
+      "subtext": {
+        "text": "Will run as the deploy bot, on behalf of Dana | Expires <!date^1791473640^{date_short_pretty} at {time}|2026-10-08 15:34 UTC>",
+        "type": "mrkdwn",
+      },
+      "title": {
+        "text": "*Approval needed*",
+        "type": "mrkdwn",
+      },
+      "type": "card",
     },
     {
+      "block_id": "approval:a1:r1:more",
       "elements": [
         {
-          "text": "Will run as the deploy bot, on behalf of Dana",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "Expires <!date^1791473640^{date_short_pretty} at {time}|2026-10-08 15:34 UTC>",
-          "type": "mrkdwn",
+          "action_id": "aui.edit#0",
+          "text": {
+            "emoji": true,
+            "text": "Edit",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"a1"}",
         },
       ],
-      "type": "context",
+      "type": "actions",
     },
     {
       "elements": [

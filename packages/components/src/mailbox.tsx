@@ -11,10 +11,12 @@ import {
   partAction,
   partResolution,
   partTarget,
+  type SystemAlert,
   sortMessages,
   timeToken,
 } from "@humagen/core";
 import {
+  type ActionRef,
   Actions,
   Button,
   Callout,
@@ -24,6 +26,7 @@ import {
   Header,
   Markdown,
   Menu,
+  overridable,
   Sources,
   Summary,
   Text,
@@ -42,6 +45,52 @@ import { type Copy, defaultCopy } from "./copy";
 
 interface WithCopy {
   copy?: Copy;
+}
+
+export type SystemAlertPartProps = {
+  alert: SystemAlert;
+  blockId: string;
+  /** What Acknowledge sends, when the reader may acknowledge it. */
+  acknowledge?: ActionRef;
+  /** What Snooze sends, when the reader may snooze it. */
+  snooze?: ActionRef;
+  /** The rule that raised it, in the console. */
+  ruleUrl?: string;
+  /** How it was resolved, once it was: one line in place of the buttons. */
+  record?: string;
+} & WithCopy;
+
+/**
+ * An alert in a message: the incident, then Acknowledge, Snooze and Open
+ * Rule, or its record once resolved. Slack draws an open one as its own card
+ * block (render-slack `native.tsx`).
+ */
+export const SystemAlertPart = overridable("SystemAlertPart", SystemAlertPartBase);
+
+function SystemAlertPartBase({
+  alert,
+  blockId,
+  acknowledge,
+  snooze,
+  ruleUrl,
+  record,
+  copy = defaultCopy,
+}: SystemAlertPartProps) {
+  const over = alert.status === "resolved" || alert.status === "operational";
+  return (
+    <>
+      <SystemAlertView alert={alert} copy={copy} />
+      {record ? (
+        <Context items={[record]} />
+      ) : over ? null : (
+        <Actions blockId={blockId}>
+          {acknowledge && <Button label={copy.acknowledge} action={acknowledge} />}
+          {snooze && <Button label={copy.snooze} action={snooze} />}
+          {ruleUrl && <Button label={copy.openRule} url={ruleUrl} />}
+        </Actions>
+      )}
+    </>
+  );
 }
 
 /**
@@ -204,26 +253,20 @@ export function MessagePartView({
         </>
       );
     }
-    case "alert": {
-      const over = part.alert.status === "resolved" || part.alert.status === "operational";
+    case "alert":
       return (
-        <>
-          <SystemAlertView alert={part.alert} copy={copy} />
-          {record ??
-            (over ? null : (
-              <Actions blockId={`alert:${part.id}`}>
-                {may(ActionId.acknowledge) && (
-                  <Button label={copy.acknowledge} action={act(ActionId.acknowledge)} />
-                )}
-                {may(ActionId.snooze) && (
-                  <Button label={copy.snooze} action={act(ActionId.snooze)} />
-                )}
-                {part.ruleUrl && <Button label={copy.openRule} url={part.ruleUrl} />}
-              </Actions>
-            ))}
-        </>
+        <SystemAlertPart
+          alert={part.alert}
+          blockId={`alert:${part.id}`}
+          {...(may(ActionId.acknowledge) ? { acknowledge: act(ActionId.acknowledge) } : {})}
+          {...(may(ActionId.snooze) ? { snooze: act(ActionId.snooze) } : {})}
+          {...(part.ruleUrl ? { ruleUrl: part.ruleUrl } : {})}
+          {...(done
+            ? { record: copy.outcome(done.outcome, done.by, timeToken(done.at), done.detail) }
+            : {})}
+          copy={copy}
+        />
       );
-    }
     case "failure":
       return done ? (
         <>

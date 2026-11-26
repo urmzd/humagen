@@ -2029,6 +2029,38 @@ test("an approval waits in the run's thread with live buttons, and a mapped pers
   collect("question in thread", w.slack);
 });
 
+test("an approval in a run's thread is Slack's own card, and the sections it stands for when Slack refuses the card", async () => {
+  const w = mapped();
+  const { shown } = await parkOn(w, "approval");
+  const types = (args?: Record<string, unknown>) =>
+    (blocksOf(args) as { type: string }[]).map((b) => b.type);
+  assert.ok(types(shown).includes("card"), `closed with ${types(shown).join(", ")}`);
+  await deliver(w, stopPressed(TS));
+  await w.app.idle();
+
+  // Slack refuses the card: the same message is closed with the sections, buttons and all.
+  const r = mapped();
+  r.slack.failing["chat.stopStream"] = (args) =>
+    types(args).includes("card") ? "invalid_blocks" : undefined;
+  const refused = await parkOn(r, "approval");
+  assert.ok(refused.shown && !types(refused.shown).includes("card"));
+  const stops = r.slack.of("chat.stopStream");
+  assert.equal(stops.at(-2)?.ts, refused.shown?.ts, "the same message, sent again");
+  assert.ok(types(stops.at(-2)).includes("card"));
+  await deliver(
+    r,
+    click(blocksOf(refused.shown), defaultCopy.approve, {
+      ts: refused.ts,
+      threadTs: TS,
+      user: OTHER_USER,
+    }),
+  );
+  assert.equal(r.humagen.answered.at(-1)?.answer.body.action, "approve");
+  assert.ok(r.logs.some((l) => l.includes("refused its native blocks")));
+  await deliver(r, stopPressed(TS));
+  await r.app.idle();
+});
+
 test("a choice is answered with the option clicked, and a reply opens a form for the words", async () => {
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "choice");

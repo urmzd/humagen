@@ -63,6 +63,7 @@ import { bridgePolicy, subscribed } from "./bridge.ts";
 import { CodeChannels } from "./codechannel.ts";
 import { CodeChannels as CodeChannelOpener } from "./codechannel-open.ts";
 import { offersRunDetails, runDetailsReply } from "./details.tsx";
+import { withBlockFallback } from "./fallback.ts";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
 import {
@@ -583,11 +584,19 @@ export class App {
   /** The plan tab of each code channel, and people's comments on it. */
   private readonly plans: PlanCanvas;
 
+  /**
+   * Slack, with blocks it refuses as invalid sent again without its own
+   * card, carousel and container blocks (`withBlockFallback`).
+   */
+  private readonly slack: SlackApi;
+
   constructor(
-    private readonly slack: SlackApi,
+    slack: SlackApi,
     private readonly humagen: Humagen,
     private readonly opts: AppOptions,
   ) {
+    slack = withBlockFallback(slack, (line) => this.log(line));
+    this.slack = slack;
     this.flushMs = opts.flushMs ?? 700;
     this.pollMs = opts.pollMs ?? 5_000;
     this.stallMs = opts.stallMs ?? 15 * 60_000;

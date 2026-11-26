@@ -1,5 +1,5 @@
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
-import type { PrimitiveName, PrimitiveProps, Renderer, SurfaceKind } from "./contract";
+import type { Override, PrimitiveName, PrimitiveProps, Renderer, SurfaceKind } from "./contract";
 
 const RendererContext = createContext<Renderer | null>(null);
 
@@ -40,6 +40,20 @@ export function Only({
   const current = useRenderer().surface;
   const allowed = Array.isArray(surface) ? surface : [surface];
   return allowed.includes(current) ? children : null;
+}
+
+/**
+ * A shared component a renderer may draw its own way: Slack draws an approval
+ * as its own card block, for example. Without an override in the renderer,
+ * `Base` draws it from primitives on every surface.
+ */
+export function overridable<P extends object>(name: string, Base: ComponentType<P>) {
+  function Overridable(props: P) {
+    const Own = useRenderer().overrides?.[name] as Override<P> | undefined;
+    return Own ? <Own {...props} base={Base} /> : <Base {...props} />;
+  }
+  Overridable.displayName = name;
+  return Overridable;
 }
 
 function primitive<K extends PrimitiveName>(name: K) {

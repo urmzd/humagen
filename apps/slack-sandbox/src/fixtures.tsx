@@ -18,10 +18,17 @@ import type { Turn, TurnEvent } from "@humagen/core";
 import { ActionId } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import {
+  alertCard,
   amountModal,
+  approvalCard,
+  approvalCarousel,
   askForm,
+  type Block,
   feedbackModal,
+  type NativeBlocks,
+  nativeBlocks,
   type Placement,
+  questionContainer,
   replyModal,
 } from "@humagen/render-slack";
 import type { ReactElement } from "react";
@@ -150,6 +157,79 @@ export function views(): { name: string; view: object }[] {
       }),
     },
   ];
+}
+
+/**
+ * Slack's own blocks for what waits on a person (render-slack `native.tsx`),
+ * each with the section layout posted in its place: both must validate.
+ */
+export function natives(): { name: string; blocks: Block[]; placement?: Placement }[] {
+  const plain = { ...fx.pendingApproval, editable: false };
+  const second = { ...fx.secondApproval, rememberable: false };
+  const at = { turnId: "sandbox" };
+  const alert = fx.mailMessages.find((m) => m.id === "m-alert");
+  const knowledge = {
+    id: "al-1",
+    kind: "knowledge",
+    severity: "warning",
+    priority: "normal",
+    state: "open",
+    agent: "humagen-builder",
+    title: "2 documents you own in HR policies are stale",
+    body: "Update or replace them, or hand them to someone who owns them now: Leave policy 2023 (old, unowned), Travel policy (superseded).",
+    action: "/knowledge/hr-policies",
+  };
+  const resolve = { id: ActionId.acknowledge, payload: { turnId: "m-alert", target: "p1" } };
+  const cases: [string, NativeBlocks, Placement?][] = [
+    ["approvalCard", approvalCard(plain, at)],
+    ["approvalCard.more", approvalCard(fx.pendingApproval, at)],
+    ["approvalCard.approved", approvalCard(fx.approvedApproval, at)],
+    ["approvalCard.denied", approvalCard(fx.deniedApproval, at)],
+    [
+      "approvalCard.judged",
+      approvalCard(
+        {
+          ...plain,
+          preview: [],
+          judgement: { decision: "ask", reason: "Production needs a person" },
+        },
+        at,
+      ),
+    ],
+    ["approvalCard.auto", approvalCard(fx.pendingApproval, { ...at, offerAgent: true })],
+    ["approvalCarousel", approvalCarousel([plain, second], { ...at, offerAgent: true })],
+    ...(alert
+      ? [["systemAlert", nativeBlocks(<MessageView message={alert} />)] as [string, NativeBlocks]]
+      : []),
+    [
+      "alertCard.knowledge",
+      alertCard(knowledge, { consoleUrl: "https://platform.example.com", resolve }),
+    ],
+    [
+      "alertCard.knowledge@home",
+      alertCard(knowledge, { placement: "home", resolve, session: "https://example.com/s/1" }),
+      "home",
+    ],
+    [
+      "alertCard.short@modal",
+      alertCard({ ...knowledge, body: "Update or replace them." }, { placement: "modal", resolve }),
+      "modal",
+    ],
+    ["questionContainer", questionContainer({ ...fx.unsureClarification }, { turnId: "sandbox" })],
+    [
+      "questionContainer@home",
+      questionContainer(fx.pendingClarification, { turnId: "sandbox", placement: "home" }),
+      "home",
+    ],
+    [
+      "questionContainer.answered",
+      questionContainer(fx.answeredClarification, { turnId: "sandbox" }),
+    ],
+  ];
+  return cases.flatMap(([name, out, placement]) => [
+    { name: `native.${name}`, blocks: out.blocks, placement },
+    { name: `native.${name}.fallback`, blocks: out.fallback, placement },
+  ]);
 }
 
 /**

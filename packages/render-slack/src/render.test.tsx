@@ -23,7 +23,8 @@ describe("renderToSlack", () => {
     const out = renderToSlack(<TurnView turn={turn} />);
     expect(out.warnings).toEqual([]);
     expect(out.text.length).toBeGreaterThan(0);
-    const { pages, ...message } = out;
+    // native.test.tsx checks the fallback of a turn with native blocks.
+    const { pages, fallback: _fallback, ...message } = out;
     expect(pages).toEqual([out.blocks]);
     expect(message).toMatchSnapshot();
   });
@@ -145,7 +146,8 @@ describe("renderToSlack", () => {
   });
 
   it("emits approval buttons that decode to the shared action contract", () => {
-    const { blocks } = renderToSlack(<TurnView turn={fx.waitingTurn} />);
+    // The shared drawing: native.test.tsx checks the card Slack is sent.
+    const { blocks } = renderToSlack(<TurnView turn={fx.waitingTurn} />, { native: false });
     const actions = blocks.find((b) => b.type === "actions") as unknown as {
       elements: { action_id: string; value: string; confirm?: unknown; style?: string }[];
     };
@@ -183,6 +185,7 @@ describe("renderToSlack", () => {
           decision: { kind: "pending" },
         }}
       />,
+      { native: false },
     );
     expect(warnings).toEqual([]);
     const actions = blocks.find((b) => b.type === "actions") as unknown as {

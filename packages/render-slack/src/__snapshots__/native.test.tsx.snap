@@ -1,0 +1,369 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a question as a container > has a one-line title, the whole question first, the options as buttons and an input for its own answer 1`] = `
+[
+  {
+    "block_id": "clarification:q1",
+    "child_blocks": [
+      {
+        "text": {
+          "text": "*Which environment should I check?*
+• *Check Production*: Where the alert fired
+• *Check Staging*: Same build, no customer traffic",
+          "type": "mrkdwn",
+        },
+        "type": "section",
+      },
+      {
+        "block_id": "clarification:q1:options",
+        "elements": [
+          {
+            "action_id": "aui.clarify#0",
+            "text": {
+              "emoji": true,
+              "text": "Check Production",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"q1","option":"prod"}",
+          },
+          {
+            "action_id": "aui.clarify#1",
+            "text": {
+              "emoji": true,
+              "text": "Check Staging",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"q1","option":"staging"}",
+          },
+          {
+            "action_id": "aui.clarify.unsure#2",
+            "text": {
+              "emoji": true,
+              "text": "I'm Not Sure",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"q1"}",
+          },
+        ],
+        "type": "actions",
+      },
+      {
+        "block_id": "aui.text:{"turnId":"run-1","target":"q1"}",
+        "dispatch_action": true,
+        "element": {
+          "action_id": "aui.clarify.other#0",
+          "dispatch_action_config": {
+            "trigger_actions_on": [
+              "on_enter_pressed",
+            ],
+          },
+          "placeholder": {
+            "emoji": true,
+            "text": "Type an answer, then press Enter",
+            "type": "plain_text",
+          },
+          "type": "plain_text_input",
+        },
+        "label": {
+          "emoji": true,
+          "text": "Something else",
+          "type": "plain_text",
+        },
+        "type": "input",
+      },
+    ],
+    "title": {
+      "emoji": true,
+      "text": "Input needed",
+      "type": "plain_text",
+    },
+    "type": "container",
+  },
+]
+`;
+
+exports[`an alert as a card > has its title, its priority in words, its body, then Open and Resolve 1`] = `
+[
+  {
+    "actions": [
+      {
+        "accessibility_label": "Open: 2 documents you own in HR policies are stale",
+        "action_id": "aui.link#0",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://platform.example.com/knowledge/hr-policies",
+      },
+      {
+        "action_id": "aui.alert.acknowledge#1",
+        "text": {
+          "emoji": true,
+          "text": "Resolve",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"m-alert","target":"p1"}",
+      },
+    ],
+    "block_id": "alert:al-1",
+    "body": {
+      "text": "Update or replace them, or hand them to someone who owns them now: Leave policy 2023 (old, unowned), Travel policy (superseded).",
+      "type": "mrkdwn",
+    },
+    "subtitle": {
+      "text": ":warning: Normal priority · humagen-builder",
+      "type": "mrkdwn",
+    },
+    "title": {
+      "text": "*2 documents you own in HR policies are stale*",
+      "type": "mrkdwn",
+    },
+    "type": "card",
+  },
+]
+`;
+
+exports[`an approval as a card > has a one-line title, the whole call and what it does as its body, then Approve, Ask and Decline 1`] = `
+[
+  {
+    "actions": [
+      {
+        "accessibility_label": "Roll Back: Roll back payments-api in production to deploy #4811?",
+        "action_id": "aui.approve#0",
+        "confirm": {
+          "confirm": {
+            "text": "Yes, Continue",
+            "type": "plain_text",
+          },
+          "deny": {
+            "text": "Go Back",
+            "type": "plain_text",
+          },
+          "style": "danger",
+          "text": {
+            "text": "This can't be undone.",
+            "type": "plain_text",
+          },
+          "title": {
+            "text": "Are you sure?",
+            "type": "plain_text",
+          },
+        },
+        "style": "danger",
+        "text": {
+          "emoji": true,
+          "text": "Roll Back",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"run-1","target":"a1"}",
+      },
+      {
+        "accessibility_label": "Ask a Question: Roll back payments-api in production to deploy #4811?",
+        "action_id": "aui.ask#1",
+        "text": {
+          "emoji": true,
+          "text": "Ask",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"run-1","target":"a1"}",
+      },
+      {
+        "accessibility_label": "Decline: Roll back payments-api in production to deploy #4811?",
+        "action_id": "aui.deny#2",
+        "text": {
+          "emoji": true,
+          "text": "Decline",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"run-1","target":"a1"}",
+      },
+    ],
+    "block_id": "approval:a1:r1",
+    "body": {
+      "text": "*Roll back payments-api in production to deploy #4811?*
+Service: payments-api
+Environment: production
+From: #4812 (14:50)
+To: #4811 (yesterday 17:20)",
+      "type": "mrkdwn",
+    },
+    "title": {
+      "text": "*Approval needed*",
+      "type": "mrkdwn",
+    },
+    "type": "card",
+  },
+]
+`;
+
+exports[`several approvals as a carousel > is one line, a card for each, then only a menu with Auto: nothing that acts on all at once 1`] = `
+[
+  {
+    "text": {
+      "text": "*2 actions need your approval*",
+      "type": "mrkdwn",
+    },
+    "type": "section",
+  },
+  {
+    "block_id": "batch:run-1:cards",
+    "elements": [
+      {
+        "actions": [
+          {
+            "accessibility_label": "Roll Back: Roll back payments-api in production to deploy #4811?",
+            "action_id": "aui.approve#0",
+            "confirm": {
+              "confirm": {
+                "text": "Yes, Continue",
+                "type": "plain_text",
+              },
+              "deny": {
+                "text": "Go Back",
+                "type": "plain_text",
+              },
+              "style": "danger",
+              "text": {
+                "text": "This can't be undone.",
+                "type": "plain_text",
+              },
+              "title": {
+                "text": "Are you sure?",
+                "type": "plain_text",
+              },
+            },
+            "style": "danger",
+            "text": {
+              "emoji": true,
+              "text": "Roll Back",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a1"}",
+          },
+          {
+            "accessibility_label": "Ask a Question: Roll back payments-api in production to deploy #4811?",
+            "action_id": "aui.ask#1",
+            "text": {
+              "emoji": true,
+              "text": "Ask",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a1"}",
+          },
+          {
+            "accessibility_label": "Decline: Roll back payments-api in production to deploy #4811?",
+            "action_id": "aui.deny#2",
+            "text": {
+              "emoji": true,
+              "text": "Decline",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a1"}",
+          },
+        ],
+        "block_id": "approval:a1:r1",
+        "body": {
+          "text": "*Roll back payments-api in production to deploy #4811?*
+Service: payments-api
+Environment: production
+From: #4812 (14:50)
+To: #4811 (yesterday 17:20)",
+          "type": "mrkdwn",
+        },
+        "title": {
+          "text": "*Approval needed*",
+          "type": "mrkdwn",
+        },
+        "type": "card",
+      },
+      {
+        "actions": [
+          {
+            "accessibility_label": "Post Summary: Post the incident summary to #payments-oncall (38 members)?",
+            "action_id": "aui.approve#3",
+            "style": "primary",
+            "text": {
+              "emoji": true,
+              "text": "Post Summary",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a2"}",
+          },
+          {
+            "accessibility_label": "Ask a Question: Post the incident summary to #payments-oncall (38 members)?",
+            "action_id": "aui.ask#4",
+            "text": {
+              "emoji": true,
+              "text": "Ask",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a2"}",
+          },
+          {
+            "accessibility_label": "Decline: Post the incident summary to #payments-oncall (38 members)?",
+            "action_id": "aui.deny#5",
+            "text": {
+              "emoji": true,
+              "text": "Decline",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a2"}",
+          },
+        ],
+        "block_id": "approval:a2:r0",
+        "body": {
+          "text": "*Post the incident summary to #payments-oncall (38 members)?*
+Channel: #payments-oncall
+Mentions: @payments-oncall",
+          "type": "mrkdwn",
+        },
+        "subtext": {
+          "text": "Will run as you",
+          "type": "mrkdwn",
+        },
+        "title": {
+          "text": "*Approval needed*",
+          "type": "mrkdwn",
+        },
+        "type": "card",
+      },
+    ],
+    "type": "carousel",
+  },
+  {
+    "block_id": "batch:run-1:actions",
+    "elements": [
+      {
+        "action_id": "aui.menu#0",
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Set this thread to Auto",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.approval.mode","p":{"turnId":"run-1","target":"auto"}}",
+          },
+        ],
+        "type": "overflow",
+      },
+    ],
+    "type": "actions",
+  },
+]
+`;

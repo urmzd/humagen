@@ -3311,6 +3311,34 @@ export const defaultCopy = {
   batchTitle: (n: number) => `${n} actions need your approval`,
   approveSelected: "Approve Selected",
   denyAll: "Cancel All",
+  /**
+   * Slack's own blocks for what waits on a person (render-slack `native.tsx`):
+   * an approval as a card, several as a carousel, an alert as a card and a
+   * question as a container.
+   */
+  slackBlocks: {
+    openSession: "Open Session",
+    open: "Open",
+    resolve: "Resolve",
+    /** An alert's priority, in words, beside its level. */
+    priority: { urgent: "Urgent", normal: "Normal priority", resolved: "Resolved" },
+    resolvedBy: (by: string, time: string) => `Resolved by ${by} | ${time}`,
+    /** The field under a question's options for an answer of the reader's own. */
+    other: "Something else",
+    /** Ask a Question on an approval card, short so no button on the card is cut. */
+    ask: "Ask",
+    /** A question's title, one line: the question itself is the first block under it. */
+    questionTitle: { open: "Input needed", settled: "Question" },
+    /** An approval card's title, one line: the call itself leads the body. */
+    approvalTitle: {
+      pending: "Approval needed",
+      limit: "Limit reached",
+      asked: "Question asked",
+      approved: "Approved",
+      declined: "Not run",
+    },
+    otherPlaceholder: "Type an answer, then press Enter",
+  },
   unsure: "I'm Not Sure",
   unsureBy: (by: string, time: string) => `${by} wasn't sure | ${time}`,
   stopPhase: {

@@ -9,10 +9,12 @@ import {
   serialize,
 } from "./blocks";
 import { slackImpls } from "./impls";
+import { slackOverrides, TEXT_BLOCK } from "./native";
 import { renderToHostTree } from "./reconciler";
 
 export {
   type Block,
+  fallbackOf,
   LIMITS,
   type Placement,
   type SerializeOptions,
@@ -30,6 +32,7 @@ export {
   toMrkdwn,
   toPlain,
 } from "./mrkdwn";
+export * from "./native";
 export * from "./reply";
 export { breakMarkdown, nextBreak } from "./split";
 export * from "./stream";
@@ -48,11 +51,16 @@ export interface RenderOptions extends SerializeOptions {
 export function renderToSlack(element: ReactNode, options: RenderOptions = {}): SerializeResult {
   const placement = options.placement ?? "message";
   const tree = renderToHostTree(
-    <RendererProvider renderer={{ surface: "slack", placement, impls: slackImpls }}>
+    <RendererProvider
+      renderer={{ surface: "slack", placement, impls: slackImpls, overrides: slackOverrides }}
+    >
       {element}
     </RendererProvider>,
   );
-  return serialize(tree, placement, { amountForm: options.amountForm });
+  return serialize(tree, placement, {
+    amountForm: options.amountForm,
+    ...(options.native === false ? { native: false } : {}),
+  });
 }
 
 /** A Home tab view, ready for `views.publish` as `{ user_id, view }`. */
@@ -101,10 +109,26 @@ export function actionIdBase(actionId: string): string {
  * checkbox groups contribute `selection` from state.values.
  */
 export function decodeSlackAction(
-  action: { action_id: string; value?: string; selected_option?: { value: string } },
+  action: {
+    action_id: string;
+    value?: string;
+    selected_option?: { value: string };
+    /** Sent by Slack; an input's words come as `value`, its action in `block_id`. */
+    type?: string;
+    block_id?: string;
+  },
   state?: { values?: Record<string, Record<string, { selected_options?: { value: string }[] }>> },
 ): UiAction | null {
   let ui: UiAction | null = null;
+  if (action.type === "plain_text_input") {
+    // An input that sends on Enter (questionContainer): the words are the value, the action is kept in the block.
+    const text = action.value?.trim();
+    if (!text || !action.block_id?.startsWith(TEXT_BLOCK)) return null;
+    return {
+      id: actionIdBase(action.action_id) as UiAction["id"],
+      payload: { ...decodeAction(action.block_id.slice(TEXT_BLOCK.length)), text },
+    };
+  }
   if (action.selected_option) {
     const { id, p } = JSON.parse(action.selected_option.value) as {
       id: UiAction["id"];
