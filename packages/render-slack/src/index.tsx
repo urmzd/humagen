@@ -9,11 +9,12 @@ import {
   serialize,
 } from "./blocks";
 import { slackImpls } from "./impls";
-import { TEXT_BLOCK } from "./native";
+import { slackOverrides, TEXT_BLOCK } from "./native";
 import { renderToHostTree } from "./reconciler";
 
 export {
   type Block,
+  fallbackOf,
   LIMITS,
   type Placement,
   type SerializeOptions,
@@ -50,11 +51,16 @@ export interface RenderOptions extends SerializeOptions {
 export function renderToSlack(element: ReactNode, options: RenderOptions = {}): SerializeResult {
   const placement = options.placement ?? "message";
   const tree = renderToHostTree(
-    <RendererProvider renderer={{ surface: "slack", placement, impls: slackImpls }}>
+    <RendererProvider
+      renderer={{ surface: "slack", placement, impls: slackImpls, overrides: slackOverrides }}
+    >
       {element}
     </RendererProvider>,
   );
-  return serialize(tree, placement, { amountForm: options.amountForm });
+  return serialize(tree, placement, {
+    amountForm: options.amountForm,
+    ...(options.native === false ? { native: false } : {}),
+  });
 }
 
 /** A Home tab view, ready for `views.publish` as `{ user_id, view }`. */

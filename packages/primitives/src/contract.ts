@@ -438,9 +438,19 @@ export type PrimitiveImpls = { [K in PrimitiveName]: ComponentType<PrimitiveProp
 
 export type SurfaceKind = "web" | "slack";
 
+/**
+ * A surface's own drawing of a shared component, by the component's name
+ * (see `overridable`). It takes the component's props and `base`, the
+ * shared drawing, which it renders whenever its own cannot hold the content.
+ */
+export type Override<P> = ComponentType<P & { base: ComponentType<P> }>;
+
 export interface Renderer {
   surface: SurfaceKind;
   /** Narrower placement within a surface, e.g. Slack "message" vs "modal". */
   placement?: string;
   impls: PrimitiveImpls;
+  /** Shared components this renderer draws its own way. Any other is drawn from primitives. */
+  // biome-ignore lint/suspicious/noExplicitAny: each override is typed where it is written.
+  overrides?: Partial<Record<string, Override<any>>>;
 }

@@ -33,7 +33,8 @@ const question: Clarification = {
 };
 
 type Block = { type: string; elements?: { text?: unknown }[] };
-const blocksOf = (el: React.ReactNode) => renderToSlack(el).blocks as Block[];
+/** The shared drawing: Slack's own card for these is checked in native.test.tsx. */
+const blocksOf = (el: React.ReactNode) => renderToSlack(el, { native: false }).blocks as Block[];
 const contexts = (blocks: Block[]) => blocks.filter((b) => b.type === "context");
 const buttons = (blocks: Block[]) =>
   blocks

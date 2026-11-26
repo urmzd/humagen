@@ -3317,11 +3317,6 @@ export const defaultCopy = {
    * question as a container.
    */
   slackBlocks: {
-    /** The line above a carousel of approvals. */
-    batch: (agent: string, n: number) =>
-      `${agent} wants to run ${n} ${n === 1 ? "action" : "actions"}`,
-    /** An approval agent that handed the decision to a person, and why. */
-    handedOver: (agent: string, reason: string) => `${agent} asked a person: ${reason}`,
     openSession: "Open Session",
     open: "Open",
     resolve: "Resolve",

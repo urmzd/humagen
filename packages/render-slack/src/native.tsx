@@ -1,10 +1,15 @@
 import {
   ApprovalBatch,
+  type ApprovalBatchProps,
   ApprovalCard,
+  type ApprovalCardProps,
   ClarificationCard,
+  type ClarificationCardProps,
   type Copy,
   defaultCopy,
   previewFields,
+  type SystemAlertPartProps,
+  untrusted,
 } from "@humagen/components";
 import {
   ActionId,
@@ -13,12 +18,26 @@ import {
   type Clarification,
   canDecide,
   encodeAction,
+  type Judgement,
+  SERVICE_TONE,
   type Tone,
   timeToken,
 } from "@humagen/core";
-import type { ActionRef, ButtonProps } from "@humagen/primitives";
+import {
+  type ActionRef,
+  Actions,
+  Button,
+  type ButtonProps,
+  Context,
+  Menu,
+  type MenuProps,
+  type Override,
+  type Renderer,
+  useSurface,
+} from "@humagen/primitives";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import type { Block, Placement } from "./blocks";
-import { LIMITS } from "./blocks";
+import { LIMITS, NATIVE, NATIVE_MORE } from "./blocks";
 import { renderToSlack } from "./index";
 import { escapeSlackText, toMrkdwn, toPlain } from "./mrkdwn";
 
@@ -27,13 +46,16 @@ import { escapeSlackText, toMrkdwn, toPlain } from "./mrkdwn";
  * several as a `carousel` of cards, an alert as a `card` (an `alert` block in
  * a modal, the only place Slack draws one) and a question as a `container`.
  *
- * Each builder returns the native blocks and, beside them, the same meaning
- * as the sections and actions render-slack drew before (`fallback`). Slack
- * takes no per-block fallback (`blocks.validate` refuses a `fallback`
- * property on card, carousel and container), so the fallback is posted in
- * place of the native blocks: by the builder when a text is longer than the
- * block allows, and by a host whose post of the native blocks is refused.
- * `text` is always set, since a notification reads only that.
+ * `slackOverrides` draws the shared ApprovalCard, ApprovalBatch,
+ * ClarificationCard and SystemAlertPart this way in a message, so every
+ * message `renderToSlack` draws (a turn, an inbox message) carries them.
+ * Each keeps the shared drawing beside its blocks. `renderToSlack` returns
+ * it as `fallback`, which is posted in place of the native blocks: by the
+ * override when a text is longer than the block allows, and by a host whose
+ * post of the native blocks Slack refuses (`fallbackOf`). Slack takes no
+ * per-block fallback (`blocks.validate` refuses a `fallback` property on
+ * card, carousel and container). The message's text is the shared
+ * drawing's, since a notification reads only that.
  *
  * Action ids and values are the ones the shared components send, so a click
  * on a card is handled where a click on the sections was.
@@ -117,12 +139,11 @@ interface CardWords {
 
 /**
  * A card, or why it can't be one. A text over its limit is never clipped:
- * the caller posts the fallback instead, so no meaning is cut.
+ * the shared drawing is posted instead, so no meaning is cut.
  */
 function card(w: CardWords, firstIndex = 0): { block: Block } | { refused: string } {
-  const title = mrkdwn(`**${w.title}**`);
   const parts: [string, Text | undefined, number][] = [
-    ["title", title, NATIVE_LIMITS.cardTitle],
+    ["title", mrkdwn(`**${w.title}**`), NATIVE_LIMITS.cardTitle],
     ["subtitle", w.subtitle ? mrkdwn(w.subtitle) : undefined, NATIVE_LIMITS.cardSubtitle],
     ["body", w.body ? mrkdwn(w.body) : undefined, NATIVE_LIMITS.cardBody],
     ["subtext", w.subtext ? mrkdwn(w.subtext) : undefined, NATIVE_LIMITS.cardSubtext],
@@ -143,58 +164,84 @@ function card(w: CardWords, firstIndex = 0): { block: Block } | { refused: strin
   return { block };
 }
 
-/** Where an approval was asked, and why a person is asked it. */
-export interface ApprovalContext {
-  /** The run or message the approval is on: the `turnId` of its actions. */
-  turnId: string;
-  /** The agent that wants to run it. */
-  agent?: string;
-  /** The session's title. */
-  session?: string;
-  /** When it was asked, ISO 8601. */
-  at?: string;
-  /** The approval agent's reason, when it handed the decision to a person. */
-  reason?: string;
-  /** The approval agent's name, when it is not `agent`. */
-  reasonBy?: string;
-  /** Who is looking. Without one, anyone may decide. */
-  viewer?: string;
-  placement?: Placement;
-  copy?: Copy;
+/**
+ * A shared component drawn as Slack's own `blocks`, with `more` drawn under
+ * them from primitives, and the shared drawing (`children`) kept for the
+ * fallback and the message's text. Without `blocks` only the shared drawing
+ * is drawn, and `warnings` say why.
+ */
+function Native({
+  blocks,
+  warnings,
+  more,
+  children,
+}: {
+  blocks?: Block[];
+  warnings?: string[];
+  more?: ReactNode;
+  children: ReactNode;
+}): ReactElement {
+  return createElement(
+    NATIVE,
+    { blocks, warnings },
+    more ? createElement(NATIVE_MORE, null, more) : null,
+    children,
+  );
 }
 
-/** An approval's card: the words, the buttons the card holds, and any that do not fit on it. */
-function approvalWords(a: Approval, o: ApprovalContext): CardWords & { more: ButtonProps[] } {
+const withReason = (line: string, reason?: string) => (reason ? `${line}: "${reason}"` : line);
+
+/** The approval agent's view of a call, as the one line Slack's shared drawing has it. */
+function judgementLine(j: Judgement, copy: Copy): string {
+  const words = copy.judgement;
+  const references = j.references ?? [];
+  return [
+    ...(j.fields ?? []).map((f) => `**${untrusted(f.label)}:** ${untrusted(f.value)}`),
+    withReason(`**${words.by}:** ${words.decision[j.decision]}`, untrusted(j.reason)),
+    ...(references.length > 0 ? [words.basedOn(references.map(untrusted))] : []),
+  ].join(" | ");
+}
+
+/**
+ * An approval's card: the words, the buttons the card holds, and what does
+ * not fit on it (Edit, Always Allow, Set This Thread to Auto), for a row under it.
+ */
+function approvalWords(
+  a: Approval,
+  o: ApprovalCardProps,
+): CardWords & { more: ButtonProps[]; menu?: MenuProps } {
   const copy = o.copy ?? defaultCopy;
   const payload: ActionPayload = { turnId: o.turnId, target: a.id };
   const what = previewFields(a, copy)
     .map((f) => `${f.label}: ${f.value}`)
     .join("\n");
-  const handed = o.reason
-    ? o.reasonBy || o.agent
-      ? copy.slackBlocks.handedOver((o.reasonBy || o.agent) as string, o.reason)
-      : o.reason
-    : "";
+  const { decision, judgement } = a;
+  const judged = judgement ? judgementLine(judgement, copy) : "";
+  // When the approval agent decided, the record's note repeats its reason, which the
+  // judgement already shows: the record keeps only who and when.
+  const noted = (reason?: string) =>
+    reason && judgement?.reason && reason.endsWith(judgement.reason) ? undefined : reason;
   const base = {
     blockId: `approval:${a.id}:r${a.revision ?? 0}`,
     title: a.summary,
-    subtitle: [o.agent, o.session, o.at ? timeToken(o.at) : null].filter(Boolean).join(" · "),
-    body: [what, handed].filter(Boolean).join("\n"),
+    ...(a.origin ? { subtitle: a.origin } : {}),
+    body: [what, judged].filter(Boolean).join("\n"),
     buttons: [] as ButtonProps[],
     more: [] as ButtonProps[],
   };
-  const { decision } = a;
-  const said = (line: string, reason?: string) => (reason ? `${line}: "${reason}"` : line);
   if (decision.kind === "asked") {
     return {
       ...base,
-      subtext: said(copy.askedBy(decision.by, timeToken(decision.at)), decision.question),
+      subtext: withReason(copy.askedBy(decision.by, timeToken(decision.at)), decision.question),
     };
   }
   if (decision.kind === "approved") {
     return {
       ...base,
-      subtext: said(copy.approvedBy(decision.by, timeToken(decision.at)), decision.reason),
+      subtext: withReason(
+        copy.approvedBy(decision.by, timeToken(decision.at)),
+        noted(decision.reason),
+      ),
     };
   }
   if (decision.kind !== "pending") {
@@ -207,15 +254,15 @@ function approvalWords(a: Approval, o: ApprovalContext): CardWords & { more: But
           : copy.cancelled;
     return {
       ...base,
-      body: outcome,
+      body: [outcome, judged].filter(Boolean).join("\n"),
       ...(decision.kind === "denied"
         ? {
-            subtext: said(
+            subtext: withReason(
               (a.budget ? copy.budgetHold.stoppedBy : copy.rejectedBy)(
                 decision.by,
                 timeToken(decision.at),
               ),
-              decision.reason,
+              noted(decision.reason),
             ),
           }
         : {}),
@@ -233,22 +280,24 @@ function approvalWords(a: Approval, o: ApprovalContext): CardWords & { more: But
     ? copy.budgetHold.grant(a.budget.grant)
     : (a.approveLabel ?? copy.approve);
   const denyLabel = a.budget ? copy.budgetHold.stop : copy.declineAction;
-  // Deny first, then the one way forward, as Block Kit Builder's approval template has them.
+  // The shared drawing's order: the way forward, then Ask, then Decline.
   const choices: ButtonProps[] = [
     {
-      label: denyLabel,
-      style: "danger",
-      action: { id: ActionId.deny, payload },
-      ...(a.budget ? {} : { accessibilityLabel: `${denyLabel}: ${a.summary}` }),
-    },
-    {
       label: approveLabel,
-      style: "primary",
+      style: a.destructive ? "danger" : "primary",
       action: { id: ActionId.approve, payload },
+      // A budget question's summary is long: its buttons say enough alone.
       ...(a.budget ? {} : { accessibilityLabel: `${approveLabel}: ${a.summary}` }),
       ...(a.destructive ? { confirm: copy.confirmDestructive } : {}),
     },
     ...(a.budget ? [] : [ask]),
+    {
+      label: denyLabel,
+      action: { id: ActionId.deny, payload },
+      ...(a.budget ? {} : { accessibilityLabel: `${denyLabel}: ${a.summary}` }),
+    },
+  ];
+  const more: ButtonProps[] = [
     ...(a.editable && !a.actsForPerson
       ? [{ label: copy.edit, action: { id: ActionId.edit, payload } }]
       : []),
@@ -264,134 +313,368 @@ function approvalWords(a: Approval, o: ApprovalContext): CardWords & { more: But
   return {
     ...base,
     ...(meta.length ? { subtext: meta.join(" | ") } : {}),
-    buttons: choices.slice(0, NATIVE_LIMITS.cardButtons),
-    more: choices.slice(NATIVE_LIMITS.cardButtons),
+    buttons: choices,
+    more,
+    // The conversation's mode, not this call: a menu, so it never reads as a decision.
+    ...(o.offerAgent && !a.budget
+      ? {
+          menu: {
+            label: copy.moreOptions,
+            items: [
+              {
+                label: copy.approvals.letAgentDecide,
+                action: {
+                  id: ActionId.approvalMode,
+                  payload: { turnId: o.turnId, target: "auto" },
+                },
+              },
+            ],
+          },
+        }
+      : {}),
   };
 }
 
-/**
- * The result. `text` is raw words, escaped here; without it the fallback's
- * text, which renderToSlack escaped already.
- */
-function finish(
-  native: Block[] | null,
-  fallback: { blocks: Block[]; text: string },
-  text: string | null,
-  warnings: string[],
-): NativeBlocks {
-  const said = text?.trim() ? escapeSlackText(text.trim()) : fallback.text;
-  return {
-    blocks: native ?? fallback.blocks,
-    fallback: fallback.blocks,
-    text: said.length > LIMITS.fallbackText ? `${said.slice(0, LIMITS.fallbackText - 1)}…` : said,
-    native: native !== null,
-    warnings,
-  };
+/** True where Slack draws the native blocks: a message. A modal and Home keep the sections. */
+function inMessage(): boolean {
+  return (useSurface().placement ?? "message") === "message";
 }
 
 /**
- * One approval as a card. Pending: Deny (danger), Approve (primary) and Ask on
- * the card; a choice past the card's three (Edit, Always Allow) in an actions
- * row under it. Decided: the same card in place, with no buttons and the
- * record as its subtext ("Approved by Dana | ...").
+ * One approval as a card. Pending: Approve (primary, or danger when it
+ * can't be undone), Ask and Decline on the card; Edit, Always Allow and the
+ * thread's Auto mode in a row under it. Decided: the same card in place, with
+ * no buttons and the record as its subtext ("Approved by Dana | ...").
  */
-export function approvalCard(approval: Approval, o: ApprovalContext): NativeBlocks {
-  const placement = o.placement ?? "message";
-  const fallback = renderToSlack(
-    <ApprovalCard turnId={o.turnId} approval={approval} viewer={o.viewer} copy={o.copy} />,
-    { placement },
-  );
-  const words = approvalWords(approval, o);
+const SlackApprovalCard: Override<ApprovalCardProps> = ({ base: Base, ...props }) => {
+  const shared = <Base {...props} />;
+  if (!inMessage()) return shared;
+  const words = approvalWords(props.approval, props);
   const made = card(words);
-  if ("refused" in made) return finish(null, fallback, null, [made.refused]);
-  const blocks = [made.block];
-  if (words.more.length) {
-    blocks.push({
-      type: "actions",
-      block_id: `${words.blockId}:more`.slice(0, LIMITS.blockId),
-      elements: words.more.map((b, i) => button(b, words.buttons.length + i)),
-    });
-  }
-  const copy = o.copy ?? defaultCopy;
-  const pending = approval.decision.kind === "pending";
-  const text = pending
-    ? [copy.approvalNeeded(toPlain(approval.summary)), toPlain(words.subtitle ?? "")]
-        .filter(Boolean)
-        .join("\n")
-    : [toPlain(approval.summary), toPlain(words.subtext ?? words.body ?? "")]
-        .filter(Boolean)
-        .join("\n");
-  return finish(blocks, fallback, text, []);
-}
+  if ("refused" in made) return <Native warnings={[made.refused]}>{shared}</Native>;
+  const more =
+    words.more.length || words.menu ? (
+      <Actions blockId={`${words.blockId}:more`}>
+        {words.more.map((b) => (
+          <Button key={b.label} {...b} />
+        ))}
+        {words.menu && <Menu {...words.menu} />}
+      </Actions>
+    ) : null;
+  return (
+    <Native blocks={[made.block]} more={more}>
+      {shared}
+    </Native>
+  );
+};
 
 /**
- * Several approvals at once as a carousel of their cards, one line above it
- * ("lead wants to run 2 actions") and Approve All and Cancel All under it.
- * More than ten, a card that cannot hold its words or its choices, or a modal
- * (which draws no carousel): the checkbox layout render-slack drew before.
+ * Several approvals at once: one line, a carousel of their cards, each
+ * decided on its own card, then Approve All and a menu with the thread's
+ * Auto mode and Cancel All. More than ten, or a card that cannot hold its
+ * words or its choices: the shared checkbox layout.
  */
-export function approvalCarousel(
-  approvals: Approval[],
-  o: ApprovalContext & { agent?: string },
-): NativeBlocks {
-  const copy = o.copy ?? defaultCopy;
-  const placement = o.placement ?? "message";
-  if (approvals.length === 1) return approvalCard(approvals[0] as Approval, o);
-  const fallback = renderToSlack(
-    <ApprovalBatch turnId={o.turnId} approvals={approvals} copy={o.copy} />,
-    { placement },
-  );
-  const refuse = (why: string) => finish(null, fallback, null, [why]);
-  if (placement === "modal") return refuse("a modal draws no carousel");
+const SlackApprovalBatch: Override<ApprovalBatchProps> = ({ base: Base, ...props }) => {
+  const shared = <Base {...props} />;
+  if (!inMessage()) return shared;
+  const { approvals, turnId } = props;
+  const copy = props.copy ?? defaultCopy;
+  const refuse = (why: string) => <Native warnings={[why]}>{shared}</Native>;
   if (approvals.length > NATIVE_LIMITS.carouselCards) {
     return refuse(`${approvals.length} approvals; a carousel holds ${NATIVE_LIMITS.carouselCards}`);
   }
   const cards: Block[] = [];
   let index = 0;
   for (const a of approvals) {
-    const words = approvalWords(a, o);
+    // The thread's mode is offered once, under the carousel.
+    const words = approvalWords(a, { turnId, approval: a, copy });
     if (words.more.length) return refuse(`${a.id} offers more choices than a card holds`);
     const made = card(words, index);
     if ("refused" in made) return refuse(`${a.id}: ${made.refused}`);
     index += words.buttons.length;
     cards.push(made.block);
   }
-  const line = o.agent
-    ? copy.slackBlocks.batch(o.agent, approvals.length)
-    : copy.batchTitle(approvals.length);
-  const target = `batch:${o.turnId}`;
+  const name = `batch:${turnId}`;
+  const target = { turnId, target: name };
   const pending = approvals.filter((a) => a.decision.kind === "pending").length;
+  const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
+  const auto = props.offerAgent && !approvals.some((a) => a.budget);
   const blocks: Block[] = [
-    { type: "section", text: mrkdwn(`**${line}**`) },
-    { type: "carousel", block_id: `${target}:cards`.slice(0, LIMITS.blockId), elements: cards },
+    { type: "section", text: mrkdwn(`**${copy.batchTitle(approvals.length)}**`) },
+    { type: "carousel", block_id: `${name}:cards`.slice(0, LIMITS.blockId), elements: cards },
   ];
-  if (pending > 1) {
-    blocks.push({
-      type: "actions",
-      block_id: `${target}:actions`.slice(0, LIMITS.blockId),
-      elements: [
-        button(
-          {
-            label: copy.approveAll(pending),
-            action: { id: ActionId.approveAll, payload: { turnId: o.turnId, target } },
-          },
-          0,
-        ),
-        button(
-          {
-            label: copy.denyAll,
-            action: { id: ActionId.denyAll, payload: { turnId: o.turnId, target } },
-          },
-          1,
-        ),
-      ],
-    });
+  const more = (
+    <>
+      {pending > 0 && (
+        <Actions blockId={`${name}:actions`}>
+          {pending > 1 && (
+            <Button
+              label={copy.approveAll(pending)}
+              style="primary"
+              action={{ id: ActionId.approveAll, payload: target }}
+            />
+          )}
+          <Menu
+            label={copy.moreOptions}
+            items={[
+              ...(auto
+                ? [
+                    {
+                      label: copy.approvals.letAgentDecide,
+                      action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
+                    },
+                  ]
+                : []),
+              {
+                label: copy.denyAll,
+                action: { id: ActionId.denyAll, payload: target },
+                danger: true,
+              },
+            ]}
+          />
+        </Actions>
+      )}
+      {acting.length > 0 && <Context items={[copy.actsForPersonIn(acting)]} />}
+    </>
+  );
+  return (
+    <Native blocks={blocks} more={more}>
+      {shared}
+    </Native>
+  );
+};
+
+/** Where an input's action is kept: its block_id, since Slack sends the typed words as its value. */
+export const TEXT_BLOCK = "aui.text:";
+
+/**
+ * A question as a container: the question as its title, the options as
+ * buttons, and an answer of the reader's own as an input that sends on Enter.
+ * The input sends `ActionId.clarifyOther` with the words as `text`
+ * (`decodeSlackAction` reads it), as the web's Something Else does. Settled:
+ * the question and its record.
+ */
+const SlackClarificationCard: Override<ClarificationCardProps> = ({ base: Base, ...props }) => {
+  const shared = <Base {...props} />;
+  if (!inMessage()) return shared;
+  const { clarification, turnId } = props;
+  const copy = props.copy ?? defaultCopy;
+  const refuse = (why: string) => <Native warnings={[why]}>{shared}</Native>;
+  const title = plain(clarification.question);
+  if (title.text.length > NATIVE_LIMITS.containerTitle) {
+    return refuse(
+      `container title is ${title.text.length} chars; a container holds ${NATIVE_LIMITS.containerTitle}`,
+    );
   }
-  const text = [
-    pending ? copy.approvalNeeded(line) : line,
-    ...approvals.map((a) => `• ${toPlain(a.summary)}`),
-  ].join("\n");
-  return finish(blocks, fallback, text, []);
+  const { answer, options, judgement } = clarification;
+  const blockId = `clarification:${clarification.id}`.slice(0, LIMITS.blockId);
+  const context = (line: string): Block => ({ type: "context", elements: [mrkdwn(line)] });
+  const payload: ActionPayload = { turnId, target: clarification.id };
+  // The approval agent's part, in Auto: an answer it gave, or why it left the question.
+  const judged = judgement
+    ? [
+        context(
+          withReason(
+            judgement.decision === "allow"
+              ? copy.judgement.answered
+              : `**${copy.judgement.by}:** ${copy.judgement.decision[judgement.decision]}`,
+            untrusted(judgement.reason),
+          ),
+        ),
+      ]
+    : [];
+  let children: Block[];
+  if (answer.kind === "answered") {
+    const picked = options.filter((x) => answer.optionIds.includes(x.id)).map((x) => x.label);
+    children = [
+      context(
+        picked.length === 0 && answer.other
+          ? copy.repliedBy(answer.by, answer.other, timeToken(answer.at))
+          : copy.answeredBy(
+              answer.by,
+              picked.concat(answer.other ? [`"${answer.other}"`] : []).join(", "),
+              timeToken(answer.at),
+            ),
+      ),
+      ...judged,
+    ];
+  } else if (answer.kind === "unsure") {
+    children = [context(copy.unsureBy(answer.by, timeToken(answer.at)))];
+  } else if (answer.kind === "declined") {
+    children = [
+      context(withReason(copy.declinedBy(answer.by, timeToken(answer.at)), answer.reason)),
+    ];
+  } else if (answer.kind === "expired" || answer.kind === "cancelled") {
+    const line =
+      answer.kind === "expired"
+        ? (answer.note ?? copy.questionExpired)
+        : copy.questionCancelled(answer.note);
+    children = [context(`${line} | ${timeToken(answer.at)}`)];
+  } else if (clarification.forOthers) {
+    children = [context(clarification.forOthers)];
+  } else {
+    const described = options.filter((x) => x.description);
+    const textBlock = `${TEXT_BLOCK}${encodeAction(payload)}`;
+    // The words ride in the input's block_id; one too long for it asks with a button instead.
+    const typed = clarification.allowOther && textBlock.length <= LIMITS.blockId;
+    const buttons: ButtonProps[] = [
+      ...options.map((x) => ({
+        label: x.label,
+        action: { id: ActionId.clarify, payload: { ...payload, option: x.id } },
+      })),
+      ...(clarification.allowOther && !typed
+        ? [{ label: copy.somethingElse, action: { id: ActionId.clarifyOther, payload } }]
+        : []),
+      ...(clarification.allowUnsure
+        ? [{ label: copy.unsure, action: { id: ActionId.unsure, payload } }]
+        : []),
+    ];
+    if (buttons.length > LIMITS.actionsElements) {
+      return refuse(`${buttons.length} options; an actions block holds ${LIMITS.actionsElements}`);
+    }
+    children = [
+      ...(described.length
+        ? [
+            {
+              type: "section",
+              text: mrkdwn(described.map((x) => `• **${x.label}**: ${x.description}`).join("\n")),
+            },
+          ]
+        : []),
+      ...judged,
+      ...(buttons.length
+        ? [
+            {
+              type: "actions",
+              block_id: `${blockId}:options`,
+              elements: buttons.map((b, i) => button(b, i)),
+            },
+          ]
+        : []),
+      ...(typed
+        ? [
+            {
+              type: "input",
+              block_id: textBlock,
+              dispatch_action: true,
+              label: plain(copy.slackBlocks.other),
+              element: {
+                type: "plain_text_input",
+                action_id: `${ActionId.clarifyOther}#0`,
+                placeholder: plain(copy.slackBlocks.otherPlaceholder),
+                dispatch_action_config: { trigger_actions_on: ["on_enter_pressed"] },
+              },
+            },
+          ]
+        : []),
+    ];
+  }
+  return (
+    <Native blocks={[{ type: "container", block_id: blockId, title, child_blocks: children }]}>
+      {shared}
+    </Native>
+  );
+};
+
+/** How bad an alert is, as one of Slack's alert levels. */
+export function alertLevel(a: Pick<AlertInput, "priority" | "severity" | "state">) {
+  if (a.state === "resolved") return "success" as const;
+  if (a.priority === "urgent") return "error" as const;
+  return a.severity === "warning" || a.severity === "critical"
+    ? ("warning" as const)
+    : ("info" as const);
+}
+
+const LEVEL_TONE = { success: "ok", error: "bad", warning: "warn", info: "info" } as const;
+
+/**
+ * An open incident in a message as a card: the service and what is wrong as
+ * its title, its status in words as its subtitle, what people notice as its
+ * body, when it started as its subtext, then Acknowledge, Snooze and Open
+ * Rule. Resolved, its record is the subtext and the buttons are gone. One
+ * whose service is back is the shared one-line record.
+ */
+const SlackSystemAlertPart: Override<SystemAlertPartProps> = ({ base: Base, ...props }) => {
+  const shared = <Base {...props} />;
+  const { alert } = props;
+  if (!inMessage() || alert.status === "resolved" || alert.status === "operational") return shared;
+  const copy = props.copy ?? defaultCopy;
+  const status = copy.serviceStatus[alert.status];
+  const emoji = TONE_EMOJI[SERVICE_TONE[alert.status]];
+  const meta = [
+    copy.started(timeToken(alert.startedAt)),
+    alert.updatedAt !== alert.startedAt ? copy.updated(timeToken(alert.updatedAt)) : null,
+    alert.url ? `[${copy.statusPage}](${alert.url})` : null,
+  ].filter((x): x is string => x !== null);
+  const buttons: ButtonProps[] = props.record
+    ? []
+    : [
+        ...(props.acknowledge ? [{ label: copy.acknowledge, action: props.acknowledge }] : []),
+        ...(props.snooze ? [{ label: copy.snooze, action: props.snooze }] : []),
+        ...(props.ruleUrl ? [{ label: copy.openRule, url: props.ruleUrl }] : []),
+      ];
+  const body = [alert.body, alert.affects?.length ? copy.affects(alert.affects.join(", ")) : null]
+    .filter(Boolean)
+    .join(" ");
+  const made = card({
+    blockId: props.blockId,
+    title: `${alert.service} ${status.toLowerCase()}: ${alert.title}`,
+    subtitle: [emoji, status].filter(Boolean).join(" "),
+    ...(body ? { body } : {}),
+    subtext: props.record ?? meta.join(" | "),
+    buttons,
+  });
+  if ("refused" in made) return <Native warnings={[made.refused]}>{shared}</Native>;
+  return <Native blocks={[made.block]}>{shared}</Native>;
+};
+
+/** The shared components Slack draws as its own blocks, for `renderToSlack`. */
+export const slackOverrides: NonNullable<Renderer["overrides"]> = {
+  ApprovalCard: SlackApprovalCard,
+  ApprovalBatch: SlackApprovalBatch,
+  ClarificationCard: SlackClarificationCard,
+  SystemAlertPart: SlackSystemAlertPart,
+};
+
+/** One shared component as `renderToSlack` posts it: its native blocks, and the sections beside them. */
+export function nativeBlocks(element: ReactNode, placement: Placement = "message"): NativeBlocks {
+  const out = renderToSlack(element, { placement });
+  return {
+    blocks: out.blocks,
+    fallback: out.fallback?.blocks ?? out.blocks,
+    text: out.text,
+    native: out.fallback !== undefined,
+    warnings: out.warnings,
+  };
+}
+
+type Where = { placement?: Placement };
+
+/** One approval, as `ApprovalCard` posts it in a message. */
+export function approvalCard(
+  approval: Approval,
+  o: Omit<ApprovalCardProps, "approval"> & Where,
+): NativeBlocks {
+  const { placement, ...props } = o;
+  return nativeBlocks(<ApprovalCard approval={approval} {...props} />, placement);
+}
+
+/** Several approvals, as `ApprovalBatch` posts them in a message. */
+export function approvalCarousel(
+  approvals: Approval[],
+  o: Omit<ApprovalBatchProps, "approvals"> & Where,
+): NativeBlocks {
+  const { placement, ...props } = o;
+  return nativeBlocks(<ApprovalBatch approvals={approvals} {...props} />, placement);
+}
+
+/** A question, as `ClarificationCard` posts it in a message. */
+export function questionContainer(
+  clarification: Clarification,
+  o: Omit<ClarificationCardProps, "clarification"> & Where,
+): NativeBlocks {
+  const { placement, ...props } = o;
+  return nativeBlocks(<ClarificationCard clarification={clarification} {...props} />, placement);
 }
 
 /** An alert as the platform sends it in an inbox part (`part.alert`). */
@@ -426,16 +709,25 @@ export interface AlertOptions {
   copy?: Copy;
 }
 
-/** How bad an alert is, as one of Slack's alert levels. */
-export function alertLevel(a: Pick<AlertInput, "priority" | "severity" | "state">) {
-  if (a.state === "resolved") return "success" as const;
-  if (a.priority === "urgent") return "error" as const;
-  return a.severity === "warning" || a.severity === "critical"
-    ? ("warning" as const)
-    : ("info" as const);
+/**
+ * The result. `text` is raw words, escaped here; without it the fallback's
+ * text, which renderToSlack escaped already.
+ */
+function finish(
+  native: Block[] | null,
+  fallback: { blocks: Block[]; text: string },
+  text: string | null,
+  warnings: string[],
+): NativeBlocks {
+  const said = text?.trim() ? escapeSlackText(text.trim()) : fallback.text;
+  return {
+    blocks: native ?? fallback.blocks,
+    fallback: fallback.blocks,
+    text: said.length > LIMITS.fallbackText ? `${said.slice(0, LIMITS.fallbackText - 1)}…` : said,
+    native: native !== null,
+    warnings,
+  };
 }
-
-const LEVEL_TONE = { success: "ok", error: "bad", warning: "warn", info: "info" } as const;
 
 /**
  * An alert in a message or on Home as a card: its title, its priority in
@@ -538,117 +830,4 @@ function linkTo(path: string, origin?: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** Where an input's action is kept: its block_id, since Slack sends the typed words as its value. */
-export const TEXT_BLOCK = "aui.text:";
-
-/**
- * A question as a container: the question as its title, the options as
- * buttons, and an answer of the reader's own as an input that sends on Enter.
- * The input sends `ActionId.clarifyOther` with the words as `text`
- * (`decodeSlackAction` reads it), as the web's Something Else does. Answered:
- * the question and its record. A modal draws no container: the sections.
- */
-export function questionContainer(
-  clarification: Clarification,
-  o: { turnId: string; placement?: Placement; copy?: Copy },
-): NativeBlocks {
-  const copy = o.copy ?? defaultCopy;
-  const placement = o.placement ?? "message";
-  const fallback = renderToSlack(
-    <ClarificationCard turnId={o.turnId} clarification={clarification} copy={o.copy} />,
-    { placement },
-  );
-  const refuse = (why: string) => finish(null, fallback, null, [why]);
-  if (placement === "modal") return refuse("a modal draws no container");
-  const title = plain(clarification.question);
-  if (title.text.length > NATIVE_LIMITS.containerTitle) {
-    return refuse(
-      `container title is ${title.text.length} chars; a container holds ${NATIVE_LIMITS.containerTitle}`,
-    );
-  }
-  const { answer, options } = clarification;
-  const blockId = `clarification:${clarification.id}`.slice(0, LIMITS.blockId);
-  const context = (line: string): Block => ({ type: "context", elements: [mrkdwn(line)] });
-  const payload: ActionPayload = { turnId: o.turnId, target: clarification.id };
-  let children: Block[];
-  if (answer.kind === "answered") {
-    const picked = options.filter((x) => answer.optionIds.includes(x.id)).map((x) => x.label);
-    children = [
-      context(
-        picked.length === 0 && answer.other
-          ? copy.repliedBy(answer.by, answer.other, timeToken(answer.at))
-          : copy.answeredBy(
-              answer.by,
-              picked.concat(answer.other ? [`"${answer.other}"`] : []).join(", "),
-              timeToken(answer.at),
-            ),
-      ),
-    ];
-  } else if (answer.kind === "unsure") {
-    children = [context(copy.unsureBy(answer.by, timeToken(answer.at)))];
-  } else if (answer.kind === "declined") {
-    const line = copy.declinedBy(answer.by, timeToken(answer.at));
-    children = [context(answer.reason ? `${line}: "${answer.reason}"` : line)];
-  } else if (clarification.forOthers) {
-    children = [context(clarification.forOthers)];
-  } else {
-    const described = options.filter((x) => x.description);
-    const textBlock = `${TEXT_BLOCK}${encodeAction(payload)}`;
-    // The words ride in the input's block_id; one too long for it asks with a button instead.
-    const typed = clarification.allowOther && textBlock.length <= LIMITS.blockId;
-    const buttons: ButtonProps[] = [
-      ...options.map((x) => ({
-        label: x.label,
-        action: { id: ActionId.clarify, payload: { ...payload, option: x.id } },
-      })),
-      ...(clarification.allowOther && !typed
-        ? [{ label: copy.somethingElse, action: { id: ActionId.clarifyOther, payload } }]
-        : []),
-      ...(clarification.allowUnsure
-        ? [{ label: copy.unsure, action: { id: ActionId.unsure, payload } }]
-        : []),
-    ];
-    if (buttons.length > LIMITS.actionsElements) {
-      return refuse(`${buttons.length} options; an actions block holds ${LIMITS.actionsElements}`);
-    }
-    children = [
-      ...(described.length
-        ? [
-            {
-              type: "section",
-              text: mrkdwn(described.map((x) => `• **${x.label}**: ${x.description}`).join("\n")),
-            },
-          ]
-        : []),
-      ...(buttons.length
-        ? [
-            {
-              type: "actions",
-              block_id: `${blockId}:options`,
-              elements: buttons.map((b, i) => button(b, i)),
-            },
-          ]
-        : []),
-      ...(typed
-        ? [
-            {
-              type: "input",
-              block_id: textBlock,
-              dispatch_action: true,
-              label: plain(copy.slackBlocks.other),
-              element: {
-                type: "plain_text_input",
-                action_id: `${ActionId.clarifyOther}#0`,
-                placeholder: plain(copy.slackBlocks.otherPlaceholder),
-                dispatch_action_config: { trigger_actions_on: ["on_enter_pressed"] },
-              },
-            },
-          ]
-        : []),
-    ];
-  }
-  const blocks: Block[] = [{ type: "container", block_id: blockId, title, child_blocks: children }];
-  return finish(blocks, fallback, null, []);
 }

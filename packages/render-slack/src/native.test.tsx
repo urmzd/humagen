@@ -1,5 +1,5 @@
-import { defaultCopy, TurnView } from "@humagen/components";
-import { ActionId, type Approval } from "@humagen/core";
+import { defaultCopy, MessageView, SystemAlertPart, TurnView } from "@humagen/components";
+import { ActionId, type Approval, type InboxMessage } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
 import {
@@ -10,7 +10,9 @@ import {
   approvalCarousel,
   type Block,
   decodeSlackAction,
+  fallbackOf,
   type NativeBlocks,
+  nativeBlocks,
   questionContainer,
   renderToSlack,
 } from "./index";
@@ -24,7 +26,7 @@ const rollback: Approval = {
 };
 const post: Approval = { ...fx.secondApproval, rememberable: false };
 const at = "2026-10-08T14:52:00Z";
-const ctx = { turnId: "run-1", agent: "lead", session: "Payments 5xx", at };
+const ctx = { turnId: "run-1" };
 
 /** The knowledge alert the platform sends for stale documents. */
 const knowledge: AlertInput = {
@@ -76,23 +78,28 @@ const every = (out: NativeBlocks) => {
 };
 
 describe("an approval as a card", () => {
-  it("has the action as its title, who and where as its subtitle, what it does as its body, then Deny and Approve", () => {
+  it("has the action as its title, what it does as its body, then Approve, Ask and Decline", () => {
     const out = approvalCard(rollback, ctx);
     every(out);
     expect(out.native).toBe(true);
     expect(out.blocks).toMatchSnapshot();
     const [card] = out.blocks as [Block];
     expect(card.type).toBe("card");
-    expect((card.subtitle as { text: string }).text).toMatch(/^lead · Payments 5xx · <!date\^/);
+    expect((card.title as { text: string }).text).toBe(`*${rollback.summary}*`);
+    expect((card.body as { text: string }).text).toContain("Service: payments-api");
     const labels = buttons(out.blocks).map((b) => [b.text.text, (b as { style?: string }).style]);
+    // As the shared drawing has them: the way forward first, Decline unstyled.
     expect(labels).toEqual([
-      [defaultCopy.declineAction, "danger"],
-      ["Roll Back", "primary"],
+      ["Roll Back", "danger"],
       [defaultCopy.askApproval, undefined],
+      [defaultCopy.declineAction, undefined],
     ]);
-    expect(out.text).toBe(
-      `${defaultCopy.approvalNeeded(rollback.summary)}\nlead · Payments 5xx · 2026-10-08 14:52 UTC`,
-    );
+    expect(out.text).toBe(defaultCopy.approvalNeeded(rollback.summary));
+  });
+
+  it("names a sub-agent that raised it as its subtitle", () => {
+    const out = approvalCard({ ...rollback, origin: "Raised by Deploy agent" }, ctx);
+    expect((out.blocks[0]?.subtitle as { text: string }).text).toBe("Raised by Deploy agent");
   });
 
   it("sends what the section layout sends, so the app's handlers take the same clicks", () => {
@@ -105,30 +112,90 @@ describe("an approval as a card", () => {
     expect((out.blocks[0] as Block).block_id).toBe("approval:a1:r1");
   });
 
-  it("keeps the destructive confirm step on Approve", () => {
-    const approve = buttons(approvalCard(rollback, ctx).blocks)[1] as Button & {
+  it("keeps the destructive confirm step on Approve, and a plain one primary", () => {
+    const [approve] = buttons(approvalCard(rollback, ctx).blocks) as (Button & {
       confirm?: { style?: string };
-    };
-    expect(approve.confirm?.style).toBe("danger");
+    })[];
+    expect(approve?.confirm?.style).toBe("danger");
+    const [plain] = buttons(approvalCard({ ...rollback, destructive: false }, ctx).blocks);
+    expect(plain).toMatchObject({ style: "primary" });
+    expect(plain).not.toHaveProperty("confirm");
   });
 
-  it("adds the approval agent's reason to the body when it handed the decision to a person", () => {
-    const out = approvalCard(rollback, {
-      ...ctx,
-      reasonBy: "approver",
-      reason: "Production needs a person",
-    });
-    expect((out.blocks[0]?.body as { text: string }).text).toContain(
-      defaultCopy.slackBlocks.handedOver("approver", "Production needs a person"),
+  it("says what the approval agent decided and why in its body, its fields first", () => {
+    const out = approvalCard(
+      {
+        ...rollback,
+        preview: [{ label: "Service", value: "payments-api" }],
+        judgement: {
+          decision: "ask",
+          reason: "Production needs a person",
+          fields: [{ label: "Risk", value: "High" }],
+        },
+      },
+      ctx,
+    );
+    expect(out.native).toBe(true);
+    expect((out.blocks[0]?.body as { text: string }).text).toBe(
+      'Service: payments-api\n*Risk:* High | *Approval agent:* Asked a person: "Production needs a person"',
     );
   });
 
-  it("puts choices past the card's three in a row under it", () => {
-    const out = approvalCard(fx.pendingApproval, ctx);
+  it("keeps the approval agent's reason once on the record", () => {
+    const reason = "The person asked for this deploy.";
+    const out = approvalCard(
+      {
+        ...rollback,
+        preview: [],
+        judgement: { decision: "allow", reason },
+        decision: {
+          kind: "approved",
+          by: "Olu Ade",
+          at,
+          reason: `Allowed by the approval agent: ${reason}`,
+        },
+      },
+      ctx,
+    );
+    const said = JSON.stringify(out.blocks);
+    expect(said).toContain("Approved by Olu Ade");
+    expect(said.split(reason)).toHaveLength(2);
+    expect(buttons(out.blocks)).toEqual([]);
+  });
+
+  it("puts choices past the card's three in a row under it, with the thread's Auto mode in a menu", () => {
+    const out = approvalCard(fx.pendingApproval, { ...ctx, offerAgent: true });
     expect(out.native).toBe(true);
     expect(out.blocks.map((b) => b.type)).toEqual(["card", "actions"]);
     expect(buttons([out.blocks[1] as Block]).map((b) => b.text.text)).toEqual([defaultCopy.edit]);
     expect(sends(out.blocks)).toEqual(sends(out.fallback));
+    const menu = (out.blocks[1]?.elements as Block[]).find((e) => e.type === "overflow");
+    const [auto] = (menu?.options ?? []) as { text: { text: string }; value: string }[];
+    expect(auto?.text.text).toBe(defaultCopy.approvals.letAgentDecide);
+    expect(
+      decodeSlackAction({ action_id: "aui.menu#0", selected_option: { value: auto?.value ?? "" } }),
+    ).toEqual({ id: ActionId.approvalMode, payload: { turnId: "run-1", target: "auto" } });
+  });
+
+  it("offers a run held at a limit a grant and a stop, and no Auto", () => {
+    const held: Approval = {
+      type: "approval",
+      id: "q-b",
+      summary: "lead is held at the limit of spend a day.",
+      tool: "",
+      budget: {
+        scope: "the workspace",
+        limit: "spend",
+        used: "$9.00",
+        max: "$5.00",
+        grant: "$10.00",
+      },
+      decision: { kind: "pending" },
+    };
+    const out = approvalCard(held, { ...ctx, offerAgent: true });
+    expect(out.native).toBe(true);
+    expect(out.blocks.map((b) => b.type)).toEqual(["card"]);
+    expect(buttons(out.blocks).map((b) => b.text.text)).toEqual(["Grant $10.00", "Stop Run"]);
   });
 
   it.each([
@@ -160,41 +227,64 @@ describe("an approval as a card", () => {
     expect(out.warnings[0]).toMatch(/card title is \d+ chars; a card holds 150/);
     expect(JSON.stringify(out.blocks)).toContain("Roll back every service Roll back");
   });
+
+  it.each(["modal", "home"] as const)("is the section layout in a %s", (placement) => {
+    const out = approvalCard(rollback, { ...ctx, placement });
+    expect(out.native).toBe(false);
+    expect(out.warnings).toEqual([]);
+  });
 });
 
 describe("several approvals as a carousel", () => {
-  it("is one line, a card for each, then Approve All and Cancel All", () => {
-    const out = approvalCarousel([rollback, post], ctx);
+  it("is one line, a card for each, then Approve All and a menu with Auto and Cancel All", () => {
+    const out = approvalCarousel([rollback, post], { ...ctx, offerAgent: true });
     every(out);
     expect(out.native).toBe(true);
     expect(out.blocks).toMatchSnapshot();
     expect(out.blocks.map((b) => b.type)).toEqual(["section", "carousel", "actions"]);
-    expect((out.blocks[0]?.text as { text: string }).text).toBe("*lead wants to run 2 actions*");
+    expect((out.blocks[0]?.text as { text: string }).text).toBe(`*${defaultCopy.batchTitle(2)}*`);
     const cards = out.blocks[1]?.elements as Block[];
     expect(cards.map((c) => c.block_id)).toEqual(["approval:a1:r1", "approval:a2:r0"]);
     // action_ids stay unique across the carousel.
     const ids = buttons(out.blocks).map((b) => b.action_id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(sends([out.blocks[2] as Block])).toEqual({
+    // Each card decides its own call, as one card does.
+    expect(sends([cards[1] as Block])[defaultCopy.declineAction]).toEqual({
+      id: ActionId.deny,
+      payload: { turnId: "run-1", target: "a2" },
+    });
+    const row = out.blocks[2] as Block;
+    expect(sends([row])).toEqual({
       [defaultCopy.approveAll(2)]: {
         id: ActionId.approveAll,
         payload: { turnId: "run-1", target: "batch:run-1" },
       },
-      [defaultCopy.denyAll]: {
-        id: ActionId.denyAll,
-        payload: { turnId: "run-1", target: "batch:run-1" },
-      },
     });
-    expect(out.text).toBe(
-      `${defaultCopy.approvalNeeded("lead wants to run 2 actions")}\n• ${rollback.summary}\n• ${post.summary}`,
-    );
+    const menu = (row.elements as Block[]).find((e) => e.type === "overflow");
+    const options = (menu?.options ?? []) as { text: { text: string }; value: string }[];
+    expect(
+      options.map((o) => [
+        o.text.text,
+        decodeSlackAction({ action_id: "aui.menu#0", selected_option: { value: o.value } }),
+      ]),
+    ).toEqual([
+      [
+        defaultCopy.approvals.letAgentDecide,
+        { id: ActionId.approvalMode, payload: { turnId: "run-1", target: "auto" } },
+      ],
+      [
+        defaultCopy.denyAll,
+        { id: ActionId.denyAll, payload: { turnId: "run-1", target: "batch:run-1" } },
+      ],
+    ]);
+    expect(out.text).toBe(defaultCopy.approvalNeeded(defaultCopy.batchTitle(2)));
   });
 
   it.each([
     ["more than ten", Array.from({ length: 11 }, (_, i) => ({ ...post, id: `a${i}` })), {}],
     ["a card with more choices than it holds", [fx.pendingApproval, post], {}],
     ["a modal", [rollback, post], { placement: "modal" as const }],
-  ])("falls back to today's checkbox layout for %s", (_k, approvals, extra) => {
+  ])("falls back to the checkbox layout for %s", (_k, approvals, extra) => {
     const out = approvalCarousel(approvals, { ...ctx, ...extra });
     expect(out.native).toBe(false);
     expect(out.blocks).toEqual(out.fallback);
@@ -202,10 +292,88 @@ describe("several approvals as a carousel", () => {
     expect(JSON.stringify(out.blocks)).toContain("checkboxes");
     expect(out.text.length).toBeGreaterThan(0);
   });
+});
 
-  it("is a single card for one approval", () => {
-    expect(approvalCarousel([rollback], ctx).blocks).toEqual(approvalCard(rollback, ctx).blocks);
+describe("a turn as production posts it", () => {
+  it("draws what waits on a person as Slack's own blocks, and keeps the sections as its fallback", () => {
+    const out = renderToSlack(<TurnView turn={fx.waitingTurn} />);
+    const types = out.blocks.map((b) => b.type);
+    expect(types).toContain("card");
+    expect(out.fallback).toBeDefined();
+    expect(out.fallback?.blocks.map((b) => b.type)).not.toContain("card");
+    // The words a notification reads are the same either way.
+    expect(out.text).toBe(out.fallback?.text);
+    expect(fallbackOf(out.blocks)).toEqual(out.fallback?.blocks);
+    expect(fallbackOf(out.fallback?.blocks ?? [])).toBeUndefined();
   });
+
+  it("draws several waiting approvals as a carousel", () => {
+    const turn = {
+      ...fx.waitingTurn,
+      interrupts: [rollback, post],
+    };
+    const out = renderToSlack(<TurnView turn={turn} capabilities={{ approvalAgent: true }} />);
+    expect(out.blocks.map((b) => b.type)).toContain("carousel");
+    expect(JSON.stringify(out.blocks)).toContain(defaultCopy.approvals.letAgentDecide);
+  });
+
+  it("draws an open question as a container", () => {
+    const out = renderToSlack(
+      <TurnView turn={{ ...fx.waitingTurn, interrupts: [fx.pendingClarification] }} />,
+    );
+    expect(out.blocks.map((b) => b.type)).toContain("container");
+  });
+
+  it("has no fallback when nothing in it is native", () => {
+    const out = renderToSlack(<TurnView turn={fx.doneTurn} />);
+    expect(out.fallback).toBeUndefined();
+    expect(fallbackOf(out.blocks)).toBeUndefined();
+  });
+
+  it("can be drawn without native blocks at all", () => {
+    const out = renderToSlack(<TurnView turn={fx.waitingTurn} />, { native: false });
+    expect(out.blocks.map((b) => b.type)).not.toContain("card");
+    expect(out.fallback).toBeUndefined();
+  });
+});
+
+describe("an inbox alert as a card", () => {
+  const message = fx.mailMessages.find((m) => m.id === "m-alert") as InboxMessage;
+
+  it("has the service and what is wrong as its title, its status as its subtitle, then its buttons", () => {
+    const out = nativeBlocks(<MessageView message={message} />);
+    expect(out.native).toBe(true);
+    const card = out.blocks.find((b) => b.type === "card") as Block;
+    expect(card.block_id).toBe("alert:a-5xx");
+    expect((card.title as { text: string }).text).toBe("*payments-api down: 5xx rate is 4.2%*");
+    expect((card.subtitle as { text: string }).text).toBe(`:x: ${defaultCopy.serviceStatus.down}`);
+    expect((card.body as { text: string }).text).toContain("Charges, Refunds");
+    expect(buttons([card]).map((b) => b.text.text)).toContain(defaultCopy.openRule);
+    expect(sends([card])).toEqual(sends(out.fallback));
+  });
+
+  it("keeps its record in place once resolved, with nothing to press", () => {
+    const part = message.parts[0] as InboxMessage["parts"][number];
+    const done = {
+      ...message,
+      parts: [{ ...part, resolution: { outcome: "acknowledged", by: "Dana", at } }],
+    } as InboxMessage;
+    const out = nativeBlocks(<MessageView message={done} />);
+    const card = out.blocks.find((b) => b.type === "card") as Block;
+    expect(card).not.toHaveProperty("actions");
+    expect((card.subtext as { text: string }).text).toContain("Dana");
+  });
+
+  it.each([["back to normal", { ...fx.systemAlerts.resolved }]])(
+    "is the shared one-line record once its service is %s",
+    (_k, alert) => {
+      const out = nativeBlocks(
+        <SystemAlertPart alert={alert} blockId="alert:p1" record={undefined} />,
+      );
+      expect(out.native).toBe(false);
+      expect(out.blocks.map((b) => b.type)).toEqual(["context"]);
+    },
+  );
 });
 
 describe("an alert as a card", () => {

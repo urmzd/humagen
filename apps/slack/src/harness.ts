@@ -1048,9 +1048,21 @@ export function click(
     positive_button?: Button;
     negative_button?: Button;
   };
-  const elements = (blocks as { type: string; elements?: Element[] }[]).flatMap(
-    (b) => (b.type === "actions" || b.type === "context_actions" ? b.elements : undefined) ?? [],
-  );
+  type Row = { type: string; elements?: unknown[]; actions?: Element[]; child_blocks?: Row[] };
+  // Slack's own blocks hold their buttons too: a card, each card of a carousel, a container's rows.
+  const rows = (bs: Row[]): Element[] =>
+    bs.flatMap((b) =>
+      b.type === "actions" || b.type === "context_actions"
+        ? ((b.elements as Element[]) ?? [])
+        : b.type === "card"
+          ? (b.actions ?? [])
+          : b.type === "carousel"
+            ? rows((b.elements as Row[]) ?? [])
+            : b.type === "container"
+              ? rows(b.child_blocks ?? [])
+              : [],
+    );
+  const elements = rows(blocks as Row[]);
   // A rating control is one element with two buttons, each with its own value.
   const buttons = elements.flatMap((e) =>
     e.type === "feedback_buttons"

@@ -128,25 +128,13 @@ exports[`an alert as a card > has its title, its priority in words, its body, th
 ]
 `;
 
-exports[`an approval as a card > has the action as its title, who and where as its subtitle, what it does as its body, then Deny and Approve 1`] = `
+exports[`an approval as a card > has the action as its title, what it does as its body, then Approve, Ask and Decline 1`] = `
 [
   {
     "actions": [
       {
-        "accessibility_label": "Decline action: Roll back payments-api in production to deploy #4811?",
-        "action_id": "aui.deny#0",
-        "style": "danger",
-        "text": {
-          "emoji": true,
-          "text": "Decline action",
-          "type": "plain_text",
-        },
-        "type": "button",
-        "value": "{"turnId":"run-1","target":"a1"}",
-      },
-      {
         "accessibility_label": "Roll Back: Roll back payments-api in production to deploy #4811?",
-        "action_id": "aui.approve#1",
+        "action_id": "aui.approve#0",
         "confirm": {
           "confirm": {
             "text": "Yes, Continue",
@@ -166,7 +154,7 @@ exports[`an approval as a card > has the action as its title, who and where as i
             "type": "plain_text",
           },
         },
-        "style": "primary",
+        "style": "danger",
         "text": {
           "emoji": true,
           "text": "Roll Back",
@@ -176,10 +164,21 @@ exports[`an approval as a card > has the action as its title, who and where as i
         "value": "{"turnId":"run-1","target":"a1"}",
       },
       {
-        "action_id": "aui.ask#2",
+        "action_id": "aui.ask#1",
         "text": {
           "emoji": true,
-          "text": "Ask a question",
+          "text": "Ask a Question",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"run-1","target":"a1"}",
+      },
+      {
+        "accessibility_label": "Decline: Roll back payments-api in production to deploy #4811?",
+        "action_id": "aui.deny#2",
+        "text": {
+          "emoji": true,
+          "text": "Decline",
           "type": "plain_text",
         },
         "type": "button",
@@ -194,10 +193,6 @@ From: #4812 (14:50)
 To: #4811 (yesterday 17:20)",
       "type": "mrkdwn",
     },
-    "subtitle": {
-      "text": "lead · Payments 5xx · <!date^1791471120^{date_short_pretty} at {time}|2026-10-08 14:52 UTC>",
-      "type": "mrkdwn",
-    },
     "title": {
       "text": "*Roll back payments-api in production to deploy #4811?*",
       "type": "mrkdwn",
@@ -207,11 +202,11 @@ To: #4811 (yesterday 17:20)",
 ]
 `;
 
-exports[`several approvals as a carousel > is one line, a card for each, then Approve All and Cancel All 1`] = `
+exports[`several approvals as a carousel > is one line, a card for each, then Approve All and a menu with Auto and Cancel All 1`] = `
 [
   {
     "text": {
-      "text": "*lead wants to run 2 actions*",
+      "text": "*2 actions need your approval*",
       "type": "mrkdwn",
     },
     "type": "section",
@@ -222,20 +217,8 @@ exports[`several approvals as a carousel > is one line, a card for each, then Ap
       {
         "actions": [
           {
-            "accessibility_label": "Decline action: Roll back payments-api in production to deploy #4811?",
-            "action_id": "aui.deny#0",
-            "style": "danger",
-            "text": {
-              "emoji": true,
-              "text": "Decline action",
-              "type": "plain_text",
-            },
-            "type": "button",
-            "value": "{"turnId":"run-1","target":"a1"}",
-          },
-          {
             "accessibility_label": "Roll Back: Roll back payments-api in production to deploy #4811?",
-            "action_id": "aui.approve#1",
+            "action_id": "aui.approve#0",
             "confirm": {
               "confirm": {
                 "text": "Yes, Continue",
@@ -255,7 +238,7 @@ exports[`several approvals as a carousel > is one line, a card for each, then Ap
                 "type": "plain_text",
               },
             },
-            "style": "primary",
+            "style": "danger",
             "text": {
               "emoji": true,
               "text": "Roll Back",
@@ -265,10 +248,21 @@ exports[`several approvals as a carousel > is one line, a card for each, then Ap
             "value": "{"turnId":"run-1","target":"a1"}",
           },
           {
-            "action_id": "aui.ask#2",
+            "action_id": "aui.ask#1",
             "text": {
               "emoji": true,
-              "text": "Ask a question",
+              "text": "Ask a Question",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a1"}",
+          },
+          {
+            "accessibility_label": "Decline: Roll back payments-api in production to deploy #4811?",
+            "action_id": "aui.deny#2",
+            "text": {
+              "emoji": true,
+              "text": "Decline",
               "type": "plain_text",
             },
             "type": "button",
@@ -283,10 +277,6 @@ From: #4812 (14:50)
 To: #4811 (yesterday 17:20)",
           "type": "mrkdwn",
         },
-        "subtitle": {
-          "text": "lead · Payments 5xx · <!date^1791471120^{date_short_pretty} at {time}|2026-10-08 14:52 UTC>",
-          "type": "mrkdwn",
-        },
         "title": {
           "text": "*Roll back payments-api in production to deploy #4811?*",
           "type": "mrkdwn",
@@ -296,20 +286,8 @@ To: #4811 (yesterday 17:20)",
       {
         "actions": [
           {
-            "accessibility_label": "Decline action: Post the incident summary to #payments-oncall (38 members)?",
-            "action_id": "aui.deny#3",
-            "style": "danger",
-            "text": {
-              "emoji": true,
-              "text": "Decline action",
-              "type": "plain_text",
-            },
-            "type": "button",
-            "value": "{"turnId":"run-1","target":"a2"}",
-          },
-          {
             "accessibility_label": "Post Summary: Post the incident summary to #payments-oncall (38 members)?",
-            "action_id": "aui.approve#4",
+            "action_id": "aui.approve#3",
             "style": "primary",
             "text": {
               "emoji": true,
@@ -320,10 +298,21 @@ To: #4811 (yesterday 17:20)",
             "value": "{"turnId":"run-1","target":"a2"}",
           },
           {
-            "action_id": "aui.ask#5",
+            "action_id": "aui.ask#4",
             "text": {
               "emoji": true,
-              "text": "Ask a question",
+              "text": "Ask a Question",
+              "type": "plain_text",
+            },
+            "type": "button",
+            "value": "{"turnId":"run-1","target":"a2"}",
+          },
+          {
+            "accessibility_label": "Decline: Post the incident summary to #payments-oncall (38 members)?",
+            "action_id": "aui.deny#5",
+            "text": {
+              "emoji": true,
+              "text": "Decline",
               "type": "plain_text",
             },
             "type": "button",
@@ -340,10 +329,6 @@ Mentions: @payments-oncall",
           "text": "Will run as you",
           "type": "mrkdwn",
         },
-        "subtitle": {
-          "text": "lead · Payments 5xx · <!date^1791471120^{date_short_pretty} at {time}|2026-10-08 14:52 UTC>",
-          "type": "mrkdwn",
-        },
         "title": {
           "text": "*Post the incident summary to #payments-oncall (38 members)?*",
           "type": "mrkdwn",
@@ -358,6 +343,7 @@ Mentions: @payments-oncall",
     "elements": [
       {
         "action_id": "aui.approve.all#0",
+        "style": "primary",
         "text": {
           "emoji": true,
           "text": "Approve All (2)",
@@ -367,14 +353,26 @@ Mentions: @payments-oncall",
         "value": "{"turnId":"run-1","target":"batch:run-1"}",
       },
       {
-        "action_id": "aui.deny.all#1",
-        "text": {
-          "emoji": true,
-          "text": "Cancel All",
-          "type": "plain_text",
-        },
-        "type": "button",
-        "value": "{"turnId":"run-1","target":"batch:run-1"}",
+        "action_id": "aui.menu#0",
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Set this thread to Auto",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.approval.mode","p":{"turnId":"run-1","target":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "Cancel All",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.deny.all","p":{"turnId":"run-1","target":"batch:run-1"}}",
+          },
+        ],
+        "type": "overflow",
       },
     ],
     "type": "actions",

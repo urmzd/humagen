@@ -25,6 +25,8 @@ import {
   askForm,
   type Block,
   feedbackModal,
+  type NativeBlocks,
+  nativeBlocks,
   type Placement,
   questionContainer,
   replyModal,
@@ -164,12 +166,8 @@ export function views(): { name: string; view: object }[] {
 export function natives(): { name: string; blocks: Block[]; placement?: Placement }[] {
   const plain = { ...fx.pendingApproval, editable: false };
   const second = { ...fx.secondApproval, rememberable: false };
-  const at = {
-    turnId: "sandbox",
-    agent: "lead",
-    session: "Payments 5xx",
-    at: "2026-10-08T14:52:00Z",
-  };
+  const at = { turnId: "sandbox" };
+  const alert = fx.mailMessages.find((m) => m.id === "m-alert");
   const knowledge = {
     id: "al-1",
     kind: "knowledge",
@@ -182,12 +180,27 @@ export function natives(): { name: string; blocks: Block[]; placement?: Placemen
     action: "/knowledge/hr-policies",
   };
   const resolve = { id: ActionId.acknowledge, payload: { turnId: "m-alert", target: "p1" } };
-  const cases: [string, ReturnType<typeof approvalCard>, Placement?][] = [
+  const cases: [string, NativeBlocks, Placement?][] = [
     ["approvalCard", approvalCard(plain, at)],
     ["approvalCard.more", approvalCard(fx.pendingApproval, at)],
     ["approvalCard.approved", approvalCard(fx.approvedApproval, at)],
     ["approvalCard.denied", approvalCard(fx.deniedApproval, at)],
-    ["approvalCarousel", approvalCarousel([plain, second], at)],
+    [
+      "approvalCard.judged",
+      approvalCard(
+        {
+          ...plain,
+          preview: [],
+          judgement: { decision: "ask", reason: "Production needs a person" },
+        },
+        at,
+      ),
+    ],
+    ["approvalCard.auto", approvalCard(fx.pendingApproval, { ...at, offerAgent: true })],
+    ["approvalCarousel", approvalCarousel([plain, second], { ...at, offerAgent: true })],
+    ...(alert
+      ? [["systemAlert", nativeBlocks(<MessageView message={alert} />)] as [string, NativeBlocks]]
+      : []),
     [
       "alertCard.knowledge",
       alertCard(knowledge, { consoleUrl: "https://platform.example.com", resolve }),

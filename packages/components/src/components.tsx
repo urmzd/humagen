@@ -49,6 +49,7 @@ import {
   Markdown,
   Menu,
   Only,
+  overridable,
   Plan,
   Request,
   Row,
@@ -168,24 +169,29 @@ function JudgementView({ judgement: j, copy }: { judgement: Judgement; copy: Cop
   );
 }
 
-/**
- * Approval gate. Point first, a preview of exactly what will happen, specific
- * verbs, one emphasized button, and a record in place of the controls once decided.
- */
-export function ApprovalCard({
-  turnId,
-  approval,
-  viewer,
-  offerAgent = false,
-  copy = defaultCopy,
-}: {
+export type ApprovalCardProps = {
   turnId: string;
   approval: Approval;
   /** Who is looking. Non-initiators can ask but never approve. */
   viewer?: string;
   /** Offer to let the approval agent decide the conversation's next actions (`TurnCapabilities.approvalAgent`). */
   offerAgent?: boolean;
-} & WithCopy) {
+} & WithCopy;
+
+/**
+ * Approval gate. Point first, a preview of exactly what will happen, specific
+ * verbs, one emphasized button, and a record in place of the controls once decided.
+ * Slack draws it as its own card block (render-slack `native.tsx`).
+ */
+export const ApprovalCard = overridable("ApprovalCard", ApprovalCardBase);
+
+function ApprovalCardBase({
+  turnId,
+  approval,
+  viewer,
+  offerAgent = false,
+  copy = defaultCopy,
+}: ApprovalCardProps) {
   const compactWebDecision = useSurface().surface === "web" && !approval.budget;
   const { decision } = approval;
   const fields = previewFields(approval, copy);
@@ -345,21 +351,26 @@ export function ApprovalCard({
   );
 }
 
-/**
- * Several gated calls at once: one message, every item listed, all checked by
- * default, one "Approve Selected". Unchecked items are denied, never run.
- */
-export function ApprovalBatch({
-  turnId,
-  approvals,
-  offerAgent = false,
-  copy = defaultCopy,
-}: {
+export type ApprovalBatchProps = {
   turnId: string;
   approvals: ApprovalT[];
   /** Offer letting the approval agent decide from here on, as one approval's card does. */
   offerAgent?: boolean;
-} & WithCopy) {
+} & WithCopy;
+
+/**
+ * Several gated calls at once: one message, every item listed, all checked by
+ * default, one "Approve Selected". Unchecked items are denied, never run.
+ * Slack draws it as a carousel of approval cards (render-slack `native.tsx`).
+ */
+export const ApprovalBatch = overridable("ApprovalBatch", ApprovalBatchBase);
+
+function ApprovalBatchBase({
+  turnId,
+  approvals,
+  offerAgent = false,
+  copy = defaultCopy,
+}: ApprovalBatchProps) {
   const name = `batch:${turnId}`;
   const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
   return (
@@ -418,12 +429,19 @@ export function ApprovalBatch({
   );
 }
 
-/** Clarifying choice: two to four unstyled options, each with a line of context, plus a way out. */
-export function ClarificationCard({
+export type ClarificationCardProps = { turnId: string; clarification: Clarification } & WithCopy;
+
+/**
+ * Clarifying choice: two to four unstyled options, each with a line of context, plus a way out.
+ * Slack draws it as its own container block (render-slack `native.tsx`).
+ */
+export const ClarificationCard = overridable("ClarificationCard", ClarificationCardBase);
+
+function ClarificationCardBase({
   turnId,
   clarification,
   copy = defaultCopy,
-}: { turnId: string; clarification: Clarification } & WithCopy) {
+}: ClarificationCardProps) {
   const { answer, options, judgement } = clarification;
   // The approval agent's part, in Auto: an answer it gave, which the person
   // can tell from their own, or why it left the question for them.

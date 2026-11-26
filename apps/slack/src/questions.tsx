@@ -76,31 +76,65 @@ export function settledElsewhere(
   return false;
 }
 
-type Block = { type?: string; block_id?: string; text?: { text?: string } };
+type Block = {
+  type?: string;
+  block_id?: string;
+  text?: { text?: string };
+  title?: { text?: string };
+  elements?: unknown[];
+};
+
+/** Whether a block is drawn for this question: its card, its container or its buttons. */
+const isFor = (b: unknown, question: string) => {
+  const { block_id: id = "" } = obj(b) as Block;
+  return id === `clarification:${question}` || id.startsWith(`approval:${question}:`);
+};
+
+/** Slack's own blocks a question is drawn as (render-slack `native.tsx`). */
+const NATIVE = new Set(["card", "container"]);
 
 /** Where a question's buttons are in a message's blocks, or -1. */
 function buttonsOf(blocks: readonly unknown[], question: string): number {
-  return blocks.findIndex((b) => {
-    const { type, block_id: id = "" } = obj(b) as Block;
-    return (
-      type === "actions" &&
-      (id === `clarification:${question}` || id.startsWith(`approval:${question}:`))
-    );
-  });
+  return blocks.findIndex((b) => obj(b).type === "actions" && isFor(b, question));
 }
 
-const card = (run: string, q: WireQuestion, copy: Copy, settled?: Settled) => {
+/** Where a question's own card or container is: at the top, or in a carousel. */
+function nativeOf(
+  blocks: readonly unknown[],
+  question: string,
+): { at: number; inCarousel?: number } | null {
+  for (const [at, b] of blocks.entries()) {
+    const block = obj(b) as Block;
+    if (NATIVE.has(block.type ?? "") && isFor(b, question)) return { at };
+    if (block.type === "carousel" && Array.isArray(block.elements)) {
+      const i = block.elements.findIndex((c) => isFor(c, question));
+      if (i >= 0) return { at, inCarousel: i };
+    }
+  }
+  return null;
+}
+
+const card = (
+  run: string,
+  q: WireQuestion,
+  copy: Copy,
+  settled?: Settled,
+  native = true,
+): unknown[] => {
   const interrupt = interruptOf(q, settled);
   return interrupt
-    ? (renderToSlack(<InterruptCard turnId={run} interrupt={interrupt} copy={copy} />)
-        .blocks as unknown[])
+    ? (renderToSlack(<InterruptCard turnId={run} interrupt={interrupt} copy={copy} />, {
+        native,
+      }).blocks as unknown[])
     : [];
 };
 
 /**
  * A message's blocks with one question's card replaced by its record: what
  * was chosen and by whom, or why nobody answered, and no button left. The
- * rest of the message is untouched. Null when the card is not in the blocks.
+ * record is drawn the way the card was: as Slack's own card or container, or
+ * as sections. The rest of the message is untouched. Null when the card is
+ * not in the blocks.
  */
 export function settleCard(
   blocks: readonly unknown[],
@@ -108,10 +142,30 @@ export function settleCard(
   recorded: Recorded,
   copy: Copy = defaultCopy,
 ): unknown[] | null {
-  const at = buttonsOf(blocks, recorded.question.id);
+  const id = recorded.question.id;
+  const native = nativeOf(blocks, id);
+  if (native) {
+    const record = card(run, recorded.question, copy, recorded.settled);
+    if (record.length === 0) return null;
+    const { at, inCarousel } = native;
+    if (inCarousel !== undefined) {
+      // One card of several: the carousel keeps its place, and the card gives way to its record's.
+      const [only] = record;
+      if (record.length !== 1 || obj(only).type !== "card") return null;
+      const carousel = obj(blocks[at]) as Block;
+      const elements = [...(carousel.elements ?? [])];
+      elements[inCarousel] = only;
+      return [...blocks.slice(0, at), { ...carousel, elements }, ...blocks.slice(at + 1)];
+    }
+    // The row of choices a card could not hold goes with it.
+    const next = obj(blocks[at + 1]) as Block;
+    const more = next.type === "actions" && isFor(next, id) ? 1 : 0;
+    return [...blocks.slice(0, at), ...record, ...blocks.slice(at + 1 + more)];
+  }
+  const at = buttonsOf(blocks, id);
   if (at < 0) return null;
-  const open = card(run, recorded.question, copy);
-  const record = card(run, recorded.question, copy, recorded.settled);
+  const open = card(run, recorded.question, copy, undefined, false);
+  const record = card(run, recorded.question, copy, recorded.settled, false);
   if (record.length === 0) return null;
   // The card as it was drawn, around its buttons: the same blocks, in order.
   const k = open.findIndex((b) => obj(b).type === "actions");
@@ -128,16 +182,29 @@ export function settleCard(
 
 /** The question a card asks, as plain words, read from the blocks above its buttons. */
 export function promptIn(blocks: readonly unknown[], question: string): string {
+  const native = nativeOf(blocks, question);
+  if (native) {
+    const at = obj(blocks[native.at]) as Block;
+    const own = (
+      native.inCarousel === undefined ? at : obj(at.elements?.[native.inCarousel])
+    ) as Block;
+    return plainWords(own.title?.text ?? "");
+  }
   const at = buttonsOf(blocks, question);
   for (let i = at - 1; i >= 0; i--) {
     const b = obj(blocks[i]) as Block;
     if (b.type !== "section" || !b.text?.text) continue;
-    return (b.text.text.split("\n")[0] ?? "")
-      .replace(/^\*(.+)\*$/, "$1")
-      .replaceAll("&lt;", "<")
-      .replaceAll("&gt;", ">")
-      .replaceAll("&amp;", "&")
-      .trim();
+    return plainWords(b.text.text);
   }
   return "";
+}
+
+/** A card's first line as plain words: its bold and Slack's escapes taken off. */
+function plainWords(text: string): string {
+  return (text.split("\n")[0] ?? "")
+    .replace(/^\*(.+)\*$/, "$1")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&")
+    .trim();
 }

@@ -40,6 +40,12 @@ export const LIMITS = {
 
 export interface SerializeOptions {
   /**
+   * Draw Slack's own blocks (card, carousel, container) where a shared
+   * component has them (`native.tsx`). False draws the sections and actions
+   * in their place. Default true.
+   */
+  native?: boolean;
+  /**
    * The host opens `amountModal` when an `Amount` button is clicked. Without
    * it an `Amount` renders nothing on Slack, since its button would lead nowhere.
    */
@@ -58,6 +64,30 @@ export interface SerializeResult {
   text: string;
   /** Limits hit and degradations applied. Empty when the output is lossless. */
   warnings: string[];
+  /**
+   * The same layout drawn with sections and actions in place of Slack's own
+   * blocks, when it has any of them. Post it when Slack refuses this one
+   * (`invalid_blocks`); `fallbackOf` finds it from one page.
+   */
+  fallback?: SerializeResult;
+}
+
+/** Host type of a shared component drawn as Slack's own blocks (`native.tsx`). */
+export const NATIVE = "slack:Native";
+/** Under a `NATIVE` node: what is drawn after its blocks, only when they are drawn. */
+export const NATIVE_MORE = "slack:NativeMore";
+
+/** Each page that holds native blocks, and the page to post in its place. */
+const FALLBACKS = new WeakMap<readonly unknown[], Block[] | null>();
+
+/**
+ * The page to post when Slack refuses `page` as `invalid_blocks`: the same
+ * page drawn with sections in place of Slack's own blocks. Null when the
+ * other layout splits into other pages, so only the message's text can stand
+ * in for it. Undefined when the page has no native blocks to take back.
+ */
+export function fallbackOf(page: readonly unknown[]): Block[] | null | undefined {
+  return FALLBACKS.get(page);
 }
 
 const TONE_PREFIX: Record<Tone, string> = {
@@ -83,6 +113,8 @@ class Serializer {
   markdownUsed = 0;
   tables = 0;
   summary: string | null = null;
+  /** Slack's own blocks drawn in place of a shared component's sections. */
+  natives = new Set<Block>();
   /** Block indexes where a new message must start (the markdown budget ran out). */
   breaks = new Set<number>();
   /** Accessories each sit in their own block; number them across the layout so no two match. */
@@ -154,7 +186,35 @@ class Serializer {
     return `[${n}] ${title}${c.source ? ` · ${escapeSlackText(c.source)}` : ""}`;
   }
 
+  /**
+   * A shared component Slack draws its own way: its native blocks and what
+   * follows them, or, without them, the shared drawing it holds. The
+   * message's text is always the shared drawing's.
+   */
+  native(node: HostNode) {
+    const { blocks, warnings = [] } = node.props as { blocks?: Block[]; warnings?: string[] };
+    const children = flatten(node.children);
+    const base = children.filter((c) => c.type !== NATIVE_MORE);
+    this.warnings.push(...warnings);
+    if (!blocks || this.options.native === false) {
+      for (const c of base) this.node(c);
+      return;
+    }
+    const words = new Serializer(this.placement, this.options);
+    for (const c of base) words.node(c);
+    this.summary ??= words.summary;
+    this.fallback.push(...words.fallback);
+    for (const b of blocks) {
+      this.natives.add(b);
+      this.blocks.push(b);
+    }
+    for (const more of children.filter((c) => c.type === NATIVE_MORE)) {
+      for (const c of flatten(more.children)) this.node(c);
+    }
+  }
+
   node(node: HostNode) {
+    if (node.type === NATIVE) return this.native(node);
     const name = node.type.replace(/^aui:/, "") as PrimitiveName;
     const p = node.props as never;
     switch (name) {
@@ -896,5 +956,16 @@ export function serialize(
     }
     s.node(child as HostNode);
   }
-  return s.finish();
+  const result = s.finish();
+  if (s.natives.size === 0) return result;
+  const fallback = serialize(tree, placement, { ...options, native: false });
+  const aligned = fallback.pages.length === result.pages.length;
+  const pages: [Block[], Block[] | undefined][] = [
+    [result.blocks, fallback.blocks],
+    ...result.pages.map((p, i): [Block[], Block[] | undefined] => [p, fallback.pages[i]]),
+  ];
+  for (const [page, other] of pages) {
+    if (page.some((b) => s.natives.has(b))) FALLBACKS.set(page, aligned ? (other ?? null) : null);
+  }
+  return { ...result, fallback };
 }
