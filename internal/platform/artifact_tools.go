@@ -386,7 +386,9 @@ func (p *Platform) publishTo(ctx context.Context, area fileArea, reach artifactR
 		return artifacts.Artifact{}, err
 	}
 	if target.after != "" {
-		if title := strings.TrimSpace(pub.Title); title != "" && title != target.title {
+		// The title a first publish was given as a heading is the file's
+		// title without its extension (titled), and names the same file.
+		if title := strings.TrimSpace(pub.Title); title != "" && title != target.title && titled(title, target.title) != target.title {
 			return artifacts.Artifact{}, fmt.Errorf("%w: a new version keeps its file's title, %q. Leave title out", ErrSandbox, target.title)
 		}
 		pub.Title, pub.After = target.title, target.after
