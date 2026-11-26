@@ -225,9 +225,13 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 	// The run's history budget (compaction_tokens) was resolved onto req;
 	// a configured runtime reads only in.
 	in.Compaction = native.CompactionTo(req.Compaction)
-	// Buffer contracted outputs until validation succeeds. An invalid helper
-	// answer must not appear as accepted text or a successful tool result.
-	var buffered []event.Body
+	// A called agent's words are published as it writes them, as any run's
+	// are, so a person watches it work. Its answer is checked against its
+	// contract when the turn ends: one that fails ends the run failed, with
+	// no completed answer and an error for its caller, so text that was
+	// streamed never stands as an accepted result. The stream is bounded as
+	// it goes, because the check on the whole answer comes too late to stop
+	// a helper that never stops writing.
 	send := emit
 	if format != nil {
 		size := 0
@@ -237,8 +241,6 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 				if size > call.MaxOutputChars*6 {
 					return fmt.Errorf("%w: helper output exceeds stream limit", call.ErrInvalid)
 				}
-				buffered = append(buffered, b)
-				return nil
 			}
 			if emit != nil {
 				return emit(ctx, b)
@@ -294,13 +296,6 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 		}
 		if err := format.ValidateOutput(out.Text); err != nil {
 			return turn.Result{}, durable.NonRetryable(err)
-		}
-		for _, b := range buffered {
-			if emit != nil {
-				if err := emit(ctx, b); err != nil {
-					return turn.Result{}, err
-				}
-			}
 		}
 	}
 	return out, nil

@@ -90,7 +90,7 @@ func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *test
 	}
 }
 
-func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
+func TestInvalidHelperResultFailsWithoutAnAcceptedAnswer(t *testing.T) {
 	c := &cast{says: map[string][][]saigetypes.Delta{
 		"lead":   {say("Parent answer")},
 		"helper": {say("This is longer than two words.")},
@@ -110,10 +110,20 @@ func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
 	if !strings.Contains(helper.Error, "summary exceeds 2 words") {
 		t.Fatalf("helper error = %q", helper.Error)
 	}
+	// Its words were published as it wrote them, and none of them stands as
+	// an answer: the run did not complete and its record holds no answer.
+	streamed := false
 	for _, e := range kept(p.Journal.Events(tenant, []string{helper.ID})) {
-		if e.Type == event.TypeText || e.Type == event.TypeCompleted {
+		if e.Type == event.TypeCompleted {
 			t.Fatalf("invalid answer published as %s", e.Type)
 		}
+		streamed = streamed || e.Type == event.TypeText
+	}
+	if !streamed {
+		t.Fatal("the helper's words were held until its answer was checked")
+	}
+	if helper.Answer != "" {
+		t.Fatalf("an invalid answer stands on the run: %q", helper.Answer)
 	}
 }
 
