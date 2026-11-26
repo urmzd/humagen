@@ -411,6 +411,9 @@ export function adapter(
       case "run.delta.tool.call.v1": {
         const t = e.data;
         if (!t?.id) return [];
+        // A call is reported when the model starts it, when it runs, and in
+        // between as it is written: what is done once per call is done on the first.
+        const first = !tools.has(t.id);
         tools.set(t.id, t.name ?? "tool");
         if (t.phase === "executing" && Number.isFinite(Date.parse(e.time))) toolStarted.set(t.id, Date.parse(e.time));
         const out: TurnEvent[] = [
@@ -421,7 +424,7 @@ export function adapter(
           const pending = calling.get(t.name) ?? [];
           if (!pending.includes(t.id) && !started.has(t.id)) calling.set(t.name, [...pending, t.id]);
         }
-        if (t.name === PUBLISH) {
+        if (t.name === PUBLISH && first) {
           publishing.push(t.id);
           out.push({
             type: "attachment.upserted",
