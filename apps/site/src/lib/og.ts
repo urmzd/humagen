@@ -41,7 +41,8 @@ const theme = readFileSync(require.resolve("@humagen/render-web/theme.css"), "ut
 const token = (name: string): string => {
   const m = theme.match(new RegExp(`--${name}:\\s*([^;]+);`));
   if (!m) throw new Error(`theme.css has no --${name}`);
-  return m[1].trim();
+  // A token may name another, as a neutral names the brand's hue.
+  return m[1].trim().replace(/var\(--([\w-]+)\)/g, (_, inner: string) => token(inner));
 };
 
 /** oklch(L C H) to #rrggbb, through OKLab and linear sRGB. */
@@ -88,10 +89,9 @@ const colors = {
 
 function layout(card: Card): ReactNode {
   const logo = `data:image/svg+xml;base64,${Buffer.from(
-    mark(56).replace(
-      'fill="currentColor"',
-      `xmlns="http://www.w3.org/2000/svg" fill="${colors.fg}"`,
-    ),
+    mark(56)
+      .replace('fill="currentColor"', `xmlns="http://www.w3.org/2000/svg" fill="${colors.fg}"`)
+      .replace('fill="var(--aui-accent)"', `fill="${colors.accent}"`),
   ).toString("base64")}`;
   const grid = `${colors.fg}0d`; // the page's quiet grid: fg at 5%
   return h(

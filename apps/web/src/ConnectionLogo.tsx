@@ -1,5 +1,7 @@
-// Brand marks for connection presets, from Simple Icons (CC0 1.0). Drawn in
-// the current text color so they sit quietly beside the name in both themes.
+// Brand marks for connection presets, from Simple Icons (CC0 1.0). Each is
+// drawn in its brand's own color, which is how people tell Docs from Sheets
+// from Slides at a glance. A mark whose color is black, or too dark to show
+// on the dark theme, is drawn in the text color.
 const paths: Record<string, string> = {
   slack:
     "M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z",
@@ -35,9 +37,24 @@ const paths: Record<string, string> = {
 /** Ids that share another id's mark. */
 const alias: Record<string, string> = { "google-drive": "drive" };
 
+/** A mark's brand color. Slack, GitHub, Notion and the stand-in cloud have none here. */
+const colors: Record<string, string> = {
+  linear: "#5E6AD2",
+  drive: "#4285F4",
+  gmail: "#EA4335",
+  "google-calendar": "#4285F4",
+  "google-docs": "#4285F4",
+  "google-sheets": "#34A853",
+  "google-slides": "#FBBC04",
+  atlassian: "#1868DB",
+  bigquery: "#669DF6",
+  snowflake: "#29B5E8",
+};
+
 /** A service's mark, or its initial when no mark is bundled. */
 export function ConnectionLogo({ id, name }: { id: string; name: string }) {
-  const d = paths[id] ?? paths[alias[id] ?? ""] ?? paths[id.replace(/-mcp$/, "")];
+  const key = [id, alias[id] ?? "", id.replace(/-mcp$/, "")].find((k) => paths[k]);
+  const d = key && paths[key];
   if (!d) {
     return (
       <span
@@ -54,7 +71,7 @@ export function ConnectionLogo({ id, name }: { id: string; name: string }) {
       focusable="false"
       viewBox="0 0 24 24"
       className="size-6 shrink-0"
-      fill="currentColor"
+      fill={colors[key ?? ""] ?? "currentColor"}
     >
       <path d={d} />
     </svg>
