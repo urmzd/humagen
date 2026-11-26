@@ -1084,7 +1084,7 @@ export function Composer({
               disabled={!ready || held}
               aria-label="Send message"
               title={defaultCopy.dock.sendHint(mac)}
-              className={`${tool} humagen-composer-send text-aui-fg disabled:text-aui-muted`}
+              className={`${tool} humagen-composer-send text-aui-accent disabled:text-aui-muted`}
             >
               <Glyph d={RETURN} />
             </button>

@@ -232,7 +232,12 @@ function EvidenceItem({
           <Words text={e.observation} />
         </span>
         {e.source.action ? (
-          <Button label={e.source.label} action={e.source.action} />
+          // Beside a line of evidence, the button is the size of the finding's other button.
+          <DenseContext.Provider value>
+            <span className="text-aui-fg">
+              <Button label={e.source.label} action={e.source.action} />
+            </span>
+          </DenseContext.Provider>
         ) : inPlace ? (
           <button
             type="button"

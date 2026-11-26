@@ -17120,7 +17120,7 @@ components:
         prompts:
           $ref: "#/components/schemas/PromptLayers"
     Accent:
-      description: The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, red when its branding sets none.
+      description: The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, cobalt blue when its branding sets none.
       type: string
       enum: [workspace, red, yellow, green, purple, blue, teal]
       default: workspace

@@ -297,12 +297,8 @@ export function StoredList({
     return narrowed ? (
       <Empty title="No artifacts match">Change the filters or the search to see the rest.</Empty>
     ) : (
-      <div className="humagen-glass rounded-aui-lg px-5">
-        <Empty title="No artifacts yet">
-          When an agent publishes a file from its sandbox, it is kept here as an artifact, with
-          every later version. Each one also arrives in your inbox.
-        </Empty>
-      </div>
+      // The tiles above are the action: an empty state is a title, not an explanation.
+      <Empty title="No artifacts yet" />
     );
   }
   return (

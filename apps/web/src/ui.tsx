@@ -1972,7 +1972,7 @@ export function Menu<T extends string>({
         className={
           quiet
             ? "inline-flex h-7 max-w-60 items-center gap-1 rounded-aui px-1.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
-            : "flex h-8 pointer-coarse:h-11 w-full min-w-0 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:border-aui-ring focus-visible:border-aui-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aui-ring disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:border-aui-accent"
+            : "flex h-9 pointer-coarse:h-11 w-full min-w-0 items-center gap-2 rounded-aui border border-input bg-aui-bg px-3 text-left text-aui-sm text-aui-fg shadow-xs transition-colors hover:border-aui-ring focus-visible:border-aui-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:border-aui-accent"
         }
       >
         {shows === undefined && chosen?.mark}

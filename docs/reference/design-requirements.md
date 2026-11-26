@@ -39,6 +39,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-090 | An agent's mascot feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, finishes its move on open eyes when the pointer leaves or its work stops, and from 24px holds a prop that names its activity; a mascot never carries the orb | Implemented: `useIdleGlance`, `useSettle`, `eyesOpen`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; in Chrome, 30 seconds sampled showed glances of 1.2 to 2 seconds and none under reduced motion, and frames after the pointer left a mark showed it land its hop and hold still with open eyes. The orb stays only where no mascot is drawn: an `AgentMark` under 16px, a host's avatar picture and the status line. |
 | DES-091 | One component vocabulary (shadcn/ui) and one layout rule for every page: one row of tabs at most, an item's sections as a side list, the path on the title line, rows for things to compare and act on, cards only for things browsed by picture, one control per row (a split button for the rest), and drawers with one job | Implemented for the parts and the pages named in its section: `packages/render-web/src/ui/` (item, card, field, button-group, breadcrumb, table), `SplitButton.tsx`, `Page` `sections` and the breadcrumb title line in `ui.tsx`; Knowledge, a source, a skill, the Store, Connections, the People drawer and the session drawers follow it; web tests pass; checked in the browser at 1280 and 390, light and dark. The pages listed under "Not yet" in its section still use their own parts |
 | DES-092 | A GitHub app lists its repositories, and each repository has its own settings: automatic review and on which events, the agent that answers a mention naming none, instructions, reads made before a run, and whether runs elsewhere may read it; the app's settings are the defaults | Implemented: `apps/web/src/GitHubRepositories.tsx` (a `DataTable` at `/settings/apps/github/<client>/repositories`, one repository's form at `.../<owner>/<repo>`), linked from the app's sheet under Apps; `pkg/reposettings`, `internal/platform/github_repo_settings.go`, `internal/httpapi/github_repos.go`. Evidence: `github-repositories.dom.test.tsx`, `route.test.ts`, `pkg/reposettings` store tests, `TestARepositorysSettingsDecideItsAutomaticReview`, `TestAMentionFollowsTheRepositorysAgentInstructionsAndReads`, `TestARepositoryKeptToItsOwnRunsIsNotReadElsewhere`; browser captures at 1440x900 and 390x844, light and dark, list, form, empty and loading. Not seen: the list from a real App installation (a local token client has none, so the page shows its "not listed" line). |
+| DES-093 | The accent is the brand's color and never a status hue: cobalt blue marks what a person can act on or has chosen (the primary action, a link, focus, a selection, the open tab and nav item, one square of the mark), `info` is a blue of its own, the neutral ramp carries a trace of the brand hue, and controls in one row share one height, edge, radius and text size | Implemented: tokens in `packages/render-web/src/theme.css` (`--aui-brand-h`, `--aui-tint-h`, `--aui-input`, `--aui-info`, the radius and type scales, the base border color), `cn` in `packages/render-web/src/lib/utils.ts` with `utils.test.ts`, `HumagenMark`, `SidebarItem`, `Segmented`, `SearchField`, `FilterSelect`, `pageTitle` and the hub action place in `Page` and `WorkspaceTabs`; web and renderer tests pass; before and after captures at 1280 and 390, light and dark, in pull request 575 |
 | DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
 | DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
 | DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
@@ -641,10 +642,10 @@ Keep React, Vite and Tailwind. Standard shadcn Radix controls belong in
 `packages/render-web/src/ui`, with one semantic theme and the actual bundled
 IBM Plex Sans Variable font for reading and headings. IBM Plex Mono serves
 file editors and technical text. Both fonts are self-hosted with their licenses.
-Neutral light and charcoal surfaces use red as the default interaction accent,
-with real yellow and green presets. Existing purple, blue and teal preferences
-remain valid. Gold attention, green success and agent identity colors retain
-their separate meanings. Glass and a thin static color streak belong to chrome;
+Neutral light and charcoal surfaces use cobalt blue as the default interaction
+accent (DES-093 replaced the red one). Red, yellow, green, purple and teal
+preferences remain valid. Gold attention, green success and agent identity
+colors retain their separate meanings. Glass and a thin static color streak belong to chrome;
 content and popovers keep opaque readable surfaces with restrained bevel/shadow.
 Existing button and field helpers share the same variants and sizing.
 Wrapped inline code repeats its padding and rounded background for each fragment,
@@ -1231,6 +1232,58 @@ message and a blue answer that types, and a wooden hourglass that holds
 still. A thought or a message floats above the head; a thing the bot uses
 stands at its side. `/mascot-gallery.html` on the dev server shows every
 state at 28, 48 and 96px, with `?theme=light` for the light theme.
+
+### DES-093: The accent is the brand's, never a status
+
+Owner request, 2026-11-26: find what falls outside industry patterns (lack of
+color, branding) and clean it up. The owner chose cobalt blue for the accent.
+
+Found before the change, in captures at 1280 and 390, light and dark:
+
+- The accent was `oklch(0.5 0.17 27)` and failure was `oklch(0.5 0.18 27)`:
+  one red. The brand's other colors, yellow and green, were the waiting and
+  success colors. A selected row, a chosen file and the open tab read as an
+  error, so the console kept its brand color off almost everything and was
+  drawn in black, white and gray.
+- `info` followed the accent, so "running" and "merged" were red too.
+- An outline button drew its edge in the text color in light mode and in the
+  control color in dark: a border with no color named took `currentColor`,
+  because the base rule shadcn controls expect was missing.
+- `cn` did not know the theme's own sizes, so `text-aui-sm` was read as a
+  color: it removed the color beside it and did not replace `text-sm`.
+- A filter row held three heights (32, 36 and 38px), two radii and three
+  text sizes. A page's title was 30px, outside the type scale.
+
+Rules:
+
+- The accent is the brand's hue (`--aui-brand-h`, 262) and marks what a
+  person can act on or has chosen: the primary action, a link, a focus ring,
+  a selection, the open tab, the open nav item's icon, the open session's
+  bar. It is never one of the status hues by default.
+- Status keeps its own colors: green done, gold waiting on a person, red
+  failed, and `info` a blue of its own that does not follow a person's accent
+  preset. An unread dot is `info`.
+- The mark is three squares in ink and one in the accent, in the console,
+  the favicons, the app icons and the docs.
+- Neutrals carry a trace of the brand hue (`--aui-tint-h`); the page stays
+  white. Text is `oklch(0.17 …)`, not pure black; secondary text is
+  `oklch(0.46 …)`, 7.1:1 on the page.
+- A border with no color named is a rule (`--border`). A control's edge is
+  `--aui-input`, a step firmer than a rule, the same in both themes.
+- Controls that share a row share 36px, one edge, one radius and 13px text
+  (`SearchField`, `Segmented`, `FilterSelect`). shadcn's radius scale equals
+  the console's.
+- A page's title is `text-aui-2xl` (24px). Home's greeting is `text-aui-3xl`
+  (32px), the one line of that size.
+- A page under a hub's tabs has its actions at the right of the hub's tab
+  row, as a page headed by its own tabs does.
+
+Contrast, computed from the tokens: accent on the page 6.3:1 in light and
+7.5:1 in dark; white on the light accent 6.3:1; ink on the dark accent 7.2:1.
+
+Not changed, and why: Sessions, Projects and Alerts keep `DataTable`'s soft
+rounded rows and Agents keeps its ruled table with a fixed set of columns,
+which `agents.test.tsx` pins. Whether the two become one is the owner's call.
 
 ### DES-091: One component vocabulary, one layout rule
 

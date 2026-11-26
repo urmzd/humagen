@@ -13,8 +13,8 @@ the shared font entry, with their licenses retained in the renderer package.
 The console loads these files. Compact controls, regular
 controls and coarse-pointer targets use explicit sizes. Reduced motion remains
 supported.
-The default interaction accent is red, with real yellow and green presets.
-Saved purple, blue and teal choices remain valid. Neutral light and charcoal
+The default interaction accent is cobalt blue, the brand's color, and it is
+never a status hue. Red, yellow, green, purple and teal remain as choices. Neutral light and charcoal
 surfaces retain semantic gold attention and green success states; agent
 identity hues do not change. Glass and a thin static color streak are limited
 to chrome. Content and popovers keep opaque readable surfaces with restrained
