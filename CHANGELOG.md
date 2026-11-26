@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.205.1 (2026-11-26)
+
+### Bug Fixes
+
+- **connections**: let a person approve more than one Google tool list (#572) ([8293058](https://github.com/urmzd/humagen/commit/82930586548cb14bed59005d183b7feef1104d8b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.205.0...v0.205.1)
+
+
 ## 0.205.0 (2026-11-25)
 
 ### Features
