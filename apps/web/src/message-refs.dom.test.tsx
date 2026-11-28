@@ -8,6 +8,7 @@ import { AgentMessage, CallThreadContext } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
+import { publishesOf } from "./callFiles.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
@@ -912,6 +913,36 @@ test("a called agent's message shows the file it published, read from its own ru
   } finally {
     net.restore();
   }
+});
+
+test("a publish that waits on a person is not counted as ended, so its card is not read and kept too soon", () => {
+  const step = (id: string, status: ResponseTool["status"]) => ({
+    type: "tool",
+    id,
+    name: "publish_artifact",
+    kind: "tool",
+    input: {},
+    depth: 2,
+    status,
+    content: [],
+  });
+  const call = (statuses: ResponseTool["status"][]) =>
+    ({
+      type: "tool",
+      id: "c1",
+      name: "call_agent",
+      kind: "agent",
+      agent: "writer",
+      runId: hex("8"),
+      input: {},
+      depth: 1,
+      status: "running",
+      content: statuses.map((status, i) => step(`t${i}`, status)),
+    }) as ResponseTool;
+  assert.equal(publishesOf(call(["running"])), 0);
+  assert.equal(publishesOf(call(["awaiting_approval"])), 0);
+  assert.equal(publishesOf(call(["done", "awaiting_approval", "error", "denied"])), 3);
+  assert.equal(publishesOf(undefined), 0);
 });
 
 test("a called agent's record becomes a turn: thinking, words, steps and its own calls, in the order they came", () => {
