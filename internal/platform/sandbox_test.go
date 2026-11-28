@@ -528,6 +528,54 @@ func TestATitleWithoutAnExtensionKeepsTheFilesType(t *testing.T) {
 	}
 }
 
+// A title that is already the file's own name is left alone, whatever its
+// extension looks like, and only a file extension that is one is given to a
+// heading. A native document keeps its extension under any heading, because
+// its type is read from the name.
+func TestATitleNeverGainsAnExtensionTwiceOrOneThatIsNotOne(t *testing.T) {
+	p := start(t, call.Limits{})
+	run, req := turn(t, p, "titled-edge", "")
+	publish := func(file, title string) artifacts.Artifact {
+		t.Helper()
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": file, "content": "text"}); err != nil {
+			t.Fatal(err)
+		}
+		a, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: file, Title: title})
+		if err != nil {
+			t.Fatalf("publish %q as %q: %v", file, title, err)
+		}
+		return a
+	}
+	for _, c := range []struct{ file, title, want string }{
+		// The default title is the file's name: nothing is added to it.
+		{"config.properties", "", "config.properties"},
+		{"backup.7z", "", "backup.7z"},
+		{"report_v1.0", "", "report_v1.0"},
+		{"Plan v1.2", "Plan v1.2", "Plan v1.2"},
+		{"Q3 vs. Q4 results", "Q3 vs. Q4 results", "Q3 vs. Q4 results"},
+		// What follows the last dot of a file's name is given only when it is an extension.
+		{"notes v1.2", "Summary", "Summary"},
+		{"sub/.gitignore", "Ignore rules", "Ignore rules"},
+		{"app.properties", "Settings", "Settings.properties"},
+		// A title with an extension of its own keeps it.
+		{"page.txt", "readme.md", "readme.md"},
+	} {
+		if got := publish(c.file, c.title); got.Title != c.want {
+			t.Errorf("file %q titled %q is stored as %q, want %q", c.file, c.title, got.Title, c.want)
+		}
+	}
+	// A heading that ends in a dotted word is still a heading over a document.
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "intro.docx", "format": "native", "content": `{"title":"Intro","paragraphs":["Hello"]}`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Introduction to Node.js", "Guide to ASP.NET"} {
+		doc, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "intro.docx", Title: title})
+		if err != nil || doc.Title != title+".docx" || !strings.Contains(doc.Mime, "wordprocessingml.document") {
+			t.Errorf("a document titled %q = %q (%s), %v", title, doc.Title, doc.Mime, err)
+		}
+	}
+}
+
 func TestNativeDocumentsPublishAsEditableOfficeAndKeepPriorVersions(t *testing.T) {
 	p := start(t, call.Limits{})
 	run, req := turn(t, p, "native-files", "")

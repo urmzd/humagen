@@ -334,6 +334,12 @@ func TestANewVersionMayRepeatTheHeadingItsFileWasPublishedUnder(t *testing.T) {
 	if third.Title != "Tones in Depth.md" || third.Version != 3 {
 		t.Fatalf("the heading published again = %+v", third)
 	}
+	// A heading is cleaned into a file name as it is stored, and repeats as it was typed.
+	spoken := publishedFile(t, p, req, "tones.md", "Tones.", map[string]any{"title": "Chinese: A Beginner's Guide"})
+	again := publishedFile(t, p, req, "tones.md", "Tones, again.", map[string]any{"title": "Chinese: A Beginner's Guide", "to": "artifact:" + spoken.ID})
+	if again.Title != spoken.Title || again.Version != 2 {
+		t.Fatalf("a heading with a colon, repeated = %+v after %+v", again, spoken)
+	}
 	// Another name is still refused.
 	if _, _, err := p.UseTool(t.Context(), req, platform.ToolPublish, map[string]any{"path": "guide.md", "title": "Something else", "to": "artifact:" + third.ID}); !errors.Is(err, platform.ErrSandbox) {
 		t.Fatalf("a new version under another title = %v", err)
