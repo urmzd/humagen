@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.207.0 (2026-11-28)
+
+### Features
+
+- **web**: show how much of a file the model has written while it writes it (#581) ([b29b0cb](https://github.com/urmzd/humagen/commit/b29b0cb6e768a46df3a226e9d91d012bc8770a9c))
+- **calls**: stream a called agent's words as it writes them (#580) ([a87e3a5](https://github.com/urmzd/humagen/commit/a87e3a5d0132cc82cae763cc40ba0ef8cf1e34a6))
+- **web**: link an agent's name where an agent writes @name in its answer (#577) ([c7d405f](https://github.com/urmzd/humagen/commit/c7d405f3a88e95200de7fa14d90047d0cc89f522))
+
+### Bug Fixes
+
+- **entry**: answer in its own words, not a copy of a called agent's answer (#579) ([962c828](https://github.com/urmzd/humagen/commit/962c82839c6af02020e48c35fa58f9b43588fa3c))
+- **models**: send an Anthropic request the model's own output limit (#578) ([c818cd4](https://github.com/urmzd/humagen/commit/c818cd4330ad3e9d2b0e9eec3fddb1b8dbef364a))
+- **artifacts**: a called agent's published document opens from its message (#576) ([8311c38](https://github.com/urmzd/humagen/commit/8311c38e4bf2f8b6cc827bdd832acd6c7619708a))
+
+### Misc
+
+- **deps**: bump saige to v0.54.0 (#574) ([9684a74](https://github.com/urmzd/humagen/commit/9684a74b760d1aec0085ccddaa1e1a22962b60e1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.206.0...v0.207.0)
+
+
 ## 0.206.0 (2026-11-26)
 
 ### Features
