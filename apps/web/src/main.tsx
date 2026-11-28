@@ -35,14 +35,20 @@ async function start() {
   const { App } = await import("./App.tsx");
   const { UpdatePrompt } = await import("./UpdatePrompt.tsx");
   const { api } = await import("./api.ts");
-  const { SourceContext } = await import("@humagen/render-web");
+  const { MentionContext, SourceContext } = await import("@humagen/render-web");
+  const { MentionLink } = await import("./ui.tsx");
+  // A name an agent wrote as `@name` in its answer. The link leaves a name
+  // that is no agent's as the text it was.
+  const mention = (name: string) => <MentionLink name={name} shown />;
   // The installed app's worker, in a build only: the dev server's modules change by the second.
   const updates = import.meta.env.PROD ? browserUpdates() : noUpdates;
   createRoot(root).render(
     <StrictMode>
       {/* A review's evidence reads the lines it cites through the API. */}
       <SourceContext.Provider value={api.githubSource}>
-        <App preloaded={branding} />
+        <MentionContext.Provider value={mention}>
+          <App preloaded={branding} />
+        </MentionContext.Provider>
       </SourceContext.Provider>
       <UpdatePrompt updates={updates} />
     </StrictMode>,

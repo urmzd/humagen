@@ -604,6 +604,13 @@
 .aui-prose a.aui-ref:hover > span {
   text-decoration-color: var(--aui-accent);
 }
+/* An agent named in an answer: its color and weight say it is a link, as a mention's do anywhere else. */
+.aui-prose a[data-accent="agent"] {
+  text-decoration: none;
+}
+.aui-prose a[data-accent="agent"]:hover {
+  text-decoration: underline;
+}
 .aui-prose :where(strong) {
   font-weight: 600;
 }

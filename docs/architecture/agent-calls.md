@@ -154,7 +154,8 @@ not its quality. A called agent's answer text is published as it is written,
 so a person watches it work, and is checked against its contract when the
 turn ends. A handoff is the exception: it answers on its caller's channel,
 where a Slack thread or a pull request cannot take text back, so its answer
-text is withheld until validation succeeds. Other execution events are live
+text is withheld until validation succeeds. A handoff that stops to wait on
+a person has what it wrote so far checked and published at that point. Other execution events are live
 in every mode. The text a helper may publish is bounded as it goes. An invalid
 result becomes a terminal helper failure and a tool error for the waiting
 caller: the run has no completed answer, whatever text was shown. It is never silently clipped, repaired or automatically regenerated.
