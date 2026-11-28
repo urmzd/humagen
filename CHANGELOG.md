@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.208.0 (2026-11-28)
+
+### Features
+
+- **models**: ask Anthropic for a tool's input as the model writes it (#582) ([9f6cef1](https://github.com/urmzd/humagen/commit/9f6cef1d0698786ee891976cc4ae3b7612a470d8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.207.0...v0.208.0)
+
+
 ## 0.207.0 (2026-11-28)
 
 ### Features
