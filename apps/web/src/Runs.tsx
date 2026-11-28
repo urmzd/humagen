@@ -14,7 +14,7 @@ type Action = { type: "seed"; turn: Turn } | { type: "open" } | { type: "event";
  * rebuilt from empty on each open rather than appended to.
  */
 /** An adapter that colors a call to another agent as that agent. */
-const make = () => adapter({ hue: hueOf });
+const make = () => adapter({ hue: hueOf, writing: true });
 
 /** A finished run's turn, rebuilt from the events the journal still holds. Undefined when it holds none. */
 export function replay(run: Run, events: RunEvent[]): Turn | undefined {

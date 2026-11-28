@@ -26,6 +26,8 @@ import {
 import type { Run } from "./adapter.ts";
 import { api, call } from "./api.ts";
 import { agentShown } from "./branding.ts";
+import { useCallFiles } from "./callFiles.ts";
+import { useCallLive, writingIn } from "./callLive.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
@@ -159,6 +161,8 @@ const Focus = createContext<{ run?: string; step?: string }>({});
  * away. In Details a lane also links to its agent's message on its own.
  */
 export const LaneInMessage = createContext(false);
+/** The session a message's called agents run in, whose stream brings their words as they write them. */
+export const LaneSession = createContext<string | undefined>(undefined);
 
 const marks = (t: ResponseTool, f: { run?: string; step?: string }) =>
   (f.run !== undefined && t.runId === f.run) || (f.step !== undefined && t.id === f.step);
@@ -468,6 +472,10 @@ function Lane({
   // A call that does not wait is delegated: the agent carries on by itself
   // and answers later, not back into its caller's turn.
   const delegated = tool?.input.background === true;
+  // The files it published, which its call's record does not keep.
+  const files = useCallFiles(inMessage ? tool : undefined);
+  // Its words as it writes them, which its call's record holds only once it has answered.
+  const live = useCallLive(inMessage ? tool : undefined, useContext(LaneSession));
   const urgent =
     focused ||
     pathTo(blocks, focus).length > 0 ||
@@ -605,7 +613,17 @@ function Lane({
         b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
     );
     // A step that waits on a person is drawn once, below, with its controls.
-    const turn = turnOfCall(tool, (step) => asks.includes(step));
+    const recorded = writingIn(
+      turnOfCall(tool, (step) => asks.includes(step)),
+      live,
+    );
+    const published = files ?? live?.attachments;
+    const turn: Turn = {
+      ...recorded,
+      // While it works its record has no words yet, so its own stream speaks for it.
+      ...(tool.status === "running" && !recorded.text && live?.text ? { text: live.text } : {}),
+      ...(published?.length ? { attachments: published } : {}),
+    };
     const run = tool.runId;
     const ended = shown === "error" || shown === "denied" || shown === "stopped";
     // What it was asked is said above it, as its caller's words. Beside its

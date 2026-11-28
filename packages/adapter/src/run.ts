@@ -254,6 +254,12 @@ export function adapter(
     /** An agent's colour, 0 to 360, so a call to it reads as that agent. */
     hue?: (agent: string) => number;
     /**
+     * Say on a step how much of its call the model has written so far. A
+     * surface that redraws a step cheaply sets it; one that pays for every
+     * update (a Slack message) leaves it off.
+     */
+    writing?: boolean;
+    /**
      * Where a platform path such as `/api/artifacts/a1/content` is reached from
      * this surface. The console is served by the platform, so it leaves paths
      * as they are. A surface elsewhere returns an absolute address, or
@@ -271,6 +277,10 @@ export function adapter(
   // from the moment the agent starts publishing it, and the report that
   // follows fills in the same card rather than adding a second one.
   const publishing: string[] = [];
+  // Calls whose step says how much of them is written. A run that ends while
+  // one is still being written takes the size off its step: nothing is being
+  // written any more.
+  const writing = new Set<string>();
 
   // Helper calls link to their own run. Their complete result stays in
   // execution history rather than becoming another answer preview.
@@ -315,6 +325,13 @@ export function adapter(
       : { id, title: title(name), status: "in_progress", tool: name, ...all };
   };
 
+  /** The steps that still say how much of their call is written, without it: the run has ended. */
+  const unwritten = (): TurnEvent[] =>
+    [...writing].map((id) => {
+      writing.delete(id);
+      return { type: "task.upserted", task: task(id, tools.get(id), { writtenBytes: undefined }) };
+    });
+
   return (e) => {
     switch (e.type) {
       case "run.accepted.v1":
@@ -325,6 +342,7 @@ export function adapter(
         calling.clear();
         shown.clear();
         asked.clear();
+        writing.clear();
         acceptedAt = Date.parse(e.time);
         return [{ type: "turn.started", turnId: e.run ?? "", agent: { name: e.agent ?? "" } }];
       case "run.started.v1":
@@ -411,17 +429,34 @@ export function adapter(
       case "run.delta.tool.call.v1": {
         const t = e.data;
         if (!t?.id) return [];
+        // A call is reported when the model starts it, when it runs, and in
+        // between as it is written: what is done once per call is done on the first.
+        const first = !tools.has(t.id);
         tools.set(t.id, t.name ?? "tool");
         if (t.phase === "executing" && Number.isFinite(Date.parse(e.time))) toolStarted.set(t.id, Date.parse(e.time));
+        // While the model writes the call, the event says how much it has
+        // written; once the call runs, its arguments are whole.
+        const growing = t.phase === "requested" && typeof t.arguments_bytes === "number" && t.arguments_bytes > 0;
+        // A surface that does not show the size is told nothing by a call
+        // that only grew: a step sent again unchanged is an edit it pays for.
+        if (growing && !first && !opts.writing) return [];
+        const written =
+          t.phase === "requested"
+            ? opts.writing && growing
+              ? { writtenBytes: t.arguments_bytes }
+              : {}
+            : { writtenBytes: undefined };
+        if (written.writtenBytes === undefined) writing.delete(t.id);
+        else writing.add(t.id);
         const out: TurnEvent[] = [
           { type: "activity", activity: doing(t.name) },
-          { type: "task.upserted", task: task(t.id, t.name, { ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(toolStarted.has(t.id) ? { startedAt: new Date(toolStarted.get(t.id) as number).toISOString() } : {}) }) },
+          { type: "task.upserted", task: task(t.id, t.name, { ...written, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(toolStarted.has(t.id) ? { startedAt: new Date(toolStarted.get(t.id) as number).toISOString() } : {}) }) },
         ];
         if (t.name && (delegateOf(t.name) || CALL_AGENTS.has(t.name))) {
           const pending = calling.get(t.name) ?? [];
           if (!pending.includes(t.id) && !started.has(t.id)) calling.set(t.name, [...pending, t.id]);
         }
-        if (t.name === PUBLISH) {
+        if (t.name === PUBLISH && first) {
           publishing.push(t.id);
           out.push({
             type: "attachment.upserted",
@@ -442,7 +477,7 @@ export function adapter(
         return [
           ...unpublished,
           { type: "activity", activity: "thinking" },
-          { type: "task.upserted", task: task(t.id, name, { status: t.error || FAILED_RESULT.test(t.result ?? "") ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
+          { type: "task.upserted", task: task(t.id, name, { writtenBytes: undefined, status: t.error || FAILED_RESULT.test(t.result ?? "") ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
         ];
       }
       case "run.action.taken.v1": {
@@ -521,7 +556,7 @@ export function adapter(
         ];
       }
       case "run.completed.v1": {
-        const out: TurnEvent[] = [];
+        const out: TurnEvent[] = unwritten();
         const text = e.data?.text;
         if (!streamed && text) out.push({ type: "text.delta", text });
         const ms = acceptedAt === undefined ? Number.NaN : Date.parse(e.time) - acceptedAt;
@@ -542,6 +577,7 @@ export function adapter(
           if (settled) out.push({ type: "interrupt.resolved", interrupt: settled });
         }
         asked.clear();
+        out.push(...unwritten());
         out.push(...publishing.splice(0).map((id) => unpublishedFile(id)));
         out.push({ type: "turn.stopped" }, { type: "stop.updated", stop: "confirmed" });
         return out;
@@ -552,6 +588,7 @@ export function adapter(
         // terminal failure ends the turn.
         if (!l?.terminal) return [];
         return [
+          ...unwritten(),
           ...publishing.splice(0).map((id) => unpublishedFile(id)),
           {
             type: "turn.failed",

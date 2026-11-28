@@ -920,8 +920,10 @@ export const AgentProfiles = createContext<
 /**
  * An agent named in text: a link to its profile that, on hover or focus,
  * shows who the agent is, so a reader can tell without leaving the page.
+ * `shown` writes the agent's shown name, as an agent's own answer names the
+ * agents it calls; a person's message keeps the name as they typed it.
  */
-function MentionLink({ name }: { name: string }) {
+export function MentionLink({ name, shown }: { name: string; shown?: boolean }) {
   const hue = useAgentHue(name);
   const lookup = useContext(AgentProfiles);
   const [open, setOpen] = useState(false);
@@ -958,7 +960,7 @@ function MentionLink({ name }: { name: string }) {
         onBlur={hide}
         className="font-medium text-aui-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
-        @{name}
+        @{shown ? agentShown(name) : name}
       </a>
       {open && (
         <span

@@ -112,7 +112,7 @@ function chain(seen: Map<string, string>, file: string): string {
 }
 
 /** The most source of the console's own that Home may load, in bytes: about a tenth over what it loads now. */
-const HOME_SOURCE_BUDGET = 870_500;
+const HOME_SOURCE_BUDGET = 871_500;
 
 // main.tsx reads the console, the update prompt and the API once the branding is in.
 const main = join(src, "main.tsx");
