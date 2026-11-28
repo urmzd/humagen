@@ -30,6 +30,16 @@ describe("an agent's `@name` in its own words", () => {
     expect(splitMentions("@ada@example.com")).toBeUndefined();
   });
 
+  it("takes a hyphenated name whole or not at all, never the part before a hyphen", () => {
+    expect(splitMentions("see @humagen-writer/core")).toBeUndefined();
+    expect(splitMentions("see @humagen-writer.md")).toBeUndefined();
+    expect(splitMentions("@humagen-writer@example.com")).toBeUndefined();
+    expect(names("ask @humagen-writer, then @humagen-writer- again")).toEqual([
+      "@humagen-writer",
+      "@humagen-writer",
+    ]);
+  });
+
   it("ends at the name: a full stop, a comma or a hyphen after it is not part of it", () => {
     expect(names("Ask @writer. Then @lead, or @ops- next")).toEqual(["@writer", "@lead", "@ops"]);
   });

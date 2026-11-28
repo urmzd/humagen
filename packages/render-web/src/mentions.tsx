@@ -22,8 +22,10 @@ export const MENTION = "data-mention";
 // word, an address or a path: `a@b.co`, `repo@sha` and `/@scope` stay text.
 // The name ends on a letter or a digit, and nothing after it makes it part
 // of something longer: `@scope/pkg`, `@name.md`, `@host.com` and `@a@b` stay
-// text too, though the name in them may be an agent's.
-const AT = /(^|[^\w@/.-])@([a-z0-9](?:[a-z0-9_-]*[a-z0-9])?)(?![a-z0-9_]|[/@]|\.[a-z0-9])/gi;
+// text too, though the name in them may be an agent's. A name is taken whole
+// or not at all: `@humagen-writer/core` is not a mention of `humagen`.
+const AT =
+  /(^|[^\w@/.-])@([a-z0-9](?:[a-z0-9_-]*[a-z0-9])?)(?![a-z0-9_]|-[a-z0-9_]|[/@]|\.[a-z0-9])/gi;
 
 /** `@name` in a text node as mentions, the rest of the text as it was. */
 export function splitMentions(value: string): Node[] | undefined {
