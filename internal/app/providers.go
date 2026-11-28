@@ -99,7 +99,9 @@ func modelProviderKey(kind, name string, b spec.ModelBlock, keyOf platform.KeyFu
 				// written in one tool call, or the thinking before it, is cut
 				// off there and the run ends with nothing. The cap is the
 				// most the model accepts, as it is for a provider that takes
-				// none. What a run may spend is bounded by its budget.
+				// none. A budget is settled after each call, so one call may
+				// pass it by up to this much output. A model the catalog gives
+				// no limit for keeps the adapter's 4096.
 				if caps.MaxOutputTokens > 0 {
 					opts = append(opts, anthropic.WithMaxTokens(int64(caps.MaxOutputTokens)))
 				}
