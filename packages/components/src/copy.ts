@@ -4044,6 +4044,8 @@ export const defaultCopy = {
         "Several steps in a row failed, so it stopped. Open the steps above to see why.",
       max_iterations:
         "It used every step it may take for one answer. Try again with a narrower request.",
+      output_limit:
+        "Its answer was longer than its model can write in one go. Ask for less at once, or for it in parts.",
       undeliverable:
         "The app this conversation is in refused the answer. Check that the app is still connected, then try again.",
       max_attempts: "It failed on every try. Try again later.",

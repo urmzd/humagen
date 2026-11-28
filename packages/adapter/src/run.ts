@@ -702,6 +702,8 @@ export function failureCause(error: string | undefined): FailureCause {
   const text = error ?? "";
   if (/needs a model provider/i.test(text)) return "no_model_provider";
   if (/undeliverable/i.test(text)) return "undeliverable";
+  // saige's own words for a turn its model's output limit cut short.
+  if (/response truncated/i.test(text)) return "output_limit";
   if (/budget|spend limit|insufficient (?:credit|fund)|(?:status|http)[: ]+402/i.test(text))
     return "budget";
   if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text))
@@ -733,6 +735,8 @@ export function failureCause(error: string | undefined): FailureCause {
 function handling(error: string | undefined): { kind: FailureKind; retryable?: boolean } {
   const text = error ?? "";
   if (/needs a model provider/i.test(text)) return { kind: "forbidden", retryable: false };
+  // The same request meets the same limit, and each try spends the whole of it.
+  if (/response truncated/i.test(text)) return { kind: "internal", retryable: false };
   if (/budget|spend limit|insufficient (?:credit|fund)|(?:status|http)[: ]+402/i.test(text))
     return { kind: "forbidden", retryable: false };
   if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text))

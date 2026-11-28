@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/urmzd/saige/agent/provider/anthropic"
@@ -53,13 +54,55 @@ func workspaceModel(kind, name string, b spec.ModelBlock, key platform.KeyFunc) 
 	return modelProviderKey(kind, name, spec.ModelDefaults(kind, b), key)
 }
 
+// anthropicAdapter builds the adapter an Anthropic model block asks for.
+// envBaseURL is the address the SDK reads from ANTHROPIC_BASE_URL when the
+// block names none. more is added last, for a test that points the adapter at
+// its own server.
+func anthropicAdapter(cfg anthropic.Config, b spec.ModelBlock, envBaseURL string, more ...anthropic.Option) (*anthropic.Adapter, error) {
+	var opts []anthropic.Option
+	if b.BaseURL != "" {
+		opts = append(opts, anthropic.WithBaseURL(b.BaseURL))
+	}
+	if eagerToolInput(b, envBaseURL) {
+		opts = append(opts, anthropic.WithEagerToolInput())
+	}
+	opts = append(opts, more...)
+	a, err := anthropic.New(cfg, opts...)
+	if err != nil {
+		return nil, err
+	}
+	// What the model allows decides the rest, so the adapter is built once
+	// to read it and once more with what it adds.
+	caps, n := a.Capabilities(), len(opts)
+	// Anthropic takes an output cap on every request, and the adapter sends
+	// 4096 tokens when it is given none: a document written in one tool call,
+	// or the thinking before it, is cut off there and the run ends with
+	// nothing. The cap is the most the model accepts, as it is for a provider
+	// that takes none. A budget is settled after each call, so one call may
+	// pass it by up to this much output. A model the catalog gives no limit
+	// for keeps the adapter's 4096.
+	if caps.MaxOutputTokens > 0 {
+		opts = append(opts, anthropic.WithMaxTokens(int64(caps.MaxOutputTokens)))
+	}
+	if caps.Supports(saigetypes.CapPromptCacheMarkers) {
+		opts = append(opts, anthropic.WithPromptCachePolicy(anthropic.DefaultPromptCachePolicy(native.PromptCacheShort)))
+	}
+	if len(opts) > n {
+		return anthropic.New(cfg, opts...)
+	}
+	return a, nil
+}
+
 // eagerToolInput reports whether an Anthropic model is asked to send a tool's
 // input as it writes it. Without it Anthropic holds each tool-input parameter
 // back until it is whole, so a document written in one call arrives all at
 // once and a person sees a step that says nothing until then. It is asked of
-// Anthropic's own address only: a gateway at another address may not know the
-// field and refuse the request.
-func eagerToolInput(b spec.ModelBlock) bool { return b.BaseURL == "" }
+// Anthropic's own address only: a gateway may not know the field and refuse
+// the request, whether the block names it (base_url) or the environment does
+// (ANTHROPIC_BASE_URL, which the SDK reads when the block names none).
+func eagerToolInput(b spec.ModelBlock, envBaseURL string) bool {
+	return b.BaseURL == "" && envBaseURL == ""
+}
 
 // workspaceProbe checks a provider a workspace set up, spending no tokens
 // (platform.ModelKinds.Probe).
@@ -81,37 +124,8 @@ func modelProviderKey(kind, name string, b spec.ModelBlock, keyOf platform.KeyFu
 		var p saigetypes.Provider
 		switch kind {
 		case "anthropic":
-			var opts []anthropic.Option
-			if b.BaseURL != "" {
-				opts = append(opts, anthropic.WithBaseURL(b.BaseURL))
-			}
-			if eagerToolInput(b) {
-				opts = append(opts, anthropic.WithEagerToolInput())
-			}
-			cfg := anthropic.Config{APIKey: key, Model: saigetypes.ModelID(s.Model)}
 			var a *anthropic.Adapter
-			if a, err = anthropic.New(cfg, opts...); err == nil {
-				// What the model allows decides the rest, so the adapter is
-				// built once to read it and once more with what it adds.
-				caps, n := a.Capabilities(), len(opts)
-				// Anthropic takes an output cap on every request, and the
-				// adapter sends 4096 tokens when it is given none: a document
-				// written in one tool call, or the thinking before it, is cut
-				// off there and the run ends with nothing. The cap is the
-				// most the model accepts, as it is for a provider that takes
-				// none. A budget is settled after each call, so one call may
-				// pass it by up to this much output. A model the catalog gives
-				// no limit for keeps the adapter's 4096.
-				if caps.MaxOutputTokens > 0 {
-					opts = append(opts, anthropic.WithMaxTokens(int64(caps.MaxOutputTokens)))
-				}
-				if caps.Supports(saigetypes.CapPromptCacheMarkers) {
-					opts = append(opts, anthropic.WithPromptCachePolicy(anthropic.DefaultPromptCachePolicy(native.PromptCacheShort)))
-				}
-				if len(opts) > n {
-					a, err = anthropic.New(cfg, opts...)
-				}
-			}
+			a, err = anthropicAdapter(anthropic.Config{APIKey: key, Model: saigetypes.ModelID(s.Model)}, b, os.Getenv("ANTHROPIC_BASE_URL"))
 			p = a
 		case "google":
 			var opts []google.Option

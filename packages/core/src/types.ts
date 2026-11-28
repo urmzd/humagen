@@ -315,6 +315,8 @@ export type FailureCause =
   | "failed_steps"
   /** The agent used every step it may take for one answer. */
   | "max_iterations"
+  /** The model's output limit cut the answer short: the same request meets the same limit. */
+  | "output_limit"
   /** The surface the conversation is on refused the answer. */
   | "undeliverable"
   /** Every attempt failed, for a reason no other cause names. */
