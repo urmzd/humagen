@@ -382,6 +382,10 @@ func (p *Platform) staleRefusal(tenant, after string) error {
 // title names: the stored one is what the given one became when it was first
 // published, with its file's extension and cleaned into a file name.
 func sameTitle(given, stored string) bool {
+	given, err := artifacts.CleanTitle(given)
+	if err != nil {
+		return false
+	}
 	cleaned, err := artifacts.CleanTitle(titled(given, stored, officeName(stored)))
 	return err == nil && cleaned == stored
 }

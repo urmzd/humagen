@@ -34,6 +34,7 @@ export {
 } from "./github-refs";
 export * from "./icons";
 export { localizeTimes, MarkdownHeadingContext, webImpls } from "./impls";
+export { MentionContext, remarkMentions, splitMentions } from "./mentions";
 export {
   type ActionsExtra,
   ActionsExtraContext,
