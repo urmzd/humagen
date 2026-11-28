@@ -84,7 +84,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Superseded by DES-086 (2026-11-21): the console shows no "Worked" line and no control under an answer. `turn.completed` still carries `durationMs`, which Slack's plan title uses |
 | DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a full message of its own with its stream and its own rating, and no line or control that sums the turn | Implemented: `CallThreadContext` and the `embedded` form in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`, `turnOfCall` in `callTurn.ts`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
-| DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
+| DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light. In an agent's answer: `remarkMentions` (`packages/render-web/src/mentions.tsx`), `mentions.test.ts` passes, checked in the browser on a local run, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
@@ -1503,8 +1503,13 @@ same activity again makes no sense.
   agent ("LA" for lead).
 - A mention of an agent is a link to its profile. Hover or focus shows a card
   with its initials, name, model or model policy and description.
+- An agent that names an agent as `@name` in its own answer is linked the
+  same way, by the agent's shown name, while the answer is still arriving. A
+  name that is no agent's, and an `@` inside code, a link, an address, a
+  scoped package or a file name, stay as written.
 - Acceptance: `@lead` in a message links to lead, and hovering it shows lead's
-  description and policy.
+  description and policy. In an agent's answer, `@humagen-writer` reads
+  `@Humagen Writer` and links to it, and `@humagen/core` stays text.
 
 ### DES-036: The composer holds the pick; the first message goes first
 
