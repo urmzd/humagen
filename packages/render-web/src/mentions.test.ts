@@ -23,6 +23,17 @@ describe("an agent's `@name` in its own words", () => {
     expect(splitMentions("a lone @ and @@twice")).toBeUndefined();
   });
 
+  it("is not found in a scoped package, a file name or the host of an address, though the name is an agent's", () => {
+    expect(splitMentions("install @humagen/core and @types/node")).toBeUndefined();
+    expect(splitMentions("see @humagen.md")).toBeUndefined();
+    expect(splitMentions("@example.com")).toBeUndefined();
+    expect(splitMentions("@ada@example.com")).toBeUndefined();
+  });
+
+  it("ends at the name: a full stop, a comma or a hyphen after it is not part of it", () => {
+    expect(names("Ask @writer. Then @lead, or @ops- next")).toEqual(["@writer", "@lead", "@ops"]);
+  });
+
   it("keeps the text around it", () => {
     expect(
       splitMentions("Bringing in @writer now")?.map((n) => n.value ?? n.children?.[0]?.value),
