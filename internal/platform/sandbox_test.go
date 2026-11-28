@@ -559,9 +559,18 @@ func TestATitleNeverGainsAnExtensionTwiceOrOneThatIsNotOne(t *testing.T) {
 		{"app.properties", "Settings", "Settings.properties"},
 		// A title with an extension of its own keeps it.
 		{"page.txt", "readme.md", "readme.md"},
+		// A heading that ends its sentence gains one dot, not two.
+		{"notes.md", "Launch plan.", "Launch plan.md"},
+		{"costs.md", "Costs, etc.", "Costs, etc.md"},
 	} {
 		if got := publish(c.file, c.title); got.Title != c.want {
 			t.Errorf("file %q titled %q is stored as %q, want %q", c.file, c.title, got.Title, c.want)
+		}
+	}
+	// A title that is no name is refused, as it was before titles gained extensions.
+	for _, title := range []string{".", "...", "/"} {
+		if _, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "notes.md", Title: title}); !errors.Is(err, artifacts.ErrInvalid) {
+			t.Errorf("a title of %q = %v, want it refused", title, err)
 		}
 	}
 	// A heading that ends in a dotted word is still a heading over a document.

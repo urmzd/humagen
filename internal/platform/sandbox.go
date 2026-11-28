@@ -381,7 +381,8 @@ func titled(title, file string, office bool) string {
 	if !office && extensionOf(title) != "" {
 		return title
 	}
-	return title + ext
+	// A heading may end its sentence: "Launch plan." is "Launch plan.md".
+	return strings.TrimRight(title, ". ") + ext
 }
 
 // extensionOf is the extension of a file's name, when what follows its last
@@ -418,12 +419,16 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 	if strings.TrimSpace(title) == "" {
 		title = path.Base(clean)
 	}
-	// A new version keeps the title of the file it follows.
-	if pub.After == "" {
-		title = titled(title, clean, nativefiles.MIME(clean, b) != "")
-	}
+	// The title is a name before it is given an extension: one that is no
+	// name (".", "a/") is refused, not stored under the extension alone.
 	if title, err = artifacts.CleanTitle(title); err != nil {
 		return artifacts.Artifact{}, err
+	}
+	// A new version keeps the title of the file it follows.
+	if pub.After == "" {
+		if title, err = artifacts.CleanTitle(titled(title, clean, nativefiles.MIME(clean, b) != "")); err != nil {
+			return artifacts.Artifact{}, err
+		}
 	}
 	mime := sniff(title, b)
 	kind := artifacts.Kind(strings.TrimSpace(pub.Kind))
