@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { allTools, answerOf, foldAll, type Turn } from "@humagen/core";
+import { allTools, answerOf, foldAll, type ResponseTool, type Turn } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, CallThreadContext } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
+import { publishesOf } from "./callFiles.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
@@ -806,6 +807,125 @@ test("a called agent is a message of its own in the answer: full size, with its 
   } finally {
     net.restore();
   }
+});
+
+test("a called agent's message shows the file it published, read from its own run's events", async () => {
+  const published = hex("9");
+  const call = {
+    type: "tool",
+    id: "c1",
+    name: "call_agent",
+    kind: "agent",
+    agent: "writer",
+    runId: published,
+    title: "Write the guide",
+    input: {},
+    depth: 1,
+    status: "done",
+    content: [
+      {
+        type: "tool",
+        id: "t1",
+        name: "publish_artifact",
+        kind: "tool",
+        input: { path: "intro.docx" },
+        depth: 2,
+        status: "done",
+        result: { text: "Published", sources: [], isError: false },
+        content: [],
+      },
+      { type: "text", text: "I published the guide.", citations: [] },
+    ],
+  } as ResponseTool;
+  const event = (seq: number, type: string, data: unknown = {}) => ({
+    id: `e${seq}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time: at(seq),
+    hops: 0,
+    tenant: "acme",
+    run: published,
+    seq,
+    agent: "writer",
+    version: "1.0.0",
+    data,
+  });
+  const net = stubFetch({
+    [`GET /api/runs/${published}/feedback`]: () => ({ feedback: [] }),
+    [`GET /api/runs/${published}/events`]: () => ({
+      complete: true,
+      events: [
+        event(1, "run.accepted.v1"),
+        event(2, "run.started.v1"),
+        event(3, "run.delta.tool.call.v1", { id: "t1", name: "publish_artifact" }),
+        event(4, "run.action.taken.v1", {
+          name: "publish_artifact",
+          data: {
+            id: "art-7",
+            title: "Introduction to Chinese.docx",
+            kind: "document",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size: 2819,
+            version: 1,
+          },
+        }),
+        event(5, "run.delta.text.v1", { text: "I published the guide." }),
+        event(6, "run.completed.v1", { text: "I published the guide." }),
+      ],
+    }),
+  });
+  try {
+    const { container } = render(
+      <WebSurface>
+        <CallThreadContext.Provider value={null}>
+          {callThreadsOf({ ...foldAll([]), content: [call] })({
+            id: "c1",
+            subagent: { runId: published },
+          } as Parameters<ReturnType<typeof callThreadsOf>>[0])}
+        </CallThreadContext.Provider>
+      </WebSurface>,
+    );
+    const message = within(container).getByRole("article", { name: "writer message" });
+    // The card is the file's, with the link that opens it.
+    await waitFor(() =>
+      assert.ok((message.textContent ?? "").includes("Introduction to Chinese.docx")),
+    );
+    assert.ok(message.querySelector('a[href*="/api/artifacts/art-7/content"]'));
+    assert.ok(net.seen.some((s) => s.path === `/api/runs/${published}/events`));
+  } finally {
+    net.restore();
+  }
+});
+
+test("a publish that waits on a person is not counted as ended, so its card is not read and kept too soon", () => {
+  const step = (id: string, status: ResponseTool["status"]) => ({
+    type: "tool",
+    id,
+    name: "publish_artifact",
+    kind: "tool",
+    input: {},
+    depth: 2,
+    status,
+    content: [],
+  });
+  const call = (statuses: ResponseTool["status"][]) =>
+    ({
+      type: "tool",
+      id: "c1",
+      name: "call_agent",
+      kind: "agent",
+      agent: "writer",
+      runId: hex("8"),
+      input: {},
+      depth: 1,
+      status: "running",
+      content: statuses.map((status, i) => step(`t${i}`, status)),
+    }) as ResponseTool;
+  assert.equal(publishesOf(call(["running"])), 0);
+  assert.equal(publishesOf(call(["awaiting_approval"])), 0);
+  assert.equal(publishesOf(call(["done", "awaiting_approval", "error", "denied"])), 3);
+  assert.equal(publishesOf(undefined), 0);
 });
 
 test("a called agent's record becomes a turn: thinking, words, steps and its own calls, in the order they came", () => {
