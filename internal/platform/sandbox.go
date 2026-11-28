@@ -361,25 +361,51 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	return p.publishFrom(ctx, area, pub)
 }
 
-// titled gives a title that names no file type the extension of the file it
-// was published from. The title is the name a download is saved under and the
-// name a file's type is read from, so a title a model wrote as a heading
-// ("Launch plan" for plan.docx) would otherwise store a document as an archive
-// that nothing can open. A title with an extension of its own keeps it: the
-// bytes, not the name, still decide what the file is stored as.
-func titled(title, file string) string {
-	ext := path.Ext(file)
+// titled gives a heading the extension of the file it was published from. The
+// title is the name a download is saved under and the name a file's type is
+// read from, so a title a model wrote as a heading ("Launch plan" for
+// plan.docx) would otherwise store a document as an archive that nothing can
+// open.
+//
+// A title that already ends as the file does is left alone, and so is one
+// with an extension of its own: the bytes, not the name, still decide what
+// the file is stored as. office says the file is an Office document, whose
+// type is read from its name alone: its extension is kept under any heading,
+// one that ends in a dotted word ("Guide to ASP.NET") included.
+func titled(title, file string, office bool) string {
 	title = strings.TrimSpace(title)
-	if ext == "" || title == "" || fileExtension.MatchString(path.Ext(title)) {
+	ext := extensionOf(file)
+	if title == "" || ext == "" || strings.EqualFold(path.Ext(title), ext) {
+		return title
+	}
+	if !office && extensionOf(title) != "" {
 		return title
 	}
 	return title + ext
 }
 
-// fileExtension is what a file's extension looks like: ".md" and ".docx" are,
-// and the ".2" of "Plan v1.2" and the ". Q4 results" of "Q3 vs. Q4 results"
-// are not.
-var fileExtension = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9]{0,7}$`)
+// extensionOf is the extension of a file's name, when what follows its last
+// dot is one: ".md" and ".properties" are, and the ".2" of "Plan v1.2", the
+// ". Q4 results" of "Q3 vs. Q4 results" and the whole of ".gitignore" are not.
+func extensionOf(name string) string {
+	base := path.Base(name)
+	ext := path.Ext(base)
+	if ext == base || !fileExtension.MatchString(ext) {
+		return ""
+	}
+	return ext
+}
+
+var fileExtension = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9]{0,15}$`)
+
+// officeName reports whether a file's name is an Office document's.
+func officeName(name string) bool {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".docx", ".pptx", ".xlsx":
+		return true
+	}
+	return false
+}
 
 // publishFrom publishes a file from area: a conversation's directory, or
 // the work directory of the run that publishes it.
@@ -394,7 +420,7 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 	}
 	// A new version keeps the title of the file it follows.
 	if pub.After == "" {
-		title = titled(title, clean)
+		title = titled(title, clean, nativefiles.MIME(clean, b) != "")
 	}
 	if title, err = artifacts.CleanTitle(title); err != nil {
 		return artifacts.Artifact{}, err
