@@ -277,6 +277,10 @@ export function adapter(
   // from the moment the agent starts publishing it, and the report that
   // follows fills in the same card rather than adding a second one.
   const publishing: string[] = [];
+  // Calls whose step says how much of them is written. A run that ends while
+  // one is still being written takes the size off its step: nothing is being
+  // written any more.
+  const writing = new Set<string>();
 
   // Helper calls link to their own run. Their complete result stays in
   // execution history rather than becoming another answer preview.
@@ -320,6 +324,13 @@ export function adapter(
         }
       : { id, title: title(name), status: "in_progress", tool: name, ...all };
   };
+
+  /** The steps that still say how much of their call is written, without it: the run has ended. */
+  const unwritten = (): TurnEvent[] =>
+    [...writing].map((id) => {
+      writing.delete(id);
+      return { type: "task.upserted", task: task(id, tools.get(id), { writtenBytes: undefined }) };
+    });
 
   return (e) => {
     switch (e.type) {
@@ -424,12 +435,18 @@ export function adapter(
         if (t.phase === "executing" && Number.isFinite(Date.parse(e.time))) toolStarted.set(t.id, Date.parse(e.time));
         // While the model writes the call, the event says how much it has
         // written; once the call runs, its arguments are whole.
+        const growing = t.phase === "requested" && typeof t.arguments_bytes === "number" && t.arguments_bytes > 0;
+        // A surface that does not show the size is told nothing by a call
+        // that only grew: a step sent again unchanged is an edit it pays for.
+        if (growing && !first && !opts.writing) return [];
         const written =
           t.phase === "requested"
-            ? opts.writing && typeof t.arguments_bytes === "number" && t.arguments_bytes > 0
+            ? opts.writing && growing
               ? { writtenBytes: t.arguments_bytes }
               : {}
             : { writtenBytes: undefined };
+        if (written.writtenBytes === undefined) writing.delete(t.id);
+        else writing.add(t.id);
         const out: TurnEvent[] = [
           { type: "activity", activity: doing(t.name) },
           { type: "task.upserted", task: task(t.id, t.name, { ...written, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(toolStarted.has(t.id) ? { startedAt: new Date(toolStarted.get(t.id) as number).toISOString() } : {}) }) },
@@ -538,7 +555,7 @@ export function adapter(
         ];
       }
       case "run.completed.v1": {
-        const out: TurnEvent[] = [];
+        const out: TurnEvent[] = unwritten();
         const text = e.data?.text;
         if (!streamed && text) out.push({ type: "text.delta", text });
         const ms = acceptedAt === undefined ? Number.NaN : Date.parse(e.time) - acceptedAt;
@@ -559,6 +576,7 @@ export function adapter(
           if (settled) out.push({ type: "interrupt.resolved", interrupt: settled });
         }
         asked.clear();
+        out.push(...unwritten());
         out.push(...publishing.splice(0).map((id) => unpublishedFile(id)));
         out.push({ type: "turn.stopped" }, { type: "stop.updated", stop: "confirmed" });
         return out;
@@ -569,6 +587,7 @@ export function adapter(
         // terminal failure ends the turn.
         if (!l?.terminal) return [];
         return [
+          ...unwritten(),
           ...publishing.splice(0).map((id) => unpublishedFile(id)),
           {
             type: "turn.failed",
