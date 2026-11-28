@@ -22,6 +22,14 @@ describe("toolsLine", () => {
     expect(line.failed).toBe(0);
   });
 
+  it("says how much of a call the model has written while it writes it", () => {
+    const writing = { status: "in_progress" as const, input: undefined };
+    expect(toolsLine([call("1", "file_write", {}, writing)]).text).toBe("Running file write");
+    expect(toolsLine([call("1", "file_write", {}, { ...writing, writtenBytes: 3072 })]).text).toBe(
+      "Running file write, 3 KB written",
+    );
+  });
+
   it("says what a lone call was pointed at", () => {
     expect(
       toolsLine([

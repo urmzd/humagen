@@ -186,6 +186,51 @@ test("a published file is one card that goes from generating to ready", () => {
   });
 });
 
+test("a step says how much of its call the model has written, until the call runs", () => {
+  const stepOf = (events: ReturnType<ReturnType<typeof adapter>>) => {
+    const upsert = events.find((e) => e.type === "task.upserted");
+    return upsert?.type === "task.upserted" ? upsert.task : undefined;
+  };
+  const to = adapter({ writing: true });
+  assert.equal(stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested" }, 1)))?.writtenBytes, undefined);
+  assert.equal(stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 1024 }, 2)))?.writtenBytes, 1024);
+  assert.equal(stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 3072 }, 3)))?.writtenBytes, 3072);
+  // The call runs: its arguments are whole, and their size is no longer progress.
+  const running = stepOf(to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "executing", arguments_bytes: 9000 }, 4)));
+  assert.equal(running?.writtenBytes, undefined);
+  assert.equal(stepOf(to(ev("run.delta.tool.done.v1", { id: "t1", name: "file_write", result: "ok" }, 5)))?.writtenBytes, undefined);
+  // A surface that did not ask for it, such as a Slack message, is told the
+  // call once and nothing as it grows: a step sent again unchanged is an edit.
+  const quiet = adapter();
+  assert.equal(quiet(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested" }, 1)).length, 2);
+  assert.deepEqual(quiet(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 2048 }, 2)), []);
+  assert.equal(stepOf(quiet(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "executing", arguments: { path: "a.md" } }, 3)))?.writtenBytes, undefined);
+});
+
+test("a run accepted again starts with no call being written: its end adds no step back", () => {
+  const to = adapter({ writing: true });
+  to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested" }, 1));
+  to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 2048 }, 2));
+  to(ev("run.accepted.v1", {}, 3));
+  assert.equal(to(ev("run.completed.v1", { text: "done" }, 4)).some((e) => e.type === "task.upserted"), false);
+});
+
+test("a run that ends while a call is still being written takes the size off its step", () => {
+  for (const [type, data] of [
+    ["run.stopped.v1", {}],
+    ["run.failed.v1", { terminal: true, error: "boom" }],
+    ["run.completed.v1", { text: "done" }],
+  ] as const) {
+    const to = adapter({ writing: true });
+    to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested" }, 1));
+    to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 3072 }, 2));
+    const cleared = to(ev(type, data, 3)).find((e) => e.type === "task.upserted");
+    assert.ok(cleared?.type === "task.upserted", type);
+    assert.equal(cleared.task.id, "t1");
+    assert.equal(cleared.task.writtenBytes, undefined, type);
+  }
+});
+
 test("each publish in a run keeps its own card, however many times its call is reported", () => {
   const to = adapter();
   const cards = new Map<string, { title: string; phase: string }>();

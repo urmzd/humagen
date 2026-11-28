@@ -1,6 +1,7 @@
 import {
   type FileEdit,
   fileEdits,
+  formatBytes,
   recoveredCalls,
   type Task,
   type ToolKind,
@@ -137,7 +138,12 @@ export function toolsLine(
   if (running) {
     const edit = edits.get(running.id);
     const what = edit ? clipTarget(edit.path) : toolWords(running);
-    return { ...base, text: w.running(what) };
+    return {
+      ...base,
+      text: running.writtenBytes
+        ? w.writing(what, formatBytes(running.writtenBytes))
+        : w.running(what),
+    };
   }
   if (tasks.length === 1) {
     const only = tasks[0] as Task;

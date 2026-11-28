@@ -426,6 +426,18 @@ type traceCall struct {
 	withheld    bool
 }
 
+// argumentsLeftOut is the size a tool event gives for arguments it does not
+// carry because they were too large to. A call the model is still writing
+// gives the size written so far in the same field, and that is progress: its
+// arguments are not kept back, they do not exist yet. Read as kept back, the
+// call would be hidden from the trace for as long as it takes to write.
+func argumentsLeftOut(body event.Body, size int) int {
+	if call, ok := body.(event.ToolCall); ok && call.Phase == event.PhaseRequested {
+		return 0
+	}
+	return size
+}
+
 // toolData is a tool call's event data as the reader is shown it.
 type toolData struct {
 	Arguments      json.RawMessage `json:"arguments"`
@@ -537,7 +549,7 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 				// edited, come last.
 				c.input = d.Arguments
 			}
-			c.inputBytes = max(c.inputBytes, d.ArgumentsBytes)
+			c.inputBytes = max(c.inputBytes, argumentsLeftOut(e.Data, d.ArgumentsBytes))
 			if e.Type == event.TypeToolDone {
 				c.output, c.err = d.Result, d.Error
 			}
