@@ -39,6 +39,7 @@ import {
   InfoIcon,
 } from "./icons";
 import { markdownBlocks } from "./markdown-blocks";
+import { MENTION, MentionContext, remarkMentions } from "./mentions";
 import { SuppressContext, timeLeft, useNow, useTurnMeta } from "./meta";
 import { RequestBubble } from "./request";
 import { Review } from "./review";
@@ -125,11 +126,19 @@ export function isExternal(href: string | undefined, origin?: string): boolean {
   }
 }
 
+/** A name an agent wrote as `@name`: the host's link when it is an agent's, the text otherwise. */
+function Mention({ name }: { name: string }) {
+  const drawn = useContext(MentionContext)?.(name);
+  return <>{drawn ?? `@${name}`}</>;
+}
+
 /**
  * Links whose text is a bare `[n]` are citation markers from `linkCitations`.
  * Links on the same site stay in the tab; links elsewhere open a new one.
  */
-const linkRenderer: Components["a"] = ({ href, children }) => {
+const linkRenderer: Components["a"] = ({ href, children, ...rest }) => {
+  const mentioned = (rest as Record<string, unknown>)[MENTION];
+  if (typeof mentioned === "string") return <Mention name={mentioned} />;
   const label = textOf(children);
   const cite = CITE.exec(label);
   if (cite?.[1]) return <CitationChip href={href} label={cite[1]} />;
@@ -180,13 +189,15 @@ const markdownComponents: Components = {
   ),
 };
 
+const remarkPlugins = [remarkGfm, remarkGitHubRefs, remarkMentions];
+
 // Parsing is the costly part of a message, and a thread renders again on every
 // streamed token and every edit around it. Each of these parses again only when
 // its own text changes.
 const Inline = memo(function Inline({ text }: { text: string }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkGitHubRefs]}
+      remarkPlugins={remarkPlugins}
       components={{ p: ({ children }) => <>{children}</>, a: linkRenderer }}
       allowedElements={["p", "strong", "em", "code", "a", "del"]}
       unwrapDisallowed
@@ -204,8 +215,6 @@ function Text({ text }: PrimitiveProps["Text"]) {
     </p>
   );
 }
-
-const remarkPlugins = [remarkGfm, remarkGitHubRefs];
 
 /** One piece of a document, parsed again only when its own text changes. */
 const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {

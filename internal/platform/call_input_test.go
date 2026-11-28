@@ -90,7 +90,7 @@ func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *test
 	}
 }
 
-func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
+func TestInvalidHelperResultFailsWithoutAnAcceptedAnswer(t *testing.T) {
 	c := &cast{says: map[string][][]saigetypes.Delta{
 		"lead":   {say("Parent answer")},
 		"helper": {say("This is longer than two words.")},
@@ -110,10 +110,62 @@ func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
 	if !strings.Contains(helper.Error, "summary exceeds 2 words") {
 		t.Fatalf("helper error = %q", helper.Error)
 	}
+	// Its words were published as it wrote them, and none of them stands as
+	// an answer: the run did not complete and its record holds no answer.
+	streamed := false
 	for _, e := range kept(p.Journal.Events(tenant, []string{helper.ID})) {
-		if e.Type == event.TypeText || e.Type == event.TypeCompleted {
+		if e.Type == event.TypeCompleted {
 			t.Fatalf("invalid answer published as %s", e.Type)
 		}
+		streamed = streamed || e.Type == event.TypeText
+	}
+	if !streamed {
+		t.Fatal("the helper's words were held until its answer was checked")
+	}
+	if helper.Answer != "" {
+		t.Fatalf("an invalid answer stands on the run: %q", helper.Answer)
+	}
+}
+
+// A handoff answers on its caller's channel, where a Slack thread or a pull
+// request shows what is published and cannot take it back. Its words are
+// held until its answer has passed its contract, and one that fails
+// publishes none of them.
+func TestAHandoffsWordsAreHeldUntilItsAnswerPasses(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		format call.ResponseFormat
+		ends   runs.Status
+		text   bool
+	}{
+		{"an answer that fails", call.SummaryFormat{MaxWords: 2}, runs.Failed, false},
+		{"an answer that passes", call.SummaryFormat{MaxWords: 20}, runs.Completed, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cast := &cast{says: map[string][][]saigetypes.Delta{
+				"lead":   {say("Parent answer")},
+				"helper": {say("This is longer than two words.")},
+			}, spawn: map[string][]string{"lead": {"helper"}}, gates: map[string]chan struct{}{"lead": make(chan struct{})}}
+			p := stage(t, cast, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+			first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "handoff-" + c.name, Agent: "lead", Text: "Start"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			await(t, p, first.ID, runs.Running)
+			child, err := p.Call(t.Context(), tenant, first.ID, call.Request{Key: "handoff-" + c.name, Agent: "helper", Mode: call.Handoff, Input: callInput(c.format, textMessage("user", "Return a brief summary"))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			await(t, p, child.ID, c.ends)
+			cast.release("lead")
+			text := false
+			for _, e := range kept(p.Journal.Events(tenant, []string{child.ID})) {
+				text = text || e.Type == event.TypeText
+			}
+			if text != c.text {
+				t.Fatalf("the handoff's words were published = %v, want %v", text, c.text)
+			}
+		})
 	}
 }
 

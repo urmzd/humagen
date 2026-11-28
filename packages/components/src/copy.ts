@@ -2213,6 +2213,8 @@ export const defaultCopy = {
       wrote: (path: string) => `Wrote ${path}`,
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
+      /** A call the model is still writing, with how much of it there is so far. */
+      writing: (what: string, size: string) => `Running ${what}, ${size} written`,
       failed: (n: number) => `${n} failed`,
       /** Calls that failed and that a later call in the turn recovered: said quietly, not as a failure. */
       retried: (n: number) => `${n} retried`,

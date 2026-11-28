@@ -90,6 +90,12 @@ export interface Task {
    */
   subagent?: Subagent;
   /**
+   * How much of this call's arguments the model has written so far, in
+   * bytes, while it is still writing them: a file written in one call is
+   * seen to grow. Absent once the call runs.
+   */
+  writtenBytes?: number;
+  /**
    * Where in the answer this step happened: the length of the turn's text
    * when it started. Set once, so steps and words read in the order they came.
    */

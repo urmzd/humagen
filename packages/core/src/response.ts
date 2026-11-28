@@ -359,6 +359,10 @@ function statusEvent(state: ResponseState, event: ResponseEvent) {
       target.decision = str(event.decision);
     }
     if (path.length) target.path = path;
+    // The run behind an agent call, known as soon as the call is: without it
+    // a call that has said and done nothing yet cannot be found by its run.
+    const run = str(event.agent_run_id);
+    if (run) target.runId = run;
   }
   // Anything awaiting or failing below a call is shown on every call above it
   // on its path, from the depth-1 call down, so it is never hidden.

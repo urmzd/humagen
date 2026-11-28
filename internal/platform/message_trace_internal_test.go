@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+
+	"github.com/urmzd/saige/flow/event"
 )
 
 // A context read is what get_context answered: the place it read, the start
@@ -41,5 +43,23 @@ func TestAToolUseIDReadsBackIntoItsRunAndNumber(t *testing.T) {
 		if run != want.run || n != want.n || ok != want.ok {
 			t.Fatalf("parseToolUseID(%q) = %q, %d, %v; want %+v", id, run, n, ok, want)
 		}
+	}
+}
+
+// A call the model is still writing says how much it has written, in the
+// field a finished call uses for arguments too large to carry. Only the
+// second means arguments were kept from the reader.
+func TestASizeOnACallStillBeingWrittenIsNotArgumentsKeptBack(t *testing.T) {
+	writing := event.ToolCall{ID: "c1", Name: "file_write", Phase: event.PhaseRequested, ArgumentsBytes: 4096}
+	if got := argumentsLeftOut(writing, writing.ArgumentsBytes); got != 0 {
+		t.Fatalf("a call being written leaves out %d bytes", got)
+	}
+	running := event.ToolCall{ID: "c1", Name: "file_write", Phase: event.PhaseExecuting, ArgumentsBytes: 12000}
+	if got := argumentsLeftOut(running, running.ArgumentsBytes); got != 12000 {
+		t.Fatalf("a running call leaves out %d bytes, want 12000", got)
+	}
+	done := event.ToolDone{ID: "c1", Name: "file_write", ArgumentsBytes: 12000}
+	if got := argumentsLeftOut(done, done.ArgumentsBytes); got != 12000 {
+		t.Fatalf("a finished call leaves out %d bytes, want 12000", got)
 	}
 }

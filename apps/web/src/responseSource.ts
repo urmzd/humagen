@@ -485,6 +485,9 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
           });
         status(id, statusOf(c.status), c.ended_at ?? c.started_at, {
           elapsed_ms: c.ms,
+          // Its run, said with the call: a called agent that has no step or
+          // word yet has no block of its own to say it.
+          agent_run_id: c.run,
           ...(title ? { title } : {}),
         });
         // A delegation that waited on a person: how it was decided, on its call.
