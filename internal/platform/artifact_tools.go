@@ -378,6 +378,14 @@ func (p *Platform) staleRefusal(tenant, after string) error {
 		artifacts.ErrStale, after, latest.Title, latest.Version, latest.ID, ToolArtifactRead, latest.ID)
 }
 
+// sameTitle reports whether a title a publish gives names the file a stored
+// title names: the stored one is what the given one became when it was first
+// published, with its file's extension and cleaned into a file name.
+func sameTitle(given, stored string) bool {
+	cleaned, err := artifacts.CleanTitle(titled(given, stored, officeName(stored)))
+	return err == nil && cleaned == stored
+}
+
 // publishTo publishes for the publish tool: the file at path, or with edits
 // the version a publish follows with its replacements applied.
 func (p *Platform) publishTo(ctx context.Context, area fileArea, reach artifactReach, pub Publication, to, edits string) (artifacts.Artifact, error) {
@@ -388,7 +396,7 @@ func (p *Platform) publishTo(ctx context.Context, area fileArea, reach artifactR
 	if target.after != "" {
 		// The title a first publish was given as a heading is the file's
 		// title without its extension (titled), and names the same file.
-		if title := strings.TrimSpace(pub.Title); title != "" && title != target.title && titled(title, target.title) != target.title {
+		if title := strings.TrimSpace(pub.Title); title != "" && title != target.title && !sameTitle(title, target.title) {
 			return artifacts.Artifact{}, fmt.Errorf("%w: a new version keeps its file's title, %q. Leave title out", ErrSandbox, target.title)
 		}
 		pub.Title, pub.After = target.title, target.after
