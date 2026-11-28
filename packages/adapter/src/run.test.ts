@@ -481,6 +481,12 @@ test("settings that could not be read while a model was chosen are not said as a
     assert.notEqual(failure.message, defaultCopy.runFailure.because.no_model_provider);
 });
 
+test("a stream that only ended early is not read as the output limit, and keeps Retry", () => {
+  const dropped = "native: agent \"writer\" version 1.0.0: response truncated: stream ended with open tool calls [c1]";
+  assert.equal(failureCause(dropped), "unknown");
+  assert.equal(isRetryable(failureOf(dropped, "r1")), true);
+});
+
 test("a run its model's output limit cut short does not offer Retry: the same request meets the same limit", () => {
   const cut = failureOf('native: agent "writer" version 1.0.0: response truncated (finish reason max_tokens)', "r1");
   assert.equal(isRetryable(cut), false);
