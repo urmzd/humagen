@@ -207,6 +207,14 @@ test("a step says how much of its call the model has written, until the call run
   assert.equal(stepOf(quiet(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "executing", arguments: { path: "a.md" } }, 3)))?.writtenBytes, undefined);
 });
 
+test("a run accepted again starts with no call being written: its end adds no step back", () => {
+  const to = adapter({ writing: true });
+  to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested" }, 1));
+  to(ev("run.delta.tool.call.v1", { id: "t1", name: "file_write", phase: "requested", arguments_bytes: 2048 }, 2));
+  to(ev("run.accepted.v1", {}, 3));
+  assert.equal(to(ev("run.completed.v1", { text: "done" }, 4)).some((e) => e.type === "task.upserted"), false);
+});
+
 test("a run that ends while a call is still being written takes the size off its step", () => {
   for (const [type, data] of [
     ["run.stopped.v1", {}],

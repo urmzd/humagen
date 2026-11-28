@@ -342,6 +342,7 @@ export function adapter(
         calling.clear();
         shown.clear();
         asked.clear();
+        writing.clear();
         acceptedAt = Date.parse(e.time);
         return [{ type: "turn.started", turnId: e.run ?? "", agent: { name: e.agent ?? "" } }];
       case "run.started.v1":
