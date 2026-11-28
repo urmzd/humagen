@@ -481,11 +481,25 @@ test("settings that could not be read while a model was chosen are not said as a
     assert.notEqual(failure.message, defaultCopy.runFailure.because.no_model_provider);
 });
 
+test("a stream that only ended early is not read as the output limit, and keeps Retry", () => {
+  const dropped = "native: agent \"writer\" version 1.0.0: response truncated: stream ended with open tool calls [c1]";
+  assert.equal(failureCause(dropped), "unknown");
+  assert.equal(isRetryable(failureOf(dropped, "r1")), true);
+});
+
+test("a run its model's output limit cut short does not offer Retry: the same request meets the same limit", () => {
+  const cut = failureOf('native: agent "writer" version 1.0.0: response truncated (finish reason max_tokens)', "r1");
+  assert.equal(isRetryable(cut), false);
+  assert.equal(cut.message, defaultCopy.runFailure.because.output_limit);
+});
+
 test("each runtime error is read as its cause, the specific cause before the retry wrapper", () => {
   const cases: [string, FailureCause][] = [
     [NO_PROVIDER, "no_model_provider"],
     ["durable: max attempts exhausted: agent: max iterations reached", "max_iterations"],
     ["durable: max attempts exhausted", "max_attempts"],
+    ['native: agent "humagen-writer" version 1.0.0: response truncated (finish reason max_tokens)', "output_limit"],
+    ["response truncated (finish reason max_tokens): the output limit was reached before any answer was produced, after 4096 output tokens", "output_limit"],
     ["durable: max attempts exhausted: weird thing", "max_attempts"],
     ["session: access denied", "permission_denied"],
     ['sandbox: access denied by policy: user "a", op read, key "k"', "permission_denied"],

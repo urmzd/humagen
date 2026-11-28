@@ -31,6 +31,7 @@ describe("a failed run in plain words", () => {
     unavailable: words.couldNotFinish,
     failed_steps: words.couldNotFinish,
     max_iterations: words.couldNotFinish,
+    output_limit: words.couldNotFinish,
     undeliverable: words.couldNotReply,
     max_attempts: words.couldNotFinish,
     unknown: words.couldNotFinish,
