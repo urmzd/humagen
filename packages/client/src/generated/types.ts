@@ -5067,7 +5067,7 @@ export interface ToolCallPayload {
   phase: "requested" | "executing";
   /** The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry. */
   arguments?: Record<string, unknown>;
-  /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
+  /** While the model writes the call (`requested`), the size of the arguments written so far, sent again as it grows. Once it runs (`executing`), the size of arguments left out for being too large, so "left out" reads apart from "none". */
   arguments_bytes?: number;
   /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
   parent?: string[];

@@ -180,6 +180,9 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 		}
 	}
 	var format call.ResponseFormat
+	// handoff says the call answers on its caller's channel, which may be a
+	// Slack thread or a pull request.
+	handoff := false
 	if req.Origin == call.Origin {
 		raw := req.Meta[call.MetaInput]
 		if raw != "" {
@@ -195,6 +198,7 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 				return turn.Result{}, err
 			}
 			format = prepared.Input.ResponseFormat
+			handoff = edge.Mode == call.Handoff
 			req.Instructions = format.Instruction()
 			if edge.Mode != call.Handoff {
 				req.Instructions += "\nYou are a helper. Return your result to the calling agent, which owns the user-facing answer. Do not present a second user-facing answer unless asked to draft text. Background results are recorded for later inspection."
@@ -225,9 +229,18 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 	// The run's history budget (compaction_tokens) was resolved onto req;
 	// a configured runtime reads only in.
 	in.Compaction = native.CompactionTo(req.Compaction)
-	// Buffer contracted outputs until validation succeeds. An invalid helper
-	// answer must not appear as accepted text or a successful tool result.
-	var buffered []event.Body
+	// A called agent's words are published as it writes them, as any run's
+	// are, so a person watches it work. Its answer is checked against its
+	// contract when the turn ends: one that fails ends the run failed, with
+	// no completed answer and an error for its caller, so text that was
+	// streamed never stands as an accepted result. The stream is bounded as
+	// it goes, because the check on the whole answer comes too late to stop
+	// a helper that never stops writing.
+	//
+	// A handoff is the exception. It answers on its caller's channel, where
+	// a surface outside Humagen shows what is published and cannot take it
+	// back, so its words are held until its answer has passed.
+	var waiting []event.Body
 	send := emit
 	if format != nil {
 		size := 0
@@ -235,10 +248,13 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 			if t, ok := b.(event.Text); ok {
 				size += len(t.Text)
 				if size > call.MaxOutputChars*6 {
-					return fmt.Errorf("%w: helper output exceeds stream limit", call.ErrInvalid)
+					// The same input writes the same flood: a retry would publish it again.
+					return durable.NonRetryable(fmt.Errorf("%w: helper output exceeds stream limit", call.ErrInvalid))
 				}
-				buffered = append(buffered, b)
-				return nil
+				if handoff {
+					waiting = append(waiting, b)
+					return nil
+				}
 			}
 			if emit != nil {
 				return emit(ctx, b)
@@ -295,7 +311,7 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 		if err := format.ValidateOutput(out.Text); err != nil {
 			return turn.Result{}, durable.NonRetryable(err)
 		}
-		for _, b := range buffered {
+		for _, b := range waiting {
 			if emit != nil {
 				if err := emit(ctx, b); err != nil {
 					return turn.Result{}, err

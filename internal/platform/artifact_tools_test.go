@@ -315,6 +315,37 @@ func TestAPublishFollowsTheLatestVersionOrIsRefused(t *testing.T) {
 
 // A publish aimed at a person tells that person alone, and only a person who
 // can already read the conversation: it never shares the file.
+// A file published under a heading keeps that heading as its name for the
+// next version: the title a model gave the first time names the same file
+// the second time, though the file's title has gained its extension.
+func TestANewVersionMayRepeatTheHeadingItsFileWasPublishedUnder(t *testing.T) {
+	p, turn := artifactBench(t)
+	req := turn("api-author", "Field", "ada")
+	first := publishedFile(t, p, req, "guide.md", "Tones, first draft.", map[string]any{"title": "Tones in Depth"})
+	if first.Title != "Tones in Depth.md" || first.Version != 1 {
+		t.Fatalf("the first version = %+v", first)
+	}
+	second := publishedFile(t, p, req, "guide.md", "Tones, second draft.", map[string]any{"title": "Tones in Depth", "to": "artifact:" + first.ID})
+	if second.Title != "Tones in Depth.md" || second.Version != 2 {
+		t.Fatalf("the next version = %+v", second)
+	}
+	// Publishing the heading again with no target is the same file too.
+	third := publishedFile(t, p, req, "guide.md", "Tones, third draft.", map[string]any{"title": "Tones in Depth"})
+	if third.Title != "Tones in Depth.md" || third.Version != 3 {
+		t.Fatalf("the heading published again = %+v", third)
+	}
+	// A heading is cleaned into a file name as it is stored, and repeats as it was typed.
+	spoken := publishedFile(t, p, req, "tones.md", "Tones.", map[string]any{"title": "Chinese: A Beginner's Guide"})
+	again := publishedFile(t, p, req, "tones.md", "Tones, again.", map[string]any{"title": "Chinese: A Beginner's Guide", "to": "artifact:" + spoken.ID})
+	if again.Title != spoken.Title || again.Version != 2 {
+		t.Fatalf("a heading with a colon, repeated = %+v after %+v", again, spoken)
+	}
+	// Another name is still refused.
+	if _, _, err := p.UseTool(t.Context(), req, platform.ToolPublish, map[string]any{"path": "guide.md", "title": "Something else", "to": "artifact:" + third.ID}); !errors.Is(err, platform.ErrSandbox) {
+		t.Fatalf("a new version under another title = %v", err)
+	}
+}
+
 func TestAPublishAddressesOnePersonWhoCanReadTheConversation(t *testing.T) {
 	p, turn := artifactBench(t)
 	req := turn("api-author", "Field", "ada")

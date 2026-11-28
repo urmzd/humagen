@@ -501,6 +501,90 @@ func TestPublishingTellsTheInbox(t *testing.T) {
 	}
 }
 
+// A title a model wrote as a heading still names a file: it takes the
+// extension of the file it was published from, so the document is stored as
+// what it is and not as an archive nothing can open.
+func TestATitleWithoutAnExtensionKeepsTheFilesType(t *testing.T) {
+	p := start(t, call.Limits{})
+	run, req := turn(t, p, "titled-files", "")
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "intro_to_chinese.docx", "format": "native", "content": `{"title":"Introduction","paragraphs":["Ni hao means hello"]}`}); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "intro_to_chinese.docx", Title: "Introduction to Chinese for Beginners", Kind: "document"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Title != "Introduction to Chinese for Beginners.docx" || !strings.Contains(doc.Mime, "wordprocessingml.document") || doc.Kind != artifacts.Document {
+		t.Fatalf("a titled document = %+v", doc)
+	}
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "plan.md", "content": "# Plan"}); err != nil {
+		t.Fatal(err)
+	}
+	for title, want := range map[string]string{"Launch plan": "Launch plan.md", "launch.MD": "launch.MD", "": "plan.md", "Plan v1.2": "Plan v1.2.md", "Q3 vs. Q4 results": "Q3 vs. Q4 results.md", "notes.txt": "notes.txt"} {
+		got, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "plan.md", Title: title})
+		if err != nil || got.Title != want || (got.Mime != "text/markdown") != (title == "notes.txt") {
+			t.Fatalf("title %q = %q (%s), %v; want %q", title, got.Title, got.Mime, err, want)
+		}
+	}
+}
+
+// A title that is already the file's own name is left alone, whatever its
+// extension looks like, and only a file extension that is one is given to a
+// heading. A native document keeps its extension under any heading, because
+// its type is read from the name.
+func TestATitleNeverGainsAnExtensionTwiceOrOneThatIsNotOne(t *testing.T) {
+	p := start(t, call.Limits{})
+	run, req := turn(t, p, "titled-edge", "")
+	publish := func(file, title string) artifacts.Artifact {
+		t.Helper()
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": file, "content": "text"}); err != nil {
+			t.Fatal(err)
+		}
+		a, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: file, Title: title})
+		if err != nil {
+			t.Fatalf("publish %q as %q: %v", file, title, err)
+		}
+		return a
+	}
+	for _, c := range []struct{ file, title, want string }{
+		// The default title is the file's name: nothing is added to it.
+		{"config.properties", "", "config.properties"},
+		{"backup.7z", "", "backup.7z"},
+		{"report_v1.0", "", "report_v1.0"},
+		{"Plan v1.2", "Plan v1.2", "Plan v1.2"},
+		{"Q3 vs. Q4 results", "Q3 vs. Q4 results", "Q3 vs. Q4 results"},
+		// What follows the last dot of a file's name is given only when it is an extension.
+		{"notes v1.2", "Summary", "Summary"},
+		{"sub/.gitignore", "Ignore rules", "Ignore rules"},
+		{"app.properties", "Settings", "Settings.properties"},
+		// A title with an extension of its own keeps it.
+		{"page.txt", "readme.md", "readme.md"},
+		// A heading that ends its sentence gains one dot, not two.
+		{"notes.md", "Launch plan.", "Launch plan.md"},
+		{"costs.md", "Costs, etc.", "Costs, etc.md"},
+	} {
+		if got := publish(c.file, c.title); got.Title != c.want {
+			t.Errorf("file %q titled %q is stored as %q, want %q", c.file, c.title, got.Title, c.want)
+		}
+	}
+	// A title that is no name is refused, as it was before titles gained extensions.
+	for _, title := range []string{".", "...", "/"} {
+		if _, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "notes.md", Title: title}); !errors.Is(err, artifacts.ErrInvalid) {
+			t.Errorf("a title of %q = %v, want it refused", title, err)
+		}
+	}
+	// A heading that ends in a dotted word is still a heading over a document.
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "intro.docx", "format": "native", "content": `{"title":"Intro","paragraphs":["Hello"]}`}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Introduction to Node.js", "Guide to ASP.NET"} {
+		doc, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: "intro.docx", Title: title})
+		if err != nil || doc.Title != title+".docx" || !strings.Contains(doc.Mime, "wordprocessingml.document") {
+			t.Errorf("a document titled %q = %q (%s), %v", title, doc.Title, doc.Mime, err)
+		}
+	}
+}
+
 func TestNativeDocumentsPublishAsEditableOfficeAndKeepPriorVersions(t *testing.T) {
 	p := start(t, call.Limits{})
 	run, req := turn(t, p, "native-files", "")

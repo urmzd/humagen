@@ -7,6 +7,7 @@ import { agentShown } from "./branding.ts";
 import {
   AgentCallLane,
   LaneInMessage,
+  LaneSession,
   responseChips,
   summaryOf,
   useResponse,
@@ -99,9 +100,11 @@ export function CallThreads({
   // biome-ignore lint/correctness/useExhaustiveDependencies: the state is one object, changed in place; version says when.
   const thread = useCallback(callThreadsOf(state, run.message), [state, version, run.message]);
   return (
-    <CallThreadContext.Provider value={calls ? thread : null}>
-      {children}
-    </CallThreadContext.Provider>
+    <LaneSession.Provider value={run.thread}>
+      <CallThreadContext.Provider value={calls ? thread : null}>
+        {children}
+      </CallThreadContext.Provider>
+    </LaneSession.Provider>
   );
 }
 
